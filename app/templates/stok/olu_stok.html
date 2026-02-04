@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Ölü Stok Analizi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 bg-gradient-danger text-white" style="background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);">
+                <div class="card-body p-4 text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-skull-fill display-1 text-white-50"></i>
+                    </div>
+                    <h3 class="fw-bold">Ölü Stok Dedektifi</h3>
+                    <p class="opacity-75">
+                        Deponuzda yer kaplayan, sermayenizi bağlayan ve satılmayan ürünleri tespit eder.
+                        Nakite dönmeniz için strateji üretir.
+                    </p>
+                    <button onclick="analiziBaslat()" id="btnAnaliz" class="btn btn-light text-danger fw-bold px-4 py-2 mt-3 rounded-pill shadow">
+                        <i class="bi bi-search me-2"></i> Taramayı Başlat
+                    </button>
+                </div>
+            </div>
+            
+            <div class="card mt-3 border-0 shadow-sm">
+                <div class="card-body">
+                    <h6 class="fw-bold text-muted">Nasıl Çalışır?</h6>
+                    <ul class="small text-muted ps-3 mb-0">
+                        <li>Mevcut stok miktarları çekilir.</li>
+                        <li>Son 6 aydaki satış hızı hesaplanır.</li>
+                        <li>Stok Devir Hızı düşük olanlar Yapay Zeka'ya gönderilir.</li>
+                        <li>AI, maliyet analizi yaparak size bir kurtarma planı sunar.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Analiz Sonucu</h5>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Yazdır</button>
+                </div>
+                <div class="card-body position-relative" id="raporAlani">
+                    
+                    <div id="bosDurum" class="text-center text-muted py-5">
+                        <i class="bi bi-safe display-4 opacity-25"></i>
+                        <p class="mt-3">Sermayeniz güvende mi? Analizi başlatın.</p>
+                    </div>
+
+                    <div id="yukleniyor" class="text-center py-5 d-none">
+                        <div class="spinner-border text-danger" role="status" style="width: 3rem; height: 3rem;"></div>
+                        <h5 class="mt-3 animate__animated animate__pulse animate__infinite">Depo Taranıyor...</h5>
+                        <p class="text-muted small">Stok devir hızları hesaplanıyor</p>
+                    </div>
+
+                    <div id="sonucMetni" class="d-none animate__animated animate__fadeIn"></div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function analiziBaslat() {
+    $('#btnAnaliz').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status"></span> İnceleniyor...');
+    $('#bosDurum').addClass('d-none');
+    $('#sonucMetni').addClass('d-none').html('');
+    $('#yukleniyor').removeClass('d-none');
+
+    $.ajax({
+        url: '/stok/api/olu-stok-hesapla',
+        method: 'POST',
+        success: function(response) {
+            $('#yukleniyor').addClass('d-none');
+            
+            if (response.success) {
+                let content = response.report;
+                let finalHtml = "";
+                let kesinToplam = response.kesin_toplam || 0; 
+
+                try {
+                    let jsonData = (typeof content === "string") ? JSON.parse(content) : content;
+                    
+                    // Yönetici Özeti Kontrolü
+                    if (jsonData.yonetici_ozeti) {
+                        let baslik = jsonData.yonetici_ozeti.baslik || 'YÖNETİCİ ÖZETİ';
+                        // "undefined" hatasını önlemek için kontrol
+                        let metin = jsonData.yonetici_ozeti.ozet_metin_html || jsonData.yonetici_ozeti.ozet_metin || 'Özet bilgi bulunamadı.';
+                        
+                        finalHtml += `
+                        <div class="alert alert-danger border-danger border-start border-4 shadow-sm mb-4">
+                            <h5 class="alert-heading fw-bold"><i class="bi bi-megaphone-fill me-2"></i>${baslik}</h5>
+                            <div class="mt-2">${metin}</div>
+                            <hr>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-uppercase small">Toplam Bağlı Sermaye:</span>
+                                <span class="badge bg-danger fs-6">${parseInt(kesinToplam).toLocaleString('tr-TR')} TL</span>
+                            </div>
+                        </div>`;
+                    }
+
+                    // Tablo Kontrolü
+                    if (jsonData.analiz_tablosu_html) {
+                        finalHtml += jsonData.analiz_tablosu_html;
+                    } else if (jsonData.html_tablo) {
+                        finalHtml += jsonData.html_tablo;
+                    } else {
+                        // Eğer HTML yoksa JSON dökümü (Debug için)
+                        finalHtml += "<pre class='bg-light p-3 small'>" + JSON.stringify(jsonData, null, 2) + "</pre>";
+                    }
+
+                } catch (e) {
+                    finalHtml = content;
+                }
+
+                $('#sonucMetni').html(finalHtml).removeClass('d-none');
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Analiz Bitti',
+                    text: 'Riskli ürünler tespit edildi.',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+            } else {
+                $('#bosDurum').removeClass('d-none');
+                Swal.fire('Bilgi', response.message, 'info');
+            }
+        },
+        error: function(xhr) {
+            $('#yukleniyor').addClass('d-none');
+            $('#bosDurum').removeClass('d-none');
+            let msg = "Sunucu hatası.";
+            if(xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+            Swal.fire('Hata', msg, 'error');
+        },
+        complete: function() {
+            $('#btnAnaliz').prop('disabled', false).html('<i class="bi bi-search me-2"></i> Taramayı Başlat');
+        }
+    });
+}
+</script>
+{% endblock %}

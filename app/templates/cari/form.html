@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">{{ form.title }}</h5>
+            <a href="{{ url_for('cari.index') }}" class="btn btn-outline-secondary btn-sm">Listeye Dön</a>
+        </div>
+        <div class="card-body p-4">
+            {{ form.render()|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+{% endblock %}

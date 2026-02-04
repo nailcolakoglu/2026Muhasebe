@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Rapor Detayı{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+        <a href="{{ url_for('rapor.gecmis_raporlar') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-2"></i> Arşive Dön
+        </a>
+        <button onclick="window.print()" class="btn btn-primary">
+            <i class="bi bi-printer me-2"></i> Yazdır
+        </button>
+    </div>
+
+    <div class="card shadow border-0 print-area">
+        <div class="card-header bg-white py-4 border-bottom">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h6 class="text-uppercase text-muted small mb-1">RAPOR DETAYI</h6>
+                    <h3 class="fw-bold mb-0 text-primary">{{ rapor.baslik }}</h3>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-light text-dark border px-3 py-2 mb-2">{{ rapor.rapor_turu }}</span>
+                    <div class="text-muted small">
+                        <i class="bi bi-calendar-check me-1"></i> {{ rapor.tarih.strftime('%d.%m.%Y %H:%M') }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-body p-5">
+            {{ rapor.html_icerik | safe }}
+        </div>
+
+        <div class="card-footer bg-light text-center py-3 text-muted small print-footer">
+            Bu rapor Yapay Zeka (Gemini AI) tarafından {{ rapor.tarih.strftime('%d.%m.%Y') }} tarihinde oluşturulmuştur.
+            <br>MuhasebeERP Sistemi
+        </div>
+    </div>
+</div>
+
+<style>
+    @media print {
+        .no-print { display: none !important; }
+        body { background-color: white; }
+        .card { box-shadow: none !important; border: none !important; }
+        .print-area { margin: 0; padding: 0; }
+        .print-footer { position: fixed; bottom: 0; width: 100%; }
+        /* Sidebar ve Navbar'ı gizle (Base.html yapısına göre class isimleri değişebilir) */
+        .sidebar, .navbar, footer { display: none !important; }
+        .content-wrapper { margin: 0 !important; padding: 0 !important; }
+    }
+</style>
+{% endblock %}

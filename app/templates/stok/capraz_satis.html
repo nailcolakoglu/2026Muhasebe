@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Çapraz Satış Fırsatları{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 bg-primary text-white" style="background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);">
+                <div class="card-body p-4 text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-cart-plus display-1 text-white-50"></i>
+                    </div>
+                    <h3 class="fw-bold">Bunu Alan Onu da Aldı</h3>
+                    <p class="opacity-75">
+                        Fatura geçmişini tarayarak ürünler arasındaki gizli ilişkileri keşfedin.
+                        Satışlarınızı artıracak "Bundle" (Paket) önerileri alın.
+                    </p>
+                    <button onclick="analiziBaslat()" id="btnAnaliz" class="btn btn-light text-primary fw-bold px-4 py-2 mt-3 rounded-pill shadow">
+                        <i class="bi bi-magic me-2"></i> Fırsatları Bul
+                    </button>
+                </div>
+            </div>
+            
+            <div class="alert alert-info mt-3 border-0 shadow-sm">
+                <small><i class="bi bi-info-circle-fill me-1"></i> Bu analiz için en az 3 farklı ve birden fazla ürün içeren satış faturası gereklidir.</small>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-primary fw-bold"><i class="bi bi-lightbulb me-2"></i>Pazarlama Önerileri</h5>
+                </div>
+                <div class="card-body" id="raporAlani">
+                    
+                    <div id="bosDurum" class="text-center text-muted py-5">
+                        <i class="bi bi-basket display-4 opacity-25"></i>
+                        <p class="mt-3">Yapay zeka faturaları taramaya hazır.</p>
+                    </div>
+                    
+                    <div id="yukleniyor" class="text-center py-5 d-none">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <h5 class="mt-3 animate__animated animate__pulse animate__infinite">Sepetler Analiz Ediliyor...</h5>
+                    </div>
+
+                    <div id="sonucMetni" class="d-none animate__animated animate__fadeIn"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function analiziBaslat() {
+    $('#btnAnaliz').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status"></span> Analiz Ediliyor...');
+    $('#bosDurum').addClass('d-none');
+    $('#sonucMetni').addClass('d-none').html(''); 
+    $('#yukleniyor').removeClass('d-none');
+
+    $.ajax({
+        url: '/stok/api/capraz-satis-hesapla',
+        method: 'POST',
+        success: function(response) {
+            $('#yukleniyor').addClass('d-none');
+            
+            if (response.success) {
+                let content = response.report;
+                let htmlOutput = "";
+                let jsonData = null;
+
+                try {
+                    jsonData = (typeof content === "string") ? JSON.parse(content) : content;
+                } catch (e) {
+                    console.log("Veri JSON değil.");
+                }
+
+                if (jsonData) {
+                    let liste = null;
+                    if (Array.isArray(jsonData)) {
+                        liste = jsonData;
+                    } else if (typeof jsonData === 'object') {
+                        for (let key in jsonData) {
+                            if (Array.isArray(jsonData[key])) {
+                                liste = jsonData[key];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (liste) {
+                        htmlOutput = '<div class="row g-4">';
+                        liste.forEach(item => {
+                            let baslik = item.baslik || item.title || (item.urunler ? item.urunler.join(' + ') : 'Fırsat Paketi');
+                            let aciklama = item.aciklama || item.description || 'Bu ürünler birlikte sıkça tercih ediliyor.';
+                            let replik = item.replik || item.satis_cumlesi || item.script || 'Bunu da ister misiniz?';
+                            let oran = item.guven_orani || item.oran || item.confidence || '%80';
+
+                            htmlOutput += `
+                            <div class="col-md-6">
+                                <div class="card h-100 border-start border-4 border-info shadow-sm">
+                                    <div class="card-body">
+                                        <h5 class="card-title text-info fw-bold">
+                                            <i class="bi bi-gift-fill me-2"></i>${baslik}
+                                        </h5>
+                                        <p class="card-text text-muted small">${aciklama}</p>
+                                        <div class="p-3 bg-light rounded border border-info border-opacity-25 mt-3">
+                                            <small class="text-uppercase text-muted fw-bold d-block mb-1" style="font-size: 0.65rem;">🗣️ Plasiyer Repliği:</small>
+                                            <span class="fst-italic text-dark">"${replik}"</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer bg-white border-0 text-end">
+                                        <span class="badge bg-info bg-opacity-10 text-info border border-info">
+                                            Güven: ${oran}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>`;
+                        });
+                        htmlOutput += '</div>';
+                    } else {
+                        htmlOutput = jsonData.html || JSON.stringify(jsonData, null, 2);
+                    }
+                } else {
+                    htmlOutput = content;
+                }
+
+                $('#sonucMetni').html(htmlOutput).removeClass('d-none');
+            } else {
+                $('#bosDurum').removeClass('d-none');
+                Swal.fire('Bilgi', response.message, 'info');
+            }
+        },
+        error: function() {
+            $('#yukleniyor').addClass('d-none');
+            $('#bosDurum').removeClass('d-none');
+            Swal.fire('Hata', 'Sunucu hatası.', 'error');
+        },
+        complete: function() {
+            $('#btnAnaliz').prop('disabled', false).html('<i class="bi bi-magic me-2"></i> Fırsatları Bul');
+        }
+    });
+}
+</script>
+{% endblock %}  

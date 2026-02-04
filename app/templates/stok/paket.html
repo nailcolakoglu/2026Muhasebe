@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}{{ stok.ad }} - Paket İçeriği{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h4 class="fw-bold mb-0">
+                        <i class="bi bi-boxes me-2 text-primary"></i>Paket Tanımlama
+                    </h4>
+                    <p class="text-muted mb-0">
+                        {{ stok.kod }} - {{ stok.ad }}
+                    </p>
+                </div>
+                <a href="{{ url_for('stok.index') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-1"></i> Listeye Dön
+                </a>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-light py-3">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Paket Ürün Bilgisi:</strong>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <span class="badge bg-primary">{{ stok.tip|upper }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-4">
+                    {{ form.render()|safe }}
+                </div>
+            </div>
+            
+            <div class="alert alert-light border mt-3 small text-muted">
+                <i class="bi bi-info-circle me-1"></i>
+                <strong>Not:</strong> Bu ekranda tanımladığınız ürünler, Fatura modülünde bu paket ürünü seçildiğinde stoktan otomatik düşecek olan ürünlerdir.Paket ürünün kendi stoğu takip edilmez, içerisindeki bileşenlerin stoğu takip edilir.
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+
+<script>
+    // Master-Detail satır silme işlemi için global fonksiyon
+    // form_builder.js içinde tanımlı değilse burada override ediyoruz
+    window.mdRemoveRow = function(btn) {
+        $(btn).closest('tr').remove();
+    };
+
+    window.mdAddRow = function(fieldName) {
+        var tpl = document.getElementById('tpl_' + fieldName);
+        var table = document.getElementById('tbl_' + fieldName);
+        var tbody = table.querySelector('tbody');
+        
+        // Template içeriğini kopyala
+        var clone = tpl.content.cloneNode(true);
+        tbody.appendChild(clone);
+        
+        // Yeni eklenen satırdaki select2'leri init et
+        // (FormBuilder'ın kendi JS'i bunu yapıyor olabilir ama garanti olsun)
+        var newRow = tbody.lastElementChild;
+        $(newRow).find('select').select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            dropdownParent: $(newRow) // Modal içindeyse sorun çıkmasın
+        });
+    };
+</script>
+{% endblock %}

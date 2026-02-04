@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Genel Mizan{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><i class="bi bi-calculator me-2"></i>Genel Mizan</h3>
+        <div>
+            <button onclick="window.print()" class="btn btn-outline-secondary">
+                <i class="bi bi-printer"></i> Yazdır
+            </button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover table-striped mb-0 text-end" style="font-size: 14px;">
+                    <thead class="table-light text-center align-middle">
+                        <tr>
+                            <th rowspan="2" class="text-start">Hesap Kodu</th>
+                            <th rowspan="2" class="text-start">Hesap Adı</th>
+                            <th colspan="2">Tutar</th>
+                            <th colspan="2">Bakiye</th>
+                        </tr>
+                        <tr>
+                            <th>Borç</th>
+                            <th>Alacak</th>
+                            <th>Borç Bakiye</th>
+                            <th>Alacak Bakiye</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for satir in mizan %}
+                        <tr class="{{ 'fw-bold bg-light' if '.' not in satir.kod else '' }}">
+                            <td class="text-start">{{ satir.kod }}</td>
+                            <td class="text-start">{{ satir.ad }}</td>
+                            <td>{{ "{:,.2f}".format(satir.borc) }}</td>
+                            <td>{{ "{:,.2f}".format(satir.alacak) }}</td>
+                            <td class="text-success">{{ "{:,.2f}".format(satir.borc_bakiye) }}</td>
+                            <td class="text-danger">{{ "{:,.2f}".format(satir.alacak_bakiye) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center py-4">Kayıt bulunamadı.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-dark fw-bold">
+                        <tr>
+                            <td colspan="2" class="text-center">GENEL TOPLAM</td>
+                            <td>{{ "{:,.2f}".format(t_borc) }}</td>
+                            <td>{{ "{:,.2f}".format(t_alacak) }}</td>
+                            <td>{{ "{:,.2f}".format(t_borc - t_alacak) }}</td>
+                            <td>0,00</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

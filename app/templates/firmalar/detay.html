@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}{{ firma.unvan }} - Detay{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 mb-5">
+    
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    {% if firma.logo_path %}
+                        <img src="{{ url_for('static', filename=firma.logo_path) }}" alt="Logo" class="rounded border p-1" style="width: 80px; height: 80px; object-fit: contain;">
+                    {% else %}
+                        <div class="bg-light rounded d-flex align-items-center justify-content-center text-muted" style="width: 80px; height: 80px;">
+                            <i class="bi bi-building fs-1"></i>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="col">
+                    <h3 class="fw-bold mb-1">{{ firma.unvan }}</h3>
+                    <div class="text-muted mb-2">
+                        <span class="badge bg-secondary me-2">{{ firma.kod }}</span>
+                        <i class="bi bi-receipt me-1"></i> {{ firma.vergi_dairesi }} / {{ firma.vergi_no }}
+                    </div>
+                    <div class="small text-secondary">
+                        <i class="bi bi-telephone me-2"></i> {{ firma.telefon }} | 
+                        <i class="bi bi-geo-alt me-2"></i> {{ firma.adres }}
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <a href="{{ url_for('firmalar.duzenle', id=firma.id) }}" class="btn btn-outline-primary">
+                        <i class="bi bi-pencil me-1"></i> Düzenle
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-shop me-2"></i>Şubeler</h6>
+                    <a href="{{ url_for('firmalar.sube_ekle', firma_id=firma.id) }}" class="btn btn-sm btn-success">
+                        <i class="bi bi-plus-lg"></i> Şube Ekle
+                    </a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Kod</th>
+                                <th>Şube Adı</th>
+                                <th>Şehir</th>
+                                <th class="text-end" width="100">İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sube in firma.subeler %}
+                            <tr>
+                                <td><span class="badge bg-light text-dark border">{{ sube.kod }}</span></td>
+                                <td class="fw-bold">{{ sube.ad }}</td>
+                                <td>{{ sube.sehir or '-' }}</td>
+                                <td class="text-end">
+                                    <div class="btn-group">
+                                        <a href="{{ url_for('firmalar.sube_duzenle', id=sube.id) }}" class="btn btn-sm btn-outline-primary border-0" title="Düzenle">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button class="btn btn-sm btn-outline-danger border-0" onclick="sil('sube', {{ sube.id }})" title="Sil">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">Henüz şube tanımlanmamış.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-calendar-range me-2"></i>Mali Dönemler</h6>
+                    <a href="{{ url_for('firmalar.donem_ekle', firma_id=firma.id) }}" class="btn btn-sm btn-info text-white">
+                        <i class="bi bi-plus-lg"></i> Dönem Ekle
+                    </a>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Dönem Adı</th>
+                                <th>Başlangıç</th>
+                                <th>Bitiş</th>
+                                <th class="text-end" width="100">İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for donem in firma.donemler %}
+                            <tr>
+                                <td class="fw-bold">{{ donem.ad }}</td>
+                                <td>{{ donem.baslangic.strftime('%d.%m.%Y') }}</td>
+                                <td>{{ donem.bitis.strftime('%d.%m.%Y') }}</td>
+                                <td class="text-end">
+                                    <div class="btn-group">
+                                        <a href="{{ url_for('firmalar.donem_duzenle', id=donem.id) }}" class="btn btn-sm btn-outline-primary border-0" title="Düzenle">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button class="btn btn-sm btn-outline-danger border-0" onclick="sil('donem', {{ donem.id }})" title="Sil">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">Henüz dönem tanımlanmamış.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Ortak Silme Fonksiyonu
+    function sil(tur, id) {
+        let url = "";
+        let metin = "";
+
+        if (tur === 'sube') {
+            url = "/firmalar/sube/sil/" + id;
+            metin = "Şube";
+        } else {
+            url = "/firmalar/donem/sil/" + id;
+            metin = "Dönem";
+        }
+
+        Swal.fire({
+            title: 'Emin misiniz?',
+            text: `Bu ${metin} kaydı silinecek! İşlem geri alınamaz.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Evet, Sil!',
+            cancelButtonText: 'İptal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // CSRF Token al
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    headers: { "X-CSRFToken": csrfToken }, // Güvenlik tokenı
+                    success: function(response) {
+                        if (response.success) {
+                            Swal.fire('Başarılı', response.message, 'success')
+                                .then(() => location.reload()); // Sayfayı yenile
+                        } else {
+                            Swal.fire('Hata', response.message, 'error');
+                        }
+                    },
+                    error: function(xhr) {
+                        Swal.fire('Hata', 'Sunucu ile iletişim kurulamadı.', 'error');
+                    }
+                });
+            }
+        });
+    }
+</script>
+{% endblock %}

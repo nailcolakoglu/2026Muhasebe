@@ -1,0 +1,22 @@
+{% for sayfa in sayfalar %}
+FİRMA: {{ aktif_firma.unvan|truncate(40) }}       YEVMİYE DEFTERİ       TARİH: {{ bugun.strftime('%d.%m.%Y') }}
+SAYFA: {{ sayfa.no }}
+----------------------------------------------------------------------------------------------------------------------------------------
+HESAP KODU      HESAP ADI / AÇIKLAMA                                                         BORÇ                 ALACAK
+----------------------------------------------------------------------------------------------------------------------------------------
+{% if sayfa.no > 1 %}
+                                                                      NAKLİ YEKÜN:  {{ "{:>20,.2f}".format(sayfa.header.borc) }}  {{ "{:>20,.2f}".format(sayfa.header.alacak) }}
+----------------------------------------------------------------------------------------------------------------------------------------
+{% endif %}
+{% for fis in sayfa.data %}
+   ---------------------------- MADDE NO: {{ fis.madde_no }} --- TARİH: {{ fis.tarih.strftime('%d.%m.%Y') }} ----------------------------
+{% for detay in fis.detaylar %}
+{{ "{:<15}".format(detay.hesap_kodu) }} {{ "{:<60}".format(detay.hesap_adi|truncate(60)) }}
+                {{ "{:<60}".format(detay.aciklama|truncate(60)) }} {{ "{:>20}".format("{:,.2f}".format(detay.borc) if detay.borc > 0 else "") }}  {{ "{:>20}".format("{:,.2f}".format(detay.alacak) if detay.alacak > 0 else "") }}
+{% endfor %}
+{% endfor %}
+----------------------------------------------------------------------------------------------------------------------------------------
+                                                                      {% if sayfa.is_last %}GENEL TOPLAM:{% else %}NAKLİ YEKÜN :{% endif %}  {{ "{:>20,.2f}".format(sayfa.footer.borc) }}  {{ "{:>20,.2f}".format(sayfa.footer.alacak) }}
+========================================================================================================================================
+
+{% endfor %}

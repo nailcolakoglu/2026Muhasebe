@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Hesap Planı{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0"><i class="bi bi-diagram-3-fill me-2 text-primary"></i>Tek Düzen Hesap Planı</h3>
+            <p class="text-muted small mb-0">Firma hesap planı ağaç yapısı ve bakiyeleri</p>
+        </div>
+        <div>
+            <a href="{{ url_for('muhasebe.index') }}" class="btn btn-outline-secondary me-2">
+                <i class="bi bi-arrow-left"></i> Fişler
+            </a>
+            <a href="{{ url_for('muhasebe.hesap_ekle') }}" class="btn btn-primary shadow-sm">
+                <i class="bi bi-plus-lg me-2"></i> Yeni Hesap Ekle
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 300px;">Hesap Kodu</th>
+                            <th>Hesap Adı</th>
+                            <th>Sınıf / Tür</th>
+                            <th class="text-center">Özel Rol</th>
+                            <th class="text-end">Bakiye</th>
+                            <th class="text-end" style="width: 100px;">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for hesap in hesaplar %}
+                        {# --- DÜZELTME BAŞLANGIÇ --- #}
+                        {# Hesap Tipi verisini güvenli hale getiriyoruz #}
+                        {# Eğer Enum ise .value alır, String ise kendisini alır #}
+                        {% set raw_tip = hesap.hesap_tipi %}
+                        {% set tip = raw_tip.value if raw_tip.value is defined else raw_tip|string %}
+                        
+                        {# Girinti Hesaplama #}
+                        {% set indent = (hesap.seviye - 1) * 25 %}
+                        
+                        {# Satır Rengi: Ana hesaplar daha koyu #}
+                        <tr class="{{ 'bg-light fw-bold' if tip == 'ana' else '' }}">
+                            
+                            <td style="padding-left: {{ indent + 10 }}px;">
+                                {% if tip == 'ana' %}
+                                    <i class="bi bi-folder-fill me-2 text-warning"></i>
+                                {% elif tip == 'grup' %}
+                                    <i class="bi bi-folder2-open me-2 text-info"></i>
+                                {% else %}
+                                    <i class="bi bi-file-earmark-text me-2 text-secondary"></i>
+                                {% endif %}
+                                <span class="font-monospace">{{ hesap.kod }}</span>
+                            </td>
+                            
+                            <td>{{ hesap.ad }}</td>
+                            
+                            <td>
+                                {% if tip == 'ana' %}
+                                    <span class="badge bg-secondary">Ana Hesap</span>
+                                {% elif tip == 'grup' %}
+                                    <span class="badge bg-info text-dark">Grup</span>
+                                {% else %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success">Muavin</span>
+                                {% endif %}
+                            </td>
+                        {# --- DÜZELTME BİTİŞ --- #}
+                            <td class="text-center">
+                                {% if hesap.ozel_hesap_tipi.value != 'standart' %}
+                                    <span class="badge bg-warning text-dark border border-warning" title="Özel Entegrasyon Hesabı">
+                                        {{ hesap.ozel_hesap_tipi.value|upper }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted small">-</span>
+                                {% endif %}
+                            </td>
+                            
+                            <td class="text-end">
+                                {% if hesap.borc_bakiye > 0 %}
+                                    <span class="text-success fw-bold">{{ "{:,.2f}".format(hesap.borc_bakiye) }} (B)</span>
+                                {% elif hesap.alacak_bakiye > 0 %}
+                                    <span class="text-danger fw-bold">{{ "{:,.2f}".format(hesap.alacak_bakiye) }} (A)</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="text-end">
+                                <div class="btn-group">
+                                    <a href="{{ url_for('muhasebe.hesap_duzenle', id=hesap.id) }}" class="btn btn-sm btn-link text-primary" title="Düzenle">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </a>
+                                    <button onclick="sil({{ hesap.id }})" class="btn btn-sm btn-link text-danger" title="Sil">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center py-5 text-muted"><i class="bi bi-inbox fs-1 d-block mb-2"></i>Hesap planı henüz boş.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function sil(id) {
+    Swal.fire({
+        title: 'Hesap Silinecek',
+        text: "Bu işlem geri alınamaz! Alt hesapları veya hareketleri varsa silinemez.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Evet, Sil',
+        cancelButtonText: 'Vazgeç',
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.post('/muhasebe/hesap/sil/' + id, function(res) {
+                if(res.success) {
+                    Swal.fire('Başarılı', res.message, 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('Hata', res.message, 'error');
+                }
+            }).fail(function(xhr) {
+                 var msg = xhr.responseJSON ? xhr.responseJSON.message : 'Bir hata oluştu';
+                 Swal.fire('Hata', msg, 'error');
+            });
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Tahsilat İşlemi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow border-0">
+                <div class="card-header bg-success text-white py-3">
+                    <h5 class="mb-0"><i class="bi bi-cash-coin me-2"></i> Çek Tahsilatı</h5>
+                </div>
+                <div class="card-body p-4">
+                    
+                    <div class="alert alert-light border mb-4">
+                        <strong>Portföy No:</strong> {{ cek.portfoy_no }} <br>
+                        <strong>Tutar:</strong> {{ cek.tutar }} TL <br>
+                        <strong>Vade:</strong> {{ cek.vade_tarihi }}
+                    </div>
+
+                    {{ form.render()|safe }}
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Basit JS: Seçime göre Kasa veya Banka selectbox'ını göster
+    document.addEventListener('DOMContentLoaded', function() {
+        const hedefSelect = document.querySelector('[name="hedef_turu"]');
+        const kasaDiv = document.querySelector('[name="kasa_id"]').closest('.mb-3');
+        const bankaDiv = document.querySelector('[name="banka_id"]').closest('.mb-3');
+
+        function toggleFields() {
+            if(hedefSelect.value === 'KASA') {
+                kasaDiv.style.display = 'block';
+                bankaDiv.style.display = 'none';
+            } else {
+                kasaDiv.style.display = 'none';
+                bankaDiv.style.display = 'block';
+            }
+        }
+        
+        hedefSelect.addEventListener('change', toggleFields);
+        toggleFields(); // Başlangıçta çalıştır
+    });
+</script>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+{% endblock %}

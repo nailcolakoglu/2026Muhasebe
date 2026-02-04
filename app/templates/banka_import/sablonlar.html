@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Excel Şablon Ayarları{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        
+        <div class="col-md-5">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-table me-2"></i>Yeni Şablon Tanımla</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Şablon Adı</label>
+                            {{ form.banka_adi(class="form-control") }}
+                        </div>
+                        
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label small">Başlangıç Satırı</label>
+                                {{ form.baslangic_satiri(class="form-control") }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small">Tarih Formatı</label>
+                                {{ form.tarih_formati(class="form-control") }}
+                            </div>
+                        </div>
+
+                        <hr>
+                        <h6 class="text-primary fw-bold">Sütun Eşleştirmeleri (Excel Başlıkları)</h6>
+                        
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label small">Tarih</label>
+                                {{ form.col_tarih(class="form-control") }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Açıklama</label>
+                                {{ form.col_aciklama(class="form-control") }}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Dekont No</label>
+                                {{ form.col_belge_no(class="form-control") }}
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Tutar Yapısı</label>
+                            {{ form.tutar_yapis_tipi(class="form-select", id="tutarTipi") }}
+                        </div>
+
+                        <div id="divTek" class="mb-3">
+                            <label class="form-label small text-success fw-bold">Tutar Sütunu (Artı/Eksi)</label>
+                            {{ form.col_tutar(class="form-control") }}
+                        </div>
+
+                        <div id="divCift" class="row g-2 mb-3 d-none">
+                            <div class="col-md-6">
+                                <label class="form-label small text-success fw-bold">Giriş (Borç)</label>
+                                {{ form.col_borc(class="form-control") }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-danger fw-bold">Çıkış (Alacak)</label>
+                                {{ form.col_alacak(class="form-control") }}
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-save"></i> Şablonu Kaydet
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-7">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0 text-secondary">Kayıtlı Şablonlar</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Şablon Adı</th>
+                                <th>Başlangıç</th>
+                                <th>Yapı</th>
+                                <th>Sütunlar</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sablon in sablonlar %}
+                            <tr>
+                                <td class="fw-bold">{{ sablon.banka_adi }}</td>
+                                <td>{{ sablon.baslangic_satiri }}.Satır</td>
+                                <td>
+                                    {% if sablon.tutar_yapis_tipi == 'tek' %}
+                                        <span class="badge bg-info">Tek Sütun</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Çift Sütun</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">
+                                    Trh: {{ sablon.col_tarih }}, Açk: {{ sablon.col_aciklama }}
+                                </td>
+                                <td class="text-end">
+                                    <button onclick="sablonSil({{ sablon.id }})" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center py-4">Kayıtlı şablon yok.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const tutarTipi = document.getElementById('tutarTipi');
+    const divTek = document.getElementById('divTek');
+    const divCift = document.getElementById('divCift');
+
+    function toggleFields() {
+        if(tutarTipi.value === 'tek') {
+            divTek.classList.remove('d-none');
+            divCift.classList.add('d-none');
+        } else {
+            divTek.classList.add('d-none');
+            divCift.classList.remove('d-none');
+        }
+    }
+
+    tutarTipi.addEventListener('change', toggleFields);
+    toggleFields(); // Başlangıçta çalıştır
+
+    function sablonSil(id) {
+        if(confirm('Şablonu silmek istediğinize emin misiniz?')) {
+            fetch(`/banka-import/sablon-sil/${id}`, {method: 'POST'})
+            .then(r => r.json())
+            .then(res => {
+                if(res.success) location.reload();
+                else alert(res.message);
+            });
+        }
+    }
+</script>
+{% endblock %}

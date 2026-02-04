@@ -1,0 +1,79 @@
+{% macro render_grid(grid, base_url_name) %}
+<div class="card shadow-sm mb-4">
+    {% if grid.title %}
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">{{ grid.title }}</h5>
+        {% if grid.export_action %}
+        <div>
+             </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <input type="text" class="form-control form-control-sm" name="q" 
+                       value="{{ request.args.get('q', '') }}" 
+                       placeholder="Ara..." 
+                       onkeydown="if(event.key === 'Enter') { const url = new URL(window.location); url.searchParams.set('q', this.value); window.location = url; }">
+            </div>
+            </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-striped table-sm">
+                <thead>
+                    <tr>
+                        {% for col in grid.columns %}
+                            {% if col.visible %}
+                                <th style="width: {{ col.width or 'auto' }}" class="{{ col.css_class }}">
+                                    {% if col.sortable %}
+                                        <a href="{{ url_for(base_url_name, sort=col.name, direction='desc' if grid.current_sort_direction == 'asc' else 'asc') }}" class="text-decoration-none text-dark">
+                                            {{ col.label }} <i class="fas fa-sort"></i>
+                                        </a>
+                                    {% else %}
+                                        {{ col.label }}
+                                    {% endif %}
+                                </th>
+                            {% endif %}
+                        {% endfor %}
+                        {% if grid.actions %}
+                            <th class="text-center" style="width: 120px;">İşlemler</th>
+                        {% endif %}
+                    </tr>
+                    </thead>
+                <tbody>
+                    {% for item in grid.data %}
+                    <tr>
+                        {% for col in grid.columns %}
+                            {% if col.visible %}
+                                <td class="{{ col.css_class }}">
+                                    {{ grid.get_formatted_value(item, col.name) | safe }}
+                                </td>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if grid.actions %}
+                        <td class="text-center text-nowrap">
+                            {% for action in grid.actions %}
+                                <a href="#" class="btn btn-sm {{ action.class }}"><i class="{{ action.icon }}"></i></a>
+                            {% endfor %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="100%" class="text-center py-4 text-muted">Kayıt bulunamadı.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="small text-muted mt-2">
+            Toplam {{ grid.pagination.total_items }} kayıt, 
+            Sayfa {{ grid.pagination.page }}/{{ grid.pagination.total_pages }}
+        </div>
+    </div>
+</div>
+{% endmacro %}

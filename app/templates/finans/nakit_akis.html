@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Nakit Akış Simülasyonu{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 bg-success text-white" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                <div class="card-body p-4 text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-cash-coin display-1 text-white-50"></i>
+                    </div>
+                    <h3 class="fw-bold">CFO Simülasyonu</h3>
+                    <p class="opacity-75">
+                        Önümüzdeki 4 hafta için nakit akışını simüle eder.
+                        Ödeme krizlerini önceden tahmin eder.
+                    </p>
+                    <button onclick="analiziBaslat()" id="btnAnaliz" class="btn btn-light text-success fw-bold px-4 py-2 mt-3 rounded-pill shadow">
+                        <i class="bi bi-play-circle-fill me-2"></i> Simülasyonu Başlat
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-success"><i class="bi bi-graph-up-arrow me-2"></i>Finansal Rapor</h5>
+                </div>
+                <div class="card-body" id="raporAlani">
+                    <div id="bosDurum" class="text-center text-muted py-5">
+                        <i class="bi bi-hourglass-split display-4 opacity-25"></i>
+                        <p class="mt-3">Geleceği görmek için butona basın.</p>
+                    </div>
+                    
+                    <div id="yukleniyor" class="text-center py-5 d-none">
+                        <div class="spinner-border text-success" role="status"></div>
+                        <h5 class="mt-3">Çekler ve Bakiye Hesaplanıyor...</h5>
+                    </div>
+
+                    <div id="sonucMetni" class="d-none animate__animated animate__fadeIn"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function analiziBaslat() {
+    $('#btnAnaliz').prop('disabled', true).html('Hesaplanıyor...');
+    $('#bosDurum').addClass('d-none');
+    $('#sonucMetni').addClass('d-none');
+    $('#yukleniyor').removeClass('d-none');
+
+    $.ajax({
+        url: '/finans/api/nakit-simulasyon',
+        method: 'POST',
+        success: function(response) {
+            $('#yukleniyor').addClass('d-none');
+            
+            if (response.success) {
+                $('#sonucMetni').html(response.report).removeClass('d-none');
+            } else {
+                $('#bosDurum').removeClass('d-none');
+                Swal.fire('Bilgi', response.message, 'info');
+            }
+        },
+        error: function() {
+            $('#yukleniyor').addClass('d-none');
+            $('#bosDurum').removeClass('d-none');
+            Swal.fire('Hata', 'Sunucu hatası oluştu.', 'error');
+        },
+        complete: function() {
+            $('#btnAnaliz').prop('disabled', false).html('<i class="bi bi-play-circle-fill me-2"></i> Simülasyonu Başlat');
+        }
+    });
+}
+</script>
+{% endblock %}

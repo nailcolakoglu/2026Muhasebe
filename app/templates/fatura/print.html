@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Fatura Yazdır - {{ fatura.belge_no }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Sadece baskıda çalışacak stiller */
+        @media print {
+            body { 
+                background: white; 
+                font-family: 'Courier New', Courier, monospace; /* Fatura fontu */
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
+            }
+            .page {
+                page-break-after: always; /* Her 'page' sınıfından sonra kağıt atla */
+                position: relative;
+                height: 297mm; /* A4 Yüksekliği */
+                padding: 10mm;
+                border: none !important; /* Baskıda çerçeve olmasın */
+                margin: 0 !important;
+            }
+            .page:last-child {
+                page-break-after: auto;
+            }
+            /* Tarayıcı alt/üst bilgilerini gizle */
+            @page { margin: 0; }
+            .no-print { display: none !important; }
+        }
+        
+        /* Ekran görünümü için */
+        body { background: #525659; }
+        .page {
+            background: white;
+            width: 210mm;
+            min-height: 297mm;
+            margin: 20px auto;
+            padding: 20mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            box-sizing: border-box;
+        }
+        
+        /* Tablo Çizgileri */
+        .table-invoice th, .table-invoice td {
+            border: 1px solid #000 !important;
+            padding: 4px 8px;
+            font-size: 13px;
+        }
+        .table-invoice thead th {
+            background-color: #f0f0f0 !important;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="no-print text-center py-3">
+        <button onclick="window.print()" class="btn btn-light fw-bold">
+            🖨️ YAZDIR
+        </button>
+        <a href="/fatura/duzenle/{{ fatura.id }}" class="btn btn-outline-light ms-2">Geri Dön</a>
+    </div>
+
+    {% for sayfa in sayfalar %}
+    <div class="page">
+        
+        <div class="row mb-4">
+            <div class="col-8">
+                <h4 class="fw-bold">{{ current_user.firma.unvan if current_user.firma else 'FİRMA ADI' }}</h4>
+                <p class="mb-0 small">
+                    {{ current_user.firma.adres or '' }}<br>
+                    Tel: {{ current_user.firma.telefon or '' }} | V.D: {{ current_user.firma.vergi_dairesi or '' }} - V.No: {{ current_user.firma.vergi_no or '' }}
+                </p>
+                
+                <div class="mt-4 p-2 border border-dark rounded">
+                    <small class="text-muted d-block fw-bold border-bottom mb-1 pb-1">SAYIN:</small>
+                    <h5 class="mb-1">{{ fatura.cari.unvan if fatura.cari else 'CARİ SEÇİLMEMİŞ' }}</h5>
+                    <div class="small">
+                        {{ fatura.cari.adres or '' }}<br>
+                        {{ fatura.cari.vergi_dairesi or '' }} / {{ fatura.cari.vergi_no or fatura.cari.tc_no or '' }}
+                    </div>
+                </div>
+            </div>
+            <div class="col-4 text-end">
+                <h3>FATURA</h3>
+                <table class="table table-bordered table-sm small mb-0 border-dark">
+                    <tr><th class="bg-light">Tarih</th><td>{{ fatura.tarih.strftime('%d.%m.%Y') if fatura.tarih else '-' }}</td></tr>
+                    <tr><th class="bg-light">Seri/Sıra</th><td>{{ fatura.belge_no }}</td></tr>
+                    <tr><th class="bg-light">Sayfa</th><td>{{ sayfa.sayfa_no }} / {{ sayfalar|length }}</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <table class="table table-invoice table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>Ürün Adı</th>
+                    <th class="text-end" width="80">Miktar</th>
+                    <th class="text-center" width="50">Birim</th>
+                    <th class="text-end" width="100">Birim Fiyat</th>
+                    <th class="text-end" width="100">Tutar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if sayfa.sayfa_no > 1 %}
+                <tr class="fw-bold bg-light">
+                    <td colspan="4" class="text-end">ÖNCEKİ SAYFADAN DEVİR:</td>
+                    <td class="text-end">{{ "{:,.2f}".format(sayfa.devreden or 0) }} ₺</td>
+                </tr>
+                {% endif %}
+
+                {% for kalem in sayfa.kalemler %}
+                <tr>
+                    <td>
+                        {{ kalem.stok.ad if kalem.stok else 'Bilinmeyen Ürün' }}
+                        {% if kalem.stok and kalem.stok.kod %}
+                        <br><small class="text-muted">{{ kalem.stok.kod }}</small>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">{{ "{:,.2f}".format(kalem.miktar or 0) }}</td>
+                    <td class="text-center">{{ kalem.stok.birim if kalem.stok else 'Adet' }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(kalem.birim_fiyat or 0) }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(kalem.satir_toplami or 0) }}</td>
+                </tr>
+                {% endfor %}
+
+                {% set kalan_satir = 18 - (sayfa.kalemler|length) %}
+                {% if kalan_satir > 0 %}
+                    {% for i in range(kalan_satir) %}
+                    <tr style="height: 28px;"> <td colspan="5"></td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
+
+                {% if not sayfa.son_sayfa_mi %}
+                <tr class="fw-bold bg-light border-top border-dark">
+                    <td colspan="4" class="text-end">SONRAKİ SAYFAYA DEVİR (NAKLİ YEKÜN):</td>
+                    <td class="text-end">{{ "{:,.2f}".format(sayfa.nakli_yekun or 0) }} ₺</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+
+        {% if sayfa.son_sayfa_mi %}
+        <div class="row mt-3"> 
+            <div class="col-8">
+                <div class="p-2 border rounded bg-light mb-2 small fst-italic">
+                    Yalnız: {{ fatura.genel_toplam_yazi_ile if fatura.genel_toplam_yazi_ile else '#Yazı ile tutar modülü eklenebilir#' }}
+                </div>
+                
+                <div class="row g-2">
+                    <div class="col-6">
+                        <div class="border p-2 text-center" style="height: 100px;">
+                            <small class="fw-bold d-block border-bottom mb-2">Teslim Eden</small>
+                            <br>
+                            {{ current_user.firma.unvan or 'İmza / Kaşe' }}
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border p-2 text-center" style="height: 100px;">
+                            <small class="fw-bold d-block border-bottom mb-2">Teslim Alan</small>
+                            <br>
+                            {{ fatura.cari.yetkili if fatura.cari else 'İmza' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-4">
+                <table class="table table-bordered fw-bold mb-0">
+                    <tr>
+                        <td>Ara Toplam</td>
+                        <td class="text-end">{{ "{:,.2f}".format(fatura.toplam_tutar or 0) }} ₺</td>
+                    </tr>
+                    {% if fatura.toplam_iskonto and fatura.toplam_iskonto > 0 %}
+                    <tr>
+                        <td class="text-danger">İskonto</td>
+                        <td class="text-end text-danger">-{{ "{:,.2f}".format(fatura.toplam_iskonto or 0) }} ₺</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td>KDV Toplam</td>
+                        <td class="text-end">{{ "{:,.2f}".format(fatura.toplam_kdv or 0) }} ₺</td>
+                    </tr>
+                    <tr class="bg-dark text-white">
+                        <td class="fs-5">GENEL TOPLAM</td>
+                        <td class="text-end fs-5">
+                            {% set g_toplam = fatura.genel_toplam if fatura.genel_toplam else ((fatura.toplam_tutar or 0) + (fatura.toplam_kdv or 0)) %}
+                            {{ "{:,.2f}".format(g_toplam) }} ₺
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+    {% endfor %}
+
+</body>
+</html>

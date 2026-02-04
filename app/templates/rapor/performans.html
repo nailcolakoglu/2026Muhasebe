@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Satış Performans Raporu{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row align-items-center mb-4">
+        <div class="col-md-6">
+            <h3 class="fw-bold text-dark"><i class="bi bi-graph-up-arrow me-2"></i>Satış Performans Raporu</h3>
+            <p class="text-muted mb-0">
+                <span class="badge bg-light text-dark border">{{ start_date }}</span> - 
+                <span class="badge bg-light text-dark border">{{ end_date }}</span> arası analiz
+            </p>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body py-2">
+                    <form method="GET" class="row g-2 align-items-end">
+                        <div class="col">
+                            <label class="small text-muted fw-bold">Başlangıç</label>
+                            <input type="date" name="baslangic" class="form-control form-control-sm" value="{{ start_date }}">
+                        </div>
+                        <div class="col">
+                            <label class="small text-muted fw-bold">Bitiş</label>
+                            <input type="date" name="bitis" class="form-control form-control-sm" value="{{ end_date }}">
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-primary btn-sm px-3"><i class="bi bi-filter"></i> Filtrele</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-4 border-success h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="text-uppercase small fw-bold text-success">Toplam Ciro</div>
+                            <div class="h3 fw-bold mb-0 text-gray-800">{{ "{:,.2f}".format(toplam_ciro) }} ₺</div>
+                        </div>
+                        <i class="bi bi-wallet2 fs-1 text-success opacity-25"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 fw-bold text-primary">Plasiyer Bazlı Satış (Sipariş)</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-area" style="height: 350px;">
+                        <canvas id="plasiyerChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 fw-bold text-info">En Çok Ciro Yapan 5 Ürün</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-pie pt-4 pb-2" style="height: 300px;">
+                        <canvas id="urunChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 1.PLASİYER GRAFİĞİ
+    var ctxPlasiyer = document.getElementById("plasiyerChart").getContext('2d');
+    var plasiyerChart = new Chart(ctxPlasiyer, {
+        type: 'bar',
+        data: {
+            labels: {{ labels|tojson }},
+            datasets: [{
+                label: "Ciro (TL)",
+                backgroundColor: "#4e73df",
+                hoverBackgroundColor: "#2e59d9",
+                borderColor: "#4e73df",
+                data: {{ data_ciro|tojson }},
+                barPercentage: 0.5,
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.parsed.y.toLocaleString('tr-TR', {style: 'currency', currency: 'TRY'});
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) { return value.toLocaleString('tr-TR') + ' ₺'; }
+                    }
+                }
+            }
+        }
+    });
+
+    // 2.ÜRÜN GRAFİĞİ
+    var ctxUrun = document.getElementById("urunChart").getContext('2d');
+    var urunChart = new Chart(ctxUrun, {
+        type: 'doughnut',
+        data: {
+            labels: {{ urun_labels|tojson }},
+            datasets: [{
+                data: {{ urun_data|tojson }},
+                backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'],
+                hoverBorderColor: "rgba(234, 236, 244, 1)",
+            }],
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let val = context.parsed;
+                            return context.label + ': ' + val.toLocaleString('tr-TR', {style: 'currency', currency: 'TRY'});
+                        }
+                    }
+                }
+            },
+            cutout: '70%',
+        },
+    });
+</script>
+{% endblock %}

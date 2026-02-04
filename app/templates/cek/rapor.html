@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold text-primary"><i class="bi bi-bar-chart-steps me-2"></i>{{ title }}</h3>
+        <div>
+            <a href="{{ url_for('cek.index') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> Listeye Dön
+            </a>
+            <div class="btn-group ms-4">
+                <a href="{{ url_for('cek.kanban') }}" class="btn btn-outline-primary btn-sm {{ 'active' if 'kanban' in request.path }}">Kanban</a>
+                <a href="{{ url_for('cek.analiz') }}" class="btn btn-outline-primary btn-sm {{ 'active' if 'analiz' in request.path }}">Analiz</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="report-content">
+        {{ content|safe }}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}

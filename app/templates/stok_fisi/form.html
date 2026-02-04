@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 mb-5">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">{{ form.title }}</h5>
+            <a href="{{ url_for('stok_fisi.index') }}" class="btn btn-outline-secondary btn-sm">Listeye Dön</a>
+        </div>
+        <div class="card-body p-4">
+            {{ form.render()|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+
+<script>
+    $(document).ready(function() {
+        // --- 1.TANIMLAMALAR ---
+        const fieldTuru = $('#fis_turu');
+        // FormBuilder, select elementini bir div içine koyar.Gizlerken o div'i (col-md) gizlemeliyiz.
+        // Bu yüzden .closest('.col-12') ile kapsayıcı sütunu buluyoruz.
+        const divCikis = $('#cikis_depo_id').closest('.col-12, .col-md'); 
+        const divGiris = $('#giris_depo_id').closest('.col-12, .col-md');
+        
+        const fieldCikis = $('#cikis_depo_id');
+        const fieldGiris = $('#giris_depo_id');
+
+        // --- 2.GÖRÜNÜRLÜK FONKSİYONU ---
+        function toggleDepoFields() {
+            const tur = fieldTuru.val();
+            
+            // Önce hepsini gizle (Animasyonsuz hızlıca)
+            divCikis.hide();
+            divGiris.hide();
+
+            // TRANSFER: İkisi de açık
+            if (tur === 'transfer') {
+                divCikis.show();
+                divGiris.show();
+            } 
+            // ÇIKIŞ İŞLEMLERİ: Sadece Çıkış Deposu
+            else if (['fire', 'sarf', 'sayim_eksik', 'uretim_cikis'].includes(tur)) {
+                divCikis.show();
+            } 
+            // GİRİŞ İŞLEMLERİ: Sadece Giriş Deposu
+            else {
+                divGiris.show();
+            }
+        }
+
+        // --- 3.TRANSFER FİLTRELEME FONKSİYONU (Aynı depo seçilemesin) ---
+        function filterWarehouses() {
+            if (fieldTuru.val() === 'transfer') {
+                const selectedSource = fieldCikis.val();
+                const selectedTarget = fieldGiris.val();
+
+                // Tüm seçenekleri aktif et
+                fieldGiris.find('option').prop('disabled', false);
+
+                if (selectedSource) {
+                    // Kaynakta seçileni Hedefte pasif yap
+                    fieldGiris.find('option[value="' + selectedSource + '"]').prop('disabled', true);
+                    
+                    // Eğer pasif olan seçiliyse temizle
+                    if (selectedTarget == selectedSource) {
+                        fieldGiris.val(null).trigger('change');
+                    }
+                }
+                
+                // Select2 güncelle
+                if (fieldGiris.hasClass("select2-hidden-accessible")) {
+                    fieldGiris.select2({ theme: 'bootstrap-5', placeholder: 'Depo Seçiniz', allowClear: true });
+                }
+            } else {
+                // Transfer değilse kısıtlamaları kaldır
+                fieldGiris.find('option').prop('disabled', false);
+            }
+        }
+
+        // --- 4.OLAY DİNLEYİCİLERİ ---
+        
+        // İşlem Türü değişince -> Görünürlüğü ayarla ve filtreyi çalıştır
+        fieldTuru.on('change', function() {
+            toggleDepoFields();
+            filterWarehouses();
+        });
+
+        // Çıkış Deposu değişince -> Transferse filtrele
+        fieldCikis.on('change', filterWarehouses);
+
+        // --- 5.BAŞLANGIÇ ---
+        // Sayfa ilk açıldığında fonksiyonları çalıştır
+        toggleDepoFields();
+        filterWarehouses();
+    });
+</script>
+{% endblock %}

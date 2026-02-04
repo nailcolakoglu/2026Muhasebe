@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Banka Eşleştirme Kuralları{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Yeni Kural Ekle</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Anahtar Kelime (Excel'de Geçen)</label>
+                            {{ form.anahtar_kelime(class="form-control") }}
+                            <div class="form-text">Örn: GEDIZ, TURKCELL, AHMET YILMAZ</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Kural Tipi</label>
+                            {{ form.kural_tipi(class="form-select", id="kuralTipi") }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Hedef Türü</label>
+                            {{ form.hedef_turu(class="form-select", id="hedefTuru") }}
+                        </div>
+
+                        <div class="mb-3 d-none" id="divCari">
+                            <label class="form-label">Cari Hesap Seç</label>
+                            {{ form.hedef_cari_id(class="form-select") }}
+                        </div>
+
+                        <div class="mb-3 d-none" id="divMuhasebe">
+                            <label class="form-label">Muhasebe Hesabı Seç</label>
+                            {{ form.hedef_muhasebe_id(class="form-select") }}
+                        </div>
+
+                        <div id="divPOS" class="d-none border p-2 rounded bg-light mb-3">
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold">Komisyon Oranı (%)</label>
+                                {{ form.varsayilan_komisyon_orani(class="form-control") }}
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold">Gider Hesabı (780)</label>
+                                {{ form.komisyon_gider_hesap_id(class="form-select") }}
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">Kuralı Kaydet</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold text-secondary">Tanımlı Kurallar</h5>
+                    <span class="badge bg-secondary">{{ kurallar|length }} Adet</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Anahtar Kelime</th>
+                                    <th>Tip</th>
+                                    <th>Hedef</th>
+                                    <th>Detay</th>
+                                    <th class="text-end">İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for kural in kurallar %}
+                                <tr>
+                                    <td class="fw-bold text-primary">{{ kural.anahtar_kelime }}</td>
+                                    <td>
+                                        {% if kural.kural_tipi == 'pos_net' %}
+                                            <span class="badge bg-warning text-dark">POS (Komisyonlu)</span>
+                                        {% else %}
+                                            <span class="badge bg-info">Standart</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if kural.hedef_turu == 'cari' %}
+                                            <i class="bi bi-person me-1"></i> {{ kural.hedef_cari.unvan if kural.hedef_cari else '-' }}
+                                        {% else %}
+                                            <i class="bi bi-journal me-1"></i> {{ kural.hedef_muhasebe.ad if kural.hedef_muhasebe else '-' }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="small text-muted">
+                                        {% if kural.kural_tipi == 'pos_net' %}
+                                            Oran: %{{ kural.varsayilan_komisyon_orani }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <button onclick="kuralSil({{ kural.id }})" class="btn btn-sm btn-outline-danger">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">Henüz kural tanımlanmamış.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Form Dinamik Göster/Gizle
+    const hedefTuru = document.getElementById('hedefTuru');
+    const divCari = document.getElementById('divCari');
+    const divMuhasebe = document.getElementById('divMuhasebe');
+    
+    const kuralTipi = document.getElementById('kuralTipi');
+    const divPOS = document.getElementById('divPOS');
+
+    function updateForm() {
+        // Hedef Gösterimi
+        if (hedefTuru.value === 'cari') {
+            divCari.classList.remove('d-none');
+            divMuhasebe.classList.add('d-none');
+        } else {
+            divCari.classList.add('d-none');
+            divMuhasebe.classList.remove('d-none');
+        }
+
+        // POS Gösterimi
+        if (kuralTipi.value === 'pos_net') {
+            divPOS.classList.remove('d-none');
+        } else {
+            divPOS.classList.add('d-none');
+        }
+    }
+
+    hedefTuru.addEventListener('change', updateForm);
+    kuralTipi.addEventListener('change', updateForm);
+    
+    // İlk yüklemede çalıştır
+    updateForm();
+
+    // Silme Fonksiyonu
+    function kuralSil(id) {
+        if(confirm('Bu kuralı silmek istediğinize emin misiniz?')) {
+            fetch(`/banka-import/kural-sil/${id}`, {method: 'POST'})
+            .then(r => r.json())
+            .then(res => {
+                if(res.success) location.reload();
+                else alert(res.message);
+            });
+        }
+    }
+</script>
+{% endblock %}

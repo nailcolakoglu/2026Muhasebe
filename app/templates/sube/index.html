@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Şubeler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Şube Yönetimi</h3>
+        <a href="{{ url_for('sube.ekle') }}" class="btn btn-primary">
+            <i class="bi bi-shop me-2"></i> Yeni Şube
+        </a>
+    </div>
+    
+    <div class="alert alert-light border shadow-sm mb-4">
+        <i class="bi bi-info-circle-fill text-info me-2"></i>
+        Şubeler, firmanızın fiziksel lokasyonlarını temsil eder.Her şube kendine ait depolara ve evraklara sahiptir.
+    </div>
+
+    {{ grid.render('sube.index')|safe }}
+</div>
+{% endblock %}

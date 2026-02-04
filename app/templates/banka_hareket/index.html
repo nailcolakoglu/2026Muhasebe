@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Banka Hareketleri{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><i class="bi bi-bank me-2"></i>Banka Hareketleri</h3>
+        <a href="{{ url_for('banka_hareket.ekle') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-2"></i> Yeni İşlem
+        </a>
+    </div>
+    {{ grid.render('banka_hareket.index')|safe }}
+</div>
+{% endblock %}

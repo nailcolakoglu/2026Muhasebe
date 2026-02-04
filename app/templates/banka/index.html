@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Banka Hesapları{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Banka Hesapları</h3>
+        <a href="{{ url_for('banka.ekle') }}" class="btn btn-primary">
+            <i class="bi bi-wallet2 me-2"></i> Yeni Banka Ekle
+        </a>
+    </div>
+    
+    <div class="alert alert-light border shadow-sm mb-4">
+        <i class="bi bi-bank text-secondary me-2"></i>
+        Şirketinizin vadeli/vadesiz tüm banka ve POS hesaplarını buradan tanımlayabilirsiniz.
+    </div>
+
+    {{ grid.render('banka.index')|safe }}
+</div>
+{% endblock %}

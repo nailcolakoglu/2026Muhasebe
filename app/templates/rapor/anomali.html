@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}İç Denetim ve Anomali{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 bg-dark text-white">
+                <div class="card-body p-4 text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-incognito display-1 text-danger"></i>
+                    </div>
+                    <h3 class="fw-bold text-danger">Dedektif Modu</h3>
+                    <p class="opacity-75">
+                        Şirket içindeki "olağandışı" hareketleri tarar.
+                        Yüksek iskontoları ve açıklanamayan stok kayıplarını (Fire) yakalar.
+                    </p>
+                    <button onclick="analiziBaslat()" id="btnAnaliz" class="btn btn-danger fw-bold px-4 py-2 mt-3 rounded-pill shadow">
+                        <i class="bi bi-search me-2"></i> Dosyaları İncele
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-dark fw-bold"><i class="bi bi-folder-fill me-2 text-warning"></i>Denetim Raporu</h5>
+                </div>
+                <div class="card-body bg-light" id="raporAlani">
+                    <div id="bosDurum" class="text-center text-muted py-5">
+                        <i class="bi bi-fingerprint display-4 opacity-25"></i>
+                        <p class="mt-3">Şüpheli işlem taraması bekleniyor.</p>
+                    </div>
+                    
+                    <div id="yukleniyor" class="text-center py-5 d-none">
+                        <div class="spinner-border text-dark" role="status"></div>
+                        <h5 class="mt-3">Kayıtlar Taranıyor...</h5>
+                    </div>
+
+                    <div id="sonucMetni" class="d-none animate__animated animate__fadeIn"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function analiziBaslat() {
+    $('#btnAnaliz').prop('disabled', true).html('Dedektif Çalışıyor...');
+    $('#bosDurum').addClass('d-none');
+    $('#sonucMetni').addClass('d-none').html(''); 
+    $('#yukleniyor').removeClass('d-none');
+
+    $.ajax({
+        url: '/rapor/api/anomali-tara',
+        method: 'POST',
+        success: function(response) {
+            $('#yukleniyor').addClass('d-none');
+            
+            if (response.success) {
+                let content = response.report; // Bu, AI'dan gelen JSON stringi olmalı
+                let finalHtml = "";
+
+                // --- GÜÇLENDİRİLMİŞ JSON PARSER ---
+                try {
+                    // response.report (content) artık HER ZAMAN JSON stringi OLMALI
+                    let jsonData = (typeof content === "string") ? JSON.parse(content) : content;
+                    
+                    // AI'dan beklediğimiz HTML içeriği alana bak
+                    if (jsonData.rapor_html) { 
+                        finalHtml = jsonData.rapor_html;
+                    } else {
+                        // Eğer JSON geçerli ama beklenen alan gelmediyse uyarı ver
+                        finalHtml = `
+                            <div class="alert alert-warning">
+                                <h5>Uyarı: AI Yapısı Tamamlanmadı</h5>
+                                <p>Yapay zeka geçerli bir JSON objesi döndürdü, ancak <strong>'rapor_html'</strong> alanını oluşturmayı unuttu.Aşağıda ham çıktı bulunmaktadır:</p>
+                                <pre class='bg-light p-3 border rounded'>${JSON.stringify(jsonData, null, 2)}</pre>
+                            </div>
+                        `;
+                    }
+                } catch (e) {
+                    // JSON değilse veya malformed ise (Hatanın kaynağı buydu)
+                    console.error("AI Çıktısı JSON olarak ayrılamadı:", e);
+                    finalHtml = `
+                        <div class="alert alert-danger">
+                            <h5>Hata: Yapay Zeka Çıktı Formatı Sorunu</h5>
+                            <p>API, geçerli bir JSON objesi döndürmedi.Lütfen tekrar deneyin.Sunucu debug çıktısındaki hata, AI'nın çıktısını Python'ın ayrıştıramamasıdır.</p>
+                            <hr>
+                            <strong>Ham Çıktı (AI):</strong>
+                            <pre>${content}</pre>
+                            <strong>JS Hata Mesajı:</strong>
+                            <pre>${e.message}</pre>
+                        </div>
+                    `;
+                }
+
+                $('#sonucMetni').html(finalHtml).removeClass('d-none');
+                
+            } else {
+                $('#bosDurum').removeClass('d-none');
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Temiz!',
+                    text: response.message,
+                    confirmButtonColor: '#198754'
+                });
+            }
+        },
+        error: function(xhr) {
+            $('#yukleniyor').addClass('d-none');
+            $('#bosDurum').removeClass('d-none');
+            let msg = 'Sunucu hatası (API cevap vermedi).';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                msg = xhr.responseJSON.message;
+            }
+            Swal.fire('Hata', msg, 'error');
+        },
+        complete: function() {
+            $('#btnAnaliz').prop('disabled', false).html('<i class="bi bi-search me-2"></i> Dosyaları İncele');
+        }
+    });
+}
+</script>
+{% endblock %}

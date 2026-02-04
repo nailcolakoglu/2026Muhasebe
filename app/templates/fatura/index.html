@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Fatura Listesi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-1">
+                <i class="bi bi-receipt-cutoff me-2"></i>Faturalar
+            </h3>
+            <p class="text-muted small mb-0">
+                Satış, alış ve iade faturalarınızı yönetin
+            </p>
+        </div>
+        
+        <div class="btn-group">
+            <!-- Yeni Fatura Dropdown -->
+            <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-plus-circle me-2"></i> Yeni Fatura
+            </button>
+            <ul class="dropdown-menu">
+                <li>
+                    <a class="dropdown-item" href="{{ url_for('fatura.ekle') }}?tur=satis">
+                        <i class="bi bi-arrow-up-circle text-success me-2"></i> Satış Faturası
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ url_for('fatura.ekle') }}?tur=alis">
+                        <i class="bi bi-arrow-down-circle text-primary me-2"></i> Alış Faturası
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="{{ url_for('fatura.ekle') }}?tur=satis_iade">
+                        <i class="bi bi-arrow-counterclockwise text-warning me-2"></i> Satış İade
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item" href="{{ url_for('fatura.ekle') }}?tur=alis_iade">
+                        <i class="bi bi-arrow-clockwise text-info me-2"></i> Alış İade
+                    </a>
+                </li>
+            </ul>
+            
+            <!-- Export Dropdown -->
+            <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="bi bi-download me-1"></i> Dışa Aktar
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="exportToExcel()"><i class="bi bi-file-earmark-excel me-2"></i> Excel</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportToPDF()"><i class="bi bi-file-earmark-pdf me-2"></i> PDF</a></li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Hızlı Filtreler (Optional) -->
+    <div class="card mb-3 border-0 shadow-sm">
+        <div class="card-body py-2">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <input type="text" class="form-control form-control-sm" placeholder="🔍 Belge No Ara..." id="quick-search">
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select form-select-sm" id="quick-filter-tur">
+                        <option value="">Tüm Türler</option>
+                        <option value="satis">Satış</option>
+                        <option value="alis">Alış</option>
+                        <option value="satis_iade">Satış İade</option>
+                        <option value="alis_iade">Alış İade</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select form-select-sm" id="quick-filter-durum">
+                        <option value="">Tüm Durumlar</option>
+                        <option value="taslak">Taslak</option>
+                        <option value="onaylandi">Onaylandı</option>
+                        <option value="iptal">İptal</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="date" class="form-control form-control-sm" id="quick-filter-tarih">
+                </div>
+                <div class="col-md-3 text-end">
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyQuickFilters()">
+                        <i class="bi bi-funnel me-1"></i> Filtrele
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearQuickFilters()">
+                        <i class="bi bi-x-circle me-1"></i> Temizle
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- DataGrid -->
+    {{ grid.render('fatura.index')|safe }}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Hızlı Filtre
+    function applyQuickFilters() {
+        var searchTerm = $('#quick-search').val();
+        var tur = $('#quick-filter-tur').val();
+        var durum = $('#quick-filter-durum').val();
+        var tarih = $('#quick-filter-tarih').val();
+        
+        var url = new URL(window.location.href);
+        
+        if (searchTerm) url.searchParams.set('search', searchTerm);
+        if (tur) url.searchParams.set('tur', tur);
+        if (durum) url.searchParams.set('durum', durum);
+        if (tarih) url.searchParams.set('tarih', tarih);
+        
+        window.location.href = url.toString();
+    }
+    
+    function clearQuickFilters() {
+        $('#quick-search, #quick-filter-tarih').val('');
+        $('#quick-filter-tur, #quick-filter-durum').val('');
+        window.location.href = '{{ url_for("fatura.index") }}';
+    }
+    
+    // Export
+    function exportToExcel() {
+        window.location.href = '{{ url_for("fatura.index") }}?export=excel';
+    }
+    
+    function exportToPDF() {    
+        window.location.href = '{{ url_for("fatura.index") }}?export=pdf';
+    }
+    
+    // E-Fatura İşlemleri
+    function eFaturaGonder(faturaId) {
+        if (!confirm('Bu faturayı GİB\'e göndermek istediğinizden emin misiniz?')) return;
+        
+        fetch(`/fatura/api/efatura-gonder/${faturaId}`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    location.reload();
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            })
+            .catch(err => {
+                alert('Hata: ' + err.message);
+            });
+    }
+    
+    function eFaturaDurum(faturaId) {
+        fetch(`/fatura/api/efatura-durum/${faturaId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    var mesaj = `Durum: ${data.durum_aciklama}\nETTN: ${data.ettn || 'Yok'}`;
+                    alert(mesaj);
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            })
+            .catch(err => {
+                alert('Hata: ' + err.message);
+            });
+    }
+</script>
+{% endblock %}

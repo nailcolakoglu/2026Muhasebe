@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Yönetim Paneli{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-lg overflow-hidden" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);">
+                <div class="card-body p-4 position-relative">
+                    <div class="position-absolute top-0 end-0 opacity-10 me-4 mt-2">
+                        <i class="bi bi-robot display-1 text-white"></i>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center position-relative z-index-1 flex-wrap gap-3">
+                        <div class="text-white">
+                            <h2 class="fw-bold mb-1">
+                                <i class="bi bi-stars me-2 text-warning"></i>{{ karsilama_mesaji }}, {{ current_user.ad_soyad }}
+                            </h2>
+                            <p class="text-white-50 mb-0">
+                                {% if aktif_sube %}
+                                    Şu an <strong>{{ aktif_sube.ad }}</strong> verilerini görüntülüyorsunuz.
+                                {% else %}
+                                    Tüm şubelerin <strong>Konsolide (Merkez + Şubeler)</strong> verilerini görüntülüyorsunuz.
+                                {% endif %}
+                            </p>
+                        </div>
+                        
+                        {% if current_user.can('rapor.finans') or current_user.can('admin') %}
+                        <div>
+                            <button onclick="brifingGetir()" class="btn btn-warning fw-bold text-dark ms-2 shadow">
+                                <i class="bi bi-lightning-charge-fill me-1"></i> AI Analizi Çalıştır
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div id="ceoRaporAlani" class="mt-4 d-none bg-white text-dark p-4 rounded-3 shadow-sm animate__animated animate__fadeIn"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        
+        {% if current_user.can('fatura.view') or current_user.can('dashboard.view') %}
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 border-start border-4 border-success h-100 hover-scale">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="text-uppercase small fw-bold text-success mb-1">Bugünkü Satış</div>
+                            <div class="h4 fw-bold mb-0 text-dark">{{ "{:,.2f}".format(gunluk_satis or 0) }} ₺</div>
+                        </div>
+                        <div class="icon-circle bg-success bg-opacity-10 text-success">
+                            <i class="bi bi-cart-check fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if current_user.can('rapor.genel') %}
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 border-start border-4 border-primary h-100 hover-scale">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="text-uppercase small fw-bold text-primary mb-1">Bu Ay Toplam</div>
+                            <div class="h4 fw-bold mb-0 text-dark">{{ "{:,.2f}".format(aylik_satis or 0) }} ₺</div>
+                        </div>
+                        <div class="icon-circle bg-primary bg-opacity-10 text-primary">
+                            <i class="bi bi-graph-up-arrow fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if current_user.can('kasa.view') %}
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 border-start border-4 border-warning h-100 hover-scale">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="text-uppercase small fw-bold text-warning mb-1">Kasa Bakiyesi</div>
+                            <div class="h4 fw-bold mb-0 text-dark">{{ "{:,.2f}".format(kasa_toplam or 0) }} ₺</div>
+                        </div>
+                        <div class="icon-circle bg-warning bg-opacity-10 text-warning">
+                            <i class="bi bi-wallet2 fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if current_user.can('banka.view') %}
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 border-start border-4 border-info h-100 hover-scale">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="text-uppercase small fw-bold text-info mb-1">Banka Varlığı</div>
+                            <div class="h4 fw-bold mb-0 text-dark">{{ "{:,.2f}".format(banka_toplam or 0) }} ₺</div>
+                        </div>
+                        <div class="icon-circle bg-info bg-opacity-10 text-info">
+                            <i class="bi bi-bank fs-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="row g-4 mb-4">
+        
+        {% if current_user.can('stok.view') %}
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold text-danger"><i class="bi bi-exclamation-octagon me-2"></i>Kritik Stok Uyarıları</h6>
+                    <span class="badge bg-danger">{{ kritik_stoklar|length }} Ürün</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">Ürün</th>
+                                    <th class="text-center">Mevcut</th>
+                                    <th class="text-center">Kritik Sınır</th>
+                                    <th class="text-end pe-4">Durum</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if kritik_stoklar %}
+                                    {% for stok in kritik_stoklar %}
+                                    <tr>
+                                        <td class="ps-4 fw-bold text-dark">{{ stok.ad }}</td>
+                                        <td class="text-center">
+                                            <span class="badge bg-light text-dark border">{{ stok.miktar }} {{ stok.birim }}</span>
+                                        </td>
+                                        <td class="text-center text-muted small">{{ stok.sinir }}</td>
+                                        <td class="text-end pe-4">
+                                            <div class="progress" style="height: 6px; width: 100px; display: inline-flex;">
+                                                {% set oran = (stok.miktar / stok.sinir * 100) if stok.sinir > 0 else 0 %}
+                                                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ oran }}%"></div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted">
+                                        <i class="bi bi-check-circle-fill text-success fs-3 d-block mb-2"></i>
+                                        Stoklar güvenli seviyede veya veri yok.
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if current_user.can('finans.view') or current_user.can('admin') %}
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 fw-bold text-dark"><i class="bi bi-pie-chart me-2 text-primary"></i>Finansal Denge</h6>
+                </div>
+                <div class="card-body d-flex flex-column justify-content-center">
+                    
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted small fw-bold">Piyasadan Alacaklar</span>
+                            <span class="text-success fw-bold">{{ "{:,.2f}".format(toplam_alacak or 0) }} ₺</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            {% set toplam_hacim = (toplam_alacak or 0) + (toplam_borc or 0) %}
+                            {% set alacak_oran = (toplam_alacak / toplam_hacim * 100) if toplam_hacim > 0 else 0 %}
+                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ alacak_oran }}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="text-muted small fw-bold">Piyasaya Borçlar</span>
+                            <span class="text-danger fw-bold">{{ "{:,.2f}".format(toplam_borc or 0) }} ₺</span>
+                        </div>
+                        <div class="progress" style="height: 10px;">
+                            {% set borc_oran = (toplam_borc / toplam_hacim * 100) if toplam_hacim > 0 else 0 %}
+                            <div class="progress-bar bg-danger" role="progressbar" style="width: {{ borc_oran }}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border text-center mb-0">
+                        <small class="text-muted text-uppercase">Net Ticari Bakiye</small>
+                        {% set net = (toplam_alacak or 0) - (toplam_borc or 0) %}
+                        <h3 class="mb-0 {{ 'text-success' if net >= 0 else 'text-danger' }}">
+                            {{ "{:+,.2f}".format(net) }} ₺
+                        </h3>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .hover-scale { transition: transform 0.2s ease-in-out; }
+    .hover-scale:hover { transform: scale(1.02); }
+    .icon-circle { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function brifingGetir() {
+    $('#ceoRaporAlani').removeClass('d-none').html(`
+        <div class="text-center py-5">
+            <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
+            <h5 class="mt-3 animate__animated animate__pulse animate__infinite fw-bold text-dark">Veriler Analiz Ediliyor...</h5>
+        </div>
+    `);
+    
+    $.ajax({
+        url: '/rapor/api/ceo-brifing-olustur',
+        method: 'POST',
+        success: function(res) {
+            if(res.success) {
+                $('#ceoRaporAlani').hide().html(res.report).fadeIn(800);
+            } else {
+                $('#ceoRaporAlani').html(`<div class="alert alert-danger">${res.message}</div>`);
+            }
+        },
+        error: function() {
+            $('#ceoRaporAlani').html(`<div class="alert alert-danger">Sunucu hatası veya yetki sorunu.</div>`);
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Akıllı Rota Planlama{% endblock %}
+
+{% block content %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-geo-alt me-2"></i>Müşteri Listesi</h5>
+                    <span class="badge bg-white text-primary" id="seciliSayisi">0 Seçildi</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 border-bottom">
+                        <input type="text" id="musteriAra" class="form-control" placeholder="Müşteri ara...">
+                    </div>
+                    
+                    <div class="list-group list-group-flush overflow-auto" style="max-height: 500px;" id="musteriListesi">
+                        {% for cari in cariler %}
+                        <label class="list-group-item list-group-item-action d-flex gap-3 align-items-center cursor-pointer">
+                            <input class="form-check-input flex-shrink-0 musteri-sec" type="checkbox" value="{{ cari.id }}" style="font-size: 1.3em;">
+                            <div class="d-flex flex-column w-100">
+                                <div class="d-flex justify-content-between">
+                                    <strong class="mb-1">{{ cari.unvan }}</strong>
+                                    <small class="text-muted">{{ "{:,.2f}".format(cari.bakiye) }} TL</small>
+                                </div>
+                                <small class="text-muted text-truncate" style="max-width: 250px;">
+                                    <i class="bi bi-pin-map text-danger"></i> {{ cari.sehir or 'Şehir Yok' }}
+                                </small>
+                            </div>
+                        </label>
+                        {% else %}
+                        <div class="p-4 text-center text-muted">
+                            <i class="bi bi-exclamation-circle display-4"></i>
+                            <p class="mt-2">Konum bilgisi kayıtlı cari bulunamadı.</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="card-footer bg-white p-3">
+                    <button id="btnRotaOlustur" class="btn btn-success w-100 py-2 fw-bold shadow-sm">
+                        <i class="bi bi-magic me-2"></i> ROTAYI OPTİMİZE ET
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm h-100 border-0" id="sonucPaneli" style="display: none;">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-map me-2"></i>Optimize Edilmiş Rota</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <div class="p-3 border rounded bg-light border-start border-5 border-success">
+                                <small class="text-muted text-uppercase fw-bold">Toplam Mesafe</small>
+                                <h3 class="mb-0 text-dark" id="toplamMesafe">- km</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="p-3 border rounded bg-light border-start border-5 border-info">
+                                <small class="text-muted text-uppercase fw-bold">Tasarruf Notu</small>
+                                <p class="mb-0 fw-bold text-dark" id="tasarrufNotu">-</p>
+                            </div>
+                        </div>
+                    </div>
+                    <h6 class="border-bottom pb-2 mb-3">Ziyaret Sırası</h6>
+                    <div class="timeline" id="rotaTimeline"></div>
+                    <div class="mt-4 d-grid gap-2">
+                        <a href="#" target="_blank" id="btnGoogleMaps" class="btn btn-primary btn-lg shadow">
+                            <i class="bi bi-google me-2"></i> Navigasyonu Başlat
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card shadow-sm h-100 border-0 d-flex align-items-center justify-content-center bg-light text-center p-5" id="bosDurum">
+                <div class="text-muted opacity-50">
+                    <i class="bi bi-map-fill" style="font-size: 5rem;"></i>
+                    <h4 class="mt-3">Rota Oluşturucu</h4>
+                    <p>Soldan müşteri seçin ve butona basın.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .timeline { position: relative; padding-left: 30px; }
+    .timeline-item { position: relative; padding-bottom: 20px; border-left: 2px solid #e9ecef; padding-left: 20px; }
+    .timeline-item:last-child { border-left: 0; }
+    .timeline-marker { position: absolute; left: -11px; top: 0; width: 20px; height: 20px; border-radius: 50%; background: #0d6efd; color: white; text-align: center; line-height: 20px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 0 0 2px #0d6efd; }
+    .timeline-content { background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #dee2e6; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        console.log("🚀 Rota Sayfası Yüklendi!");
+
+        // API URL'sini Flask'tan al
+        const ROTA_API_URL = "{{ url_for('cari.api_rota_olustur') }}";
+
+        // Müşteri Arama
+        $("#musteriAra").on("keyup", function() {
+            var value = $(this).val().toLowerCase();
+            $("#musteriListesi label").filter(function() {
+                $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+            });
+        });
+
+        // Seçim Sayacı
+        $(document).on("change", ".musteri-sec", function() {
+            var count = $(".musteri-sec:checked").length;
+            $("#seciliSayisi").text(count + " Seçildi");
+        });
+
+        // ROTA OLUŞTURMA BUTONU
+        $("#btnRotaOlustur").click(function(e) {
+            e.preventDefault();
+            
+            var selectedIds = $(".musteri-sec:checked").map(function() { return $(this).val(); }).get();
+            
+            if(selectedIds.length === 0) {
+                Swal.fire("Uyarı", "Lütfen en az bir müşteri seçiniz.", "warning");
+                return;
+            }
+
+            var btn = $(this);
+            var originalText = btn.html();
+            btn.prop("disabled", true).html('<span class="spinner-border spinner-border-sm"></span> Konum Alınıyor...');
+
+            // 1.Önce Gerçek GPS Konumunu Dene
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(pos) {
+                        // GPS BAŞARILI
+                        var myLoc = pos.coords.latitude + "," + pos.coords.longitude;
+                        console.log("📍 GPS Konumu:", myLoc);
+                        btn.html('<span class="spinner-border spinner-border-sm"></span> Yapay Zeka Hesaplıyor...');
+                        sendToAI(myLoc, selectedIds, btn, originalText);
+                    },
+                    function(err) {
+                        // GPS BAŞARISIZ (HTTP sorunu veya İzin Yok)
+                        console.warn("⚠️ GPS alınamadı, IP konumu deneniyor...", err);
+                        
+                        // 2.IP Üzerinden Konum Bul (Yedek Plan)
+                        getIpLocation(function(ipLoc) {
+                            if(ipLoc) {
+                                console.log("🌍 IP Konumu:", ipLoc);
+                                Swal.fire({
+                                    title: "GPS Kapalı",
+                                    text: "Cihaz konumu alınamadı.IP adresi üzerinden tahmini konum kullanılıyor.",
+                                    icon: "warning",
+                                    timer: 3000,
+                                    showConfirmButton: false
+                                });
+                                btn.html('<span class="spinner-border spinner-border-sm"></span> Yapay Zeka Hesaplıyor...');
+                                sendToAI(ipLoc, selectedIds, btn, originalText);
+                            } else {
+                                // 3.O da olmazsa Varsayılan (Merkez)
+                                Swal.fire("Konum Hatası", "Konum bulunamadı.Rota 'Merkez Depo' baz alınarak hesaplanacak.", "error");
+                                sendToAI(null, selectedIds, btn, originalText);
+                            }
+                        });
+                    },
+                    { timeout: 5000 }
+                );
+            } else {
+                sendToAI(null, selectedIds, btn, originalText);
+            }
+        });
+
+        // IP TABANLI KONUM BULMA FONKSİYONU
+        function getIpLocation(callback) {
+            $.get("https://ipapi.co/json/", function(response) {
+                if(response && response.latitude && response.longitude) {
+                    callback(response.latitude + "," + response.longitude);
+                } else {
+                    callback(null);
+                }
+            }).fail(function() {
+                callback(null);
+            });
+        }
+
+        function sendToAI(location, ids, btn, originalText) {
+            $.ajax({
+                url: ROTA_API_URL,
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ baslangic: location, cari_ids: ids }),
+                success: function(res) {
+                    if(res.success) {
+                        renderRoute(res.rota);
+                        Swal.fire("Başarılı", "Rota optimize edildi!", "success");
+                    } else {
+                        Swal.fire("Hata", res.message, "error");
+                    }
+                },
+                error: function(xhr) {
+                    var msg = "Sunucu hatası.";
+                    if(xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    Swal.fire("Sistem Hatası", msg, "error");
+                },
+                complete: function() {
+                    btn.prop("disabled", false).html(originalText);
+                }
+            });
+        }
+
+        function renderRoute(data) {
+            $("#bosDurum").hide();
+            $("#sonucPaneli").fadeIn();
+            $("#toplamMesafe").text(data.toplam_tahmini_mesafe || "Bilinmiyor");
+            $("#tasarrufNotu").text(data.tasarruf_notu || "-");
+            $("#btnGoogleMaps").attr("href", data.google_maps_link);
+
+            var html = "";
+            
+            // Başlangıç
+            html += `
+            <div class="timeline-item">
+                <div class="timeline-marker bg-secondary"><i class="bi bi-geo-alt"></i></div>
+                <div class="timeline-content">
+                    <strong>BAŞLANGIÇ</strong>
+                    <p class="mb-0 text-muted small">Mevcut Konum</p>
+                </div>
+            </div>`;
+
+            if(data.rota_siralamasi) {
+                data.rota_siralamasi.forEach(function(step) {
+                    html += `
+                    <div class="timeline-item">
+                        <div class="timeline-marker">${step.sira}</div>
+                        <div class="timeline-content">
+                            <div class="d-flex justify-content-between">
+                                <strong>${step.unvan}</strong>
+                                <span class="badge bg-light text-dark border">${step.mesafe_tahmini || ''}</span>
+                            </div>
+                            <p class="mb-0 small text-success"><i class="bi bi-robot me-1"></i>${step.neden}</p>
+                        </div>
+                    </div>`;
+                });
+            }
+            $("#rotaTimeline").html(html);
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Çek Takip Panosu{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jkanban@1.3.1/dist/jkanban.min.css">
+<style>
+    #kanbanBoard { overflow-x: auto; padding: 20px 0; }
+    
+    /* Kanban Kolon Başlıkları için Tekil Sınıflar (Boşluksuz) */
+    .kb-primary { background-color: #0d6efd !important; color: white !important; }
+    .kb-warning { background-color: #ffc107 !important; color: #212529 !important; }
+    .kb-info { background-color: #0dcaf0 !important; color: #212529 !important; }
+    .kb-success { background-color: #198754 !important; color: white !important; }
+    .kb-danger { background-color: #dc3545 !important; color: white !important; }
+    .kb-secondary { background-color: #6c757d !important; color: white !important; }
+
+    /* Kart Stilleri */
+    .kanban-item { 
+        background: #fff; 
+        border-radius: 6px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        padding: 12px; 
+        margin-bottom: 10px; 
+        border-left: 5px solid #ccc; 
+        cursor: grab;
+    }
+    
+    /* Kart Sol Çizgi Renkleri */
+    .status-portfoyde { border-left-color: #0d6efd; }      /* Mavi */
+    .status-tahsile_verildi { border-left-color: #ffc107; } /* Sarı */
+    .status-temlik_edildi { border-left-color: #0dcaf0; }   /* Turkuaz */
+    .status-tahsil_edildi { border-left-color: #198754; }   /* Yeşil */
+    .status-karsiliksiz { border-left-color: #dc3545; }     /* Kırmızı */
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold text-primary">Çek Takip Panosu</h3>
+        <a href="{{ url_for('cek.index') }}" class="btn btn-outline-secondary">Listeye Dön</a>
+        <div class="btn-group ms-4">
+                <a href="{{ url_for('cek.kanban') }}" class="btn btn-outline-primary btn-sm {{ 'active' if 'kanban' in request.path }}">Kanban</a>
+                <a href="{{ url_for('cek.analiz') }}" class="btn btn-outline-primary btn-sm {{ 'active' if 'analiz' in request.path }}">Analiz</a>
+            </div>
+    </div>
+    
+    <div id="kanbanBoard"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jkanban@1.3.1/dist/jkanban.min.js"></script>
+<script>
+    // Backend'den gelen veriyi al (Hata vermemesi için default boş obje)
+    const rawData = {{ kanban_data|tojson|default('[]') }};
+    
+    // Selectbox verileri (Banka ve Cariler)
+    const bankalar = { {% for b in bankalar %} "{{ b.id }}": "{{ b.banka_adi }}", {% endfor %} };
+    const cariler = { {% for c in cariler %} "{{ c.id }}": "{{ c.unvan }}", {% endfor %} };
+
+    function buildKanbanData() {
+        // Kolon Tanımları (DÜZELTME: Sınıf isimleri artık tek kelime)
+        const boards = [
+            { "id": "portfoyde", "title": "Portföyde", "class": "kb-primary", "item": [] },
+            { "id": "tahsile_verildi", "title": "Tahsile Verildi", "class": "kb-warning", "item": [] },
+            { "id": "temlik_edildi", "title": "Ciro Edildi", "class": "kb-info", "item": [] },
+            { "id": "tahsil_edildi", "title": "Tahsil Edildi", "class": "kb-success", "item": [] },
+            { "id": "karsiliksiz", "title": "Karşılıksız", "class": "kb-danger", "item": [] },
+            { "id": "tanimsiz", "title": "Durumu Belirsiz", "class": "kb-secondary", "item": [] }
+        ];
+
+        // Verileri ilgili kolonlara dağıt
+        rawData.forEach(cek => {
+            let targetId = cek.cek_durumu;
+            
+            // Eğer veritabanındaki durum bizim listemizde yoksa 'tanimsiz' yap
+            if (!boards.find(b => b.id === targetId)) {
+                targetId = "tanimsiz"; 
+            }
+
+            // Kart İçeriği HTML
+            let htmlContent = `
+                <div class="kanban-item status-${cek.cek_durumu}" data-eid="${cek.id}">
+                    <div class="fw-bold text-truncate" title="${cek.cari_unvan}">${cek.cari_unvan}</div>
+                    <div class="text-primary fw-bold mt-1">${cek.tutar.toLocaleString('tr-TR')} ₺</div>
+                    <div class="small text-muted mt-1">
+                        <i class="bi bi-calendar"></i> ${cek.vade_tarihi}<br>
+                        <i class="bi bi-hash"></i> ${cek.belge_no}
+                    </div>
+                </div>`;
+            
+            // İlgili kolona ekle
+            let board = boards.find(b => b.id === targetId);
+            if (board) {
+                board.item.push({ "id": cek.id.toString(), "title": htmlContent });
+            }
+        });
+
+        return boards;
+    }
+
+    // Kanban Başlatma
+    var kanban = new jKanban({
+        element: '#kanbanBoard',
+        gutter: '15px',
+        widthBoard: '280px',
+        boards: buildKanbanData(),
+        dragBoards: false, // Kolonların yeri değişmesin
+        
+        // SÜRÜKLEME SONRASI (DROP) OLAYI
+        dropEl: function (el, target, source, sibling) {
+            var cekId = el.getAttribute('data-eid');
+            var yeniDurum = target.parentElement.getAttribute('data-id');
+            var eskiDurum = source.parentElement.getAttribute('data-id');
+
+            // Eğer aynı kolona bırakıldıysa işlem yapma
+            if (yeniDurum === eskiDurum) return;
+
+            // --- SweetAlert ile Ek Bilgi Sorma ---
+            
+            if (yeniDurum === 'tahsile_verildi') {
+                askForSelection('Hangi Bankaya?', bankalar, cekId, yeniDurum, eskiDurum);
+            } 
+            else if (yeniDurum === 'temlik_edildi') {
+                askForSelection('Kime Ciro Edilecek?', cariler, cekId, yeniDurum, eskiDurum);
+            } 
+            else {
+                // Diğer durumlarda direkt güncelle
+                updateStatusAPI(cekId, yeniDurum, null);
+            }
+        }
+    });
+
+    // Yardımcı Fonksiyon: Soru Sor (Banka/Cari Seçimi)
+    function askForSelection(title, options, cekId, yeniDurum, eskiDurum) {
+        Swal.fire({
+            title: title,
+            input: 'select',
+            inputOptions: options,
+            inputPlaceholder: 'Seçiniz...',
+            showCancelButton: true,
+            confirmButtonText: 'Onayla',
+            cancelButtonText: 'İptal',
+            allowOutsideClick: false
+        }).then((result) => {
+            if (result.isConfirmed && result.value) {
+                updateStatusAPI(cekId, yeniDurum, result.value);
+            } else {
+                // İptal edilirse sayfayı yenile ki kart eski yerine dönsün
+                // jKanban'da 'moveElement' ile geri almak zor olduğu için reload en temizi
+                setTimeout(() => location.reload(), 200); 
+            }
+        });
+    }
+
+    // API Güncelleme Fonksiyonu
+    function updateStatusAPI(id, status, targetId) {
+        // CSRF Token (Güvenlik)
+        var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        
+        fetch('/cek/api/update-status', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'X-CSRFToken': csrfToken 
+            },
+            body: JSON.stringify({ id: id, status: status, target_id: targetId })
+        }).then(res => res.json()).then(data => {
+            if(data.success) {
+                const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                Toast.fire({ icon: 'success', title: 'Durum Güncellendi' });
+            } else {
+                Swal.fire('Hata', data.message, 'error').then(() => location.reload());
+            }
+        }).catch(err => {
+            console.error(err);
+            Swal.fire('Hata', 'Sunucu ile iletişim hatası.', 'error').then(() => location.reload());
+        });
+    }
+</script>
+{% endblock %}

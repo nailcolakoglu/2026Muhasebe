@@ -1,0 +1,167 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Canlı İzleme & Oturum Yönetimi{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 mb-0 text-gray-800">
+                <i class="bi bi-speedometer2 text-primary me-2"></i>Canlı İzleme Merkezi
+            </h2>
+            <small class="text-muted">Sistem kaynakları ve aktif kullanıcı oturumları</small>
+        </div>
+        <span class="badge bg-white text-dark border p-2 shadow-sm">
+            <i class="bi bi-server me-1 text-success"></i> Uptime: {{ stats.uptime }}
+        </span>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="card-title mb-0 fw-bold text-secondary">CPU Yükü</h6>
+                        <i class="bi bi-cpu fs-4 text-primary bg-primary-subtle p-2 rounded"></i>
+                    </div>
+                    <h3 class="fw-bold mb-1">{{ stats.cpu }}%</h3>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar {% if stats.cpu > 80 %}bg-danger{% elif stats.cpu > 50 %}bg-warning{% else %}bg-success{% endif %}" 
+                             style="width: {{ stats.cpu }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="card-title mb-0 fw-bold text-secondary">Bellek (RAM)</h6>
+                        <i class="bi bi-memory fs-4 text-info bg-info-subtle p-2 rounded"></i>
+                    </div>
+                    <h3 class="fw-bold mb-1">{{ stats.ram_percent }}%</h3>
+                    <small class="text-muted">{{ stats.ram_used }} GB / {{ stats.ram_total }} GB</small>
+                    <div class="progress mt-2" style="height: 6px;">
+                        <div class="progress-bar bg-info" style="width: {{ stats.ram_percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="card-title mb-0 fw-bold text-secondary">Disk Alanı</h6>
+                        <i class="bi bi-hdd fs-4 text-warning bg-warning-subtle p-2 rounded"></i>
+                    </div>
+                    <h3 class="fw-bold mb-1">{{ stats.disk_percent }}%</h3>
+                    <small class="text-muted">{{ stats.disk_free }} GB Boş</small>
+                    <div class="progress mt-2" style="height: 6px;">
+                        <div class="progress-bar bg-warning" style="width: {{ stats.disk_percent }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <div>
+                <h6 class="mb-0 fw-bold text-dark">
+                    <i class="bi bi-person-badge text-primary me-2"></i>Canlı Oturumlar
+                </h6>
+                <small class="text-muted">Anlık olarak sisteme bağlı kullanıcılar</small>
+            </div>
+            
+            <div class="d-flex gap-2">
+                <span class="badge bg-success-subtle text-success border border-success-subtle p-2">
+                    {{ sessions|length }} Aktif Kullanıcı
+                </span>
+                <button onclick="location.reload()" class="btn btn-sm btn-light border">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Durum</th>
+                            <th>Kullanıcı</th>
+                            <th>Firma</th>
+                            <th>Cihaz / IP</th>
+                            <th>Giriş / Son İşlem</th>
+                            <th class="text-end pe-4">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sess in sessions %}
+                        <tr>
+                            <td class="ps-4">
+                                {% if sess.status == 'active' %}
+                                    <span class="badge bg-success rounded-pill">
+                                        <i class="bi bi-circle-fill small me-1"></i> Aktif
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary rounded-pill">
+                                        <i class="bi bi-moon-stars small me-1"></i> Boşta ({{ sess.idle_min }} dk)
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark">{{ sess.user }}</div>
+                            </td>
+                            <td>
+                                <div class="small text-muted">{{ sess.tenant }}</div>
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <span class="me-2">{{ sess.device }}</span>
+                                    <small class="text-muted font-monospace">{{ sess.ip }}</small>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="small text-dark">{{ sess.login_at.strftime('%H:%M') }}</div>
+                                <div class="small text-muted" style="font-size: 0.75rem;">
+                                    Son: {{ sess.last_activity.strftime('%H:%M:%S') }}
+                                </div>
+                            </td>
+                            <td class="text-end pe-4">
+                                <form action="{{ url_for('monitoring.kill_session', token=sess.token) }}" method="POST" onsubmit="return confirm('Bu kullanıcıyı sistemden atmak istediğinize emin misiniz?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Oturumu Sonlandır">
+                                        <i class="bi bi-power"></i> At
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5">
+                                <div class="text-muted">
+                                    <i class="bi bi-people display-4 mb-3 d-block"></i>
+                                    Şu an sistemde aktif kimse yok.
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 60 saniyede bir otomatik yenile (Canlı izleme hissi için)
+    setInterval(function(){
+       location.reload();
+    }, 60000);
+</script>
+{% endblock %}

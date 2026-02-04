@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Kasa Yönetimi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Kasa Yönetimi</h3>
+        <a href="{{ url_for('kasa.ekle') }}" class="btn btn-primary">
+            <i class="bi bi-wallet-fill me-2"></i> Yeni Kasa
+        </a>
+    </div>
+    
+    <div class="alert alert-light border shadow-sm mb-4">
+        <i class="bi bi-cash-stack text-success me-2"></i>
+        İşletmenizin nakit para akışının gerçekleştiği fiziksel kasaları (Merkez TL, Mağaza USD vb.) buradan yönetebilirsiniz.
+    </div>
+
+    {{ grid.render('kasa.index')|safe }}
+</div>
+{% endblock %}

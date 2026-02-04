@@ -1,0 +1,304 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Yedek Detayı{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <div class="d-flex align-items-center gap-3">
+            <h2 class="mb-0">Yedek Detayı</h2>
+            {% if backup.status == 'success' %}
+            <span class="badge bg-success">Başarılı</span>
+            {% elif backup.status == 'failed' %}
+            <span class="badge bg-danger">Başarısız</span>
+            {% elif backup.status == 'in_progress' or backup.status == 'running' %}
+            <span class="badge bg-info">İşlemde</span>
+            {% else %}
+            <span class="badge bg-warning">Bekliyor</span>
+            {% endif %}
+        </div>
+        <p class="text-muted mb-0">
+            {% if tenant %}
+            <strong>Firma:</strong> {{ tenant.unvan }} | 
+            {% endif %}
+            <strong>Tarih:</strong> {{ backup.created_at.strftime('%d.%m.%Y %H:%M') }}
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        {% if backup.status == 'success' and file_exists %}
+        <a href="{{ url_for('backup.download', backup_id=backup.id) }}" class="btn btn-success">
+            <i class="bi bi-download me-2"></i>
+            İndir
+        </a>
+        {% endif %}
+        
+        <form method="POST" action="{{ url_for('backup.delete', backup_id=backup.id) }}" 
+              style="display: inline;"
+              onsubmit="return confirm('Bu yedeği kalıcı olarak silmek istediğinizden emin misiniz?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-outline-danger">
+                <i class="bi bi-trash me-2"></i>
+                Sil
+            </button>
+        </form>
+        <form action="{{ url_for('backup.toggle_lock', backup_id=backup.id) }}" method="POST" class="d-inline">
+			<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+			{% if backup.is_immutable %}
+				<button type="submit" class="btn btn-warning">
+					<i class="bi bi-unlock-fill"></i> Kilidi Aç
+				</button>
+			{% else %}
+				<button type="submit" class="btn btn-success">
+					<i class="bi bi-lock-fill"></i> Kilitle
+				</button>
+			{% endif %}
+		</form>
+
+		<form action="{{ url_for('backup.restore_sandbox', backup_id=backup.id) }}" method="POST" class="d-inline ms-2">
+			<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+			<button type="submit" class="btn btn-info text-white">
+				<i class="bi bi-box-seam"></i> Sandbox Restore
+			</button>
+		</form>
+
+		<form action="{{ url_for('backup.delete', backup_id=backup.id) }}" method="POST" class="d-inline ms-2" onsubmit="return confirm('Bu yedeği silmek istediğinize emin misiniz?');">
+			<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+			<button type="submit" class="btn btn-danger" {% if backup.is_immutable %}disabled title="Kilitli yedek silinemez"{% endif %}>
+				<i class="bi bi-trash"></i> Sil
+			</button>
+		</form>
+        <a href="{{ url_for('backup.index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-2"></i>
+            Geri
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon {% if backup.status == 'success' %}success{% elif backup.status == 'failed' %}danger{% else %}warning{% endif %}">
+                    <i class="bi bi-{% if backup.status == 'success' %}check-circle{% elif backup.status == 'failed' %}x-circle{% else %}clock{% endif %}"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Durum</p>
+            <h3 class="stat-card-value" style="font-size: 20px;">
+                {{ backup.status|title }}
+            </h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon primary">
+                    <i class="bi bi-hdd"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Dosya Boyutu</p>
+            <h3 class="stat-card-value" style="font-size: 24px;">
+                {% if backup.file_size_mb %}
+                {{ backup.file_size_formatted }}
+                {% else %}
+                <span class="text-muted">-</span>
+                {% endif %}
+            </h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon warning">
+                    <i class="bi bi-stopwatch"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">İşlem Süresi</p>
+            <h3 class="stat-card-value" style="font-size: 24px;">
+                {% if backup.duration_seconds %}
+                {{ backup.duration_formatted }}
+                {% else %}
+                <span class="text-muted">-</span>
+                {% endif %}
+            </h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon success">
+                    <i class="bi bi-file-zip"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Sıkıştırma</p>
+            <h3 class="stat-card-value" style="font-size:  24px;">
+                {% if backup.compression_ratio %}
+                {{ "%.0f"|format(backup.compression_ratio * 100) }}%
+                {% else %}
+                <span class="text-muted">-</span>
+                {% endif %}
+            </h3>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-8">
+        <div class="stat-card">
+            <h5 class="mb-3">Yedek Bilgileri</h5>
+            <table class="table">
+                <tbody>
+                    <tr>
+                        <th width="200">Yedek ID: </th>
+                        <td><code>{{ backup.id }}</code></td>
+                    </tr>
+                    {% if tenant %}
+                    <tr>
+                        <th>Firma:</th>
+                        <td>
+                            <a href="{{ url_for('tenants.detail', tenant_id=tenant.id) if 'tenants.detail' in url_for.endpoint else '#' }}">
+                                {{ tenant.unvan }}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <th>Yedekleme Tipi:</th>
+                        <td><span class="badge bg-secondary">{{ backup.backup_type|title }}</span></td>
+                    </tr>
+                    <tr>
+                        <th>Oluşturma Zamanı:</th>
+                        <td>{{ backup.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                    </tr>
+                    <tr>
+                        <th>Dosya Adı:</th>
+                        <td>
+                            {% if backup.file_name %}
+                            <code>{{ backup.file_name }}</code>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Dosya Yolu:</th>
+                        <td>
+                            {% if backup.file_path %}
+                            <code>{{ backup.file_path }}</code>
+                            {% if file_exists %}
+                            <span class="badge bg-success ms-2">Mevcut</span>
+                            {% else %}
+                            <span class="badge bg-danger ms-2">Bulunamadı</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if backup.status == 'failed' and backup.error_message %}
+                    <tr>
+                        <th>Hata Mesajı:</th>
+                        <td>
+                            <div class="alert alert-danger mb-0">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                {{ backup.error_message }}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="stat-card mb-3">
+            <h5 class="mb-3">İşlemler</h5>
+            
+            {% if backup.status == 'success' and file_exists %}
+            
+            <button type="button" class="btn btn-warning w-100 mb-2" data-bs-toggle="modal" data-bs-target="#restoreModal">
+                <i class="bi bi-box-seam me-2"></i>
+                Sandbox Ortamına Aç
+            </button>
+            <small class="text-muted text-center d-block mb-3" style="font-size: 0.75rem;">
+                Bu yedeği incelemek için geçici bir firma olarak açar.
+            </small>
+            
+            <a href="{{ url_for('backup.download', backup_id=backup.id) }}" class="btn btn-success w-100 mb-2">
+                <i class="bi bi-download me-2"></i>
+                Dosyayı İndir
+            </a>
+            {% endif %}
+            
+            {% if backup.status == 'failed' %}
+            <button class="btn btn-primary w-100 mb-2" onclick="alert('Lütfen manuel yedekleme ekranından tekrar deneyiniz.')">
+                <i class="bi bi-arrow-repeat me-2"></i>
+                Tekrar Dene
+            </button>
+            {% endif %}
+            
+            <button class="btn btn-outline-secondary w-100 mb-2" onclick="window.print()">
+                <i class="bi bi-printer me-2"></i>
+                Yazdır
+            </button>
+        </div>
+        
+        <div class="stat-card">
+            <h5 class="mb-3">Son Aktiviteler</h5>
+            
+            {% if recent_activities %}
+            <div class="list-group list-group-flush">
+                {% for activity in recent_activities %}
+                <div class="list-group-item px-0">
+                    <div class="d-flex align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between">
+                                <strong style="font-size: 13px;">
+                                    <i class="{{ activity.action_icon }} me-1"></i>
+                                    {{ activity.action }}
+                                </strong>
+                                <small class="text-muted">{{ activity.created_at.strftime('%d.%m %H:%M') }}</small>
+                            </div>
+                            <small class="text-muted">{{ activity.description }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">Bu yedek ile ilgili henüz aktivite yok</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="restoreModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning-subtle">
+                <h5 class="modal-title">Sandbox Geri Yükleme</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bu işlem, seçilen yedeği <strong>yeni ve geçici bir firma</strong> olarak sisteme ekleyecektir. Orijinal verileriniz etkilenmez.</p>
+                <form action="{{ url_for('backup.restore_sandbox', backup_id=backup.id) }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label class="form-label">Geçici Firma Adı</label>
+                        <input type="text" class="form-control" value="RESTORE_{{ backup.created_at.strftime('%Y%m%d') }}_{{ tenant.kod if tenant else 'UNKNOWN' }}" readonly>
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="bi bi-play-circle me-2"></i>
+                        Sandbox Oluştur ve Başlat
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

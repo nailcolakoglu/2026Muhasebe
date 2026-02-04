@@ -1,0 +1,328 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Yedekleme Yönetimi{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">Yedekleme Yönetimi</h2>
+        <p class="text-muted mb-0">Firebird veritabanı yedekleri</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('backup.schedule') }}" class="btn btn-outline-primary">
+            <i class="bi bi-clock me-2"></i>
+            Zamanlama
+        </a>
+        <a href="{{ url_for('backup.create') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-2"></i>
+            Manuel Yedekleme
+        </a>
+    </div>
+</div>
+
+<div class="stat-card mb-4">
+    <form method="GET" action="{{ url_for('backup.index') }}">
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Durum</label>
+                <select name="status" class="form-select" onchange="this.form.submit()">
+                    <option value="all" {% if status == 'all' %}selected{% endif %}>Tümü</option>
+                    <option value="success" {% if status == 'success' %}selected{% endif %}>Başarılı</option>
+                    <option value="failed" {% if status == 'failed' %}selected{% endif %}>Başarısız</option>
+                    <option value="pending" {% if status == 'pending' %}selected{% endif %}>Bekliyor</option>
+                    <option value="in_progress" {% if status == 'in_progress' %}selected{% endif %}>İşlemde</option>
+                </select>
+            </div>
+            
+            <div class="col-md-2">
+                <label class="form-label">Tip</label>
+                <select name="type" class="form-select" onchange="this.form.submit()">
+                    <option value="all" {% if backup_type == 'all' %}selected{% endif %}>Tümü</option>
+                    <option value="manual" {% if backup_type == 'manual' %}selected{% endif %}>Manuel</option>
+                    <option value="automatic" {% if backup_type == 'automatic' %}selected{% endif %}>Otomatik</option>
+                    <option value="scheduled" {% if backup_type == 'scheduled' %}selected{% endif %}>Zamanlanmış</option>
+                </select>
+            </div>
+            
+            <div class="col-md-3">
+                <label class="form-label">Firma</label>
+                <select name="tenant" class="form-select" onchange="this.form.submit()">
+                    <option value="all" {% if tenant_id == 'all' %}selected{% endif %}>Tümü</option>
+                    {% for tenant in tenants %}
+                    <option value="{{ tenant.id }}" {% if tenant_id == tenant.id %}selected{% endif %}>
+                        {{ tenant.unvan }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="col-md-3">
+                <label class="form-label">Ara</label>
+                <input type="text" 
+                       name="search" 
+                       class="form-control" 
+                       placeholder="Firma adı..."
+                       value="{{ search }}">
+            </div>
+            
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <a href="{{ url_for('backup.index') }}" class="btn btn-outline-secondary w-100">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon primary">
+                    <i class="bi bi-archive"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Toplam Yedek</p>
+            <h3 class="stat-card-value">{{ pagination.total }}</h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon success">
+                    <i class="bi bi-check-circle"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Başarılı</p>
+            <h3 class="stat-card-value">
+                {{ backups|selectattr('backup.status', 'equalto', 'success')|list|length }}
+            </h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon danger">
+                    <i class="bi bi-x-circle"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Başarısız</p>
+            <h3 class="stat-card-value">
+                {{ backups|selectattr('backup.status', 'equalto', 'failed')|list|length }}
+            </h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon warning">
+                    <i class="bi bi-hdd"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Toplam Boyut</p>
+            <h3 class="stat-card-value">
+                {% set total_size_mb = backups|sum(attribute='backup.file_size_mb') %}
+                {{ "%.1f"|format(total_size_mb / 1024) }} GB
+            </h3>
+        </div>
+    </div>
+</div>
+
+<div class="stat-card">
+    {% if backups %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th width="30">
+                        <input type="checkbox" class="form-check-input" id="selectAll">
+                    </th>
+                    <th>Durum</th>
+                    <th>Firma</th>
+                    <th>Tip</th>
+                    <th>Tarih</th>
+                    <th>Boyut</th>
+                    <th>Süre</th>
+                    <th class="text-end">İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in backups %}
+                <tr>
+                    <td>
+                        <input type="checkbox" class="form-check-input backup-checkbox" value="{{ item.backup.id }}">
+                    </td>
+                    
+                    <td>
+                        {% if item.backup.status == 'success' %}
+                        <span class="badge bg-success">Başarılı</span>
+                        {% elif item.backup.status == 'failed' %}
+                        <span class="badge bg-danger">Başarısız</span>
+                        {% elif item.backup.status == 'in_progress' or item.backup.status == 'running' %}
+                        <span class="badge bg-info">İşlemde</span>
+                        {% else %}
+                        <span class="badge bg-warning">Bekliyor</span>
+                        {% endif %}
+                    </td>
+                    
+                    <td>
+                        {% if item.tenant %}
+                        <div>
+                            <strong>{{ item.tenant.unvan }}</strong>
+                            <br>
+                            <small class="text-muted">{{ item.tenant.kod }}</small>
+                        </div>
+                        {% else %}
+                        <span class="text-muted">Sistem</span>
+                        {% endif %}
+                    </td>
+                    
+                    <td>
+                        <span class="badge bg-secondary">{{ item.backup.backup_type|title }}</span>
+                    </td>
+                    
+                    <td>
+                        {{ item.backup.created_at.strftime('%d.%m.%Y %H:%M') }}
+                    </td>
+                    
+                    <td>
+                        {% if item.backup.file_size_mb %}
+                        {{ item.backup.file_size_formatted }}
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    
+                    <td>
+                        {% if item.backup.duration_seconds %}
+                        {{ item.backup.duration_formatted }}
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    
+                    <td class="text-end">
+                        <a href="{{ url_for('backup.detail', backup_id=item.backup.id) }}" 
+                           class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        
+                        {% if item.backup.status == 'success' and item.backup.file_path %}
+                        <a href="{{ url_for('backup.download', backup_id=item.backup.id) }}" 
+                           class="btn btn-sm btn-outline-success">
+                            <i class="bi bi-download"></i>
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <div>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDelete" style="display: none;">
+                <i class="bi bi-trash me-1"></i>
+                Seçilenleri Sil
+            </button>
+        </div>
+        
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('backup.index', page=pagination.prev_num, status=status, type=backup_type, tenant=tenant_id, search=search) }}">
+                        Önceki
+                    </a>
+                </li>
+                
+                {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                    {% if page_num %}
+                    <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('backup.index', page=page_num, status=status, type=backup_type, tenant=tenant_id, search=search) }}">
+                            {{ page_num }}
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('backup.index', page=pagination.next_num, status=status, type=backup_type, tenant=tenant_id, search=search) }}">
+                        Sonraki
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+    
+    {% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-inbox display-1 text-muted"></i>
+        <h4 class="mt-3">Yedek bulunamadı</h4>
+        <p class="text-muted">Henüz yedekleme yapılmamış.</p>
+        <a href="{{ url_for('backup.create') }}" class="btn btn-primary mt-3">
+            <i class="bi bi-plus-circle me-2"></i>
+            İlk Yedeklemeyi Başlat
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Tümünü seç
+document.getElementById('selectAll')?.addEventListener('change', function() {
+    document.querySelectorAll('.backup-checkbox').forEach(cb => {
+        cb.checked = this.checked;
+    });
+    toggleBulkDelete();
+});
+
+// Checkbox değişimlerinde toplu silme butonunu göster/gizle
+document.querySelectorAll('.backup-checkbox').forEach(cb => {
+    cb.addEventListener('change', toggleBulkDelete);
+});
+
+function toggleBulkDelete() {
+    const checked = document.querySelectorAll('.backup-checkbox:checked').length;
+    document.getElementById('bulkDelete').style.display = checked > 0 ? 'inline-block' : 'none';
+}
+
+// Toplu silme
+document.getElementById('bulkDelete')?.addEventListener('click', function() {
+    const checked = Array.from(document.querySelectorAll('.backup-checkbox:checked')).map(cb => cb.value);
+    
+    if (! confirm(`${checked.length} yedek kalıcı olarak silinecek.Emin misiniz?`)) {
+        return;
+    }
+    
+    fetch('{{ url_for("backup.bulk_delete") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken':  '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ backup_ids: checked })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        }
+    });
+});
+</script>
+{% endblock %}

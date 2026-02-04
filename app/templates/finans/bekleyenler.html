@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Kasa/Evrak Teslimat Bekleyenler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    
+    <div class="row mb-4">
+        {% for o in ozet %}
+        <div class="col-md-3">
+            <div class="card border-start border-4 border-warning shadow-sm">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                        {{ o.ad_soyad }} ({{ o.adet }} İşlem)
+                    </div>
+                    <div class="h5 mb-0 font-weight-bold text-gray-800">
+                        {{ "{:,.2f}".format(o.toplam) }} ₺
+                    </div>
+                    <div class="small text-muted mt-1">Teslim etmesi gereken</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Onay Bekleyen İşlemler (Plasiyerdeki Varlıklar)</h6>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tarih</th>
+                        <th>Plasiyer</th>
+                        <th>Cari Hesap</th>
+                        <th>Tür</th>
+                        <th class="text-end">Nakit</th>
+                        <th class="text-end">Çek/Senet</th>
+                        <th class="text-end">Toplam</th>
+                        <th class="text-center">İşlem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for islem in islemler %}
+                    <tr>
+                        <td>{{ islem.tarih.strftime('%d.%m.%Y') }}</td>
+                        <td><span class="badge bg-secondary">{{ islem.plasiyer.ad_soyad }}</span></td>
+                        <td>{{ islem.cari.unvan }}</td>
+                        <td>
+                            {% if islem.islem_turu == 'tahsilat' %}
+                                <span class="badge bg-success">Tahsilat</span>
+                            {% else %}
+                                <span class="badge bg-danger">Tediye</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">{{ "{:,.2f}".format(islem.toplam_nakit) }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(islem.toplam_cek + islem.toplam_senet) }}</td>
+                        <td class="text-end fw-bold">{{ "{:,.2f}".format(islem.genel_toplam) }}</td>
+                        <td class="text-center">
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('finans.yazdir', id=islem.id) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="İncele/Yazdır">
+                                    <i class="bi bi-printer"></i>
+                                </a>
+                                <button class="btn btn-sm btn-success" onclick="onayla({{ islem.id }})" title="Teslim Al / Onayla">
+                                    <i class="bi bi-check-lg"></i> Teslim Al
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">Bekleyen işlem yok.Her şey teslim alınmış.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function onayla(id) {
+    Swal.fire({
+        title: 'Teslim Alınıyor',
+        text: "Plasiyerden nakit ve evrakları teslim aldığınızı onaylıyor musunuz? Bu işlem kasaya işlenecektir.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Evet, Teslim Aldım',
+        cancelButtonText: 'İptal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.post("/finans/onayla/" + id, {_token: "{{ csrf_token() }}"}, function(res){
+                if(res.success) {
+                    Swal.fire("Başarılı", res.message, "success").then(() => location.reload());
+                } else {
+                    Swal.fire("Hata", res.message, "error");
+                }
+            });
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,22 @@
+<tr>
+    <th>Lisans Anahtarı:</th>
+    <td>
+        <div class="input-group input-group-sm" style="max-width: 300px;">
+            <input type="text" class="form-control font-monospace" value="{{ license.license_key }}" id="licenseKey" readonly>
+            <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard()">
+                <i class="bi bi-clipboard"></i>
+            </button>
+        </div>
+    </td>
+</tr>
+
+<script>
+function copyToClipboard() {
+    var copyText = document.getElementById("licenseKey");
+    copyText.select();
+    navigator.clipboard.writeText(copyText.value);
+    
+    // Basit bir tooltip/toast gösterilebilir
+    alert("Lisans anahtarı kopyalandı!");
+}
+</script>

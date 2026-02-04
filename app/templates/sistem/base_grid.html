@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}{{ grid.title }} - Listesi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 animate__animated animate__fadeIn">
+    
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}" class="text-decoration-none"><i class="bi bi-house-door"></i> Ana Sayfa</a></li>
+                <li class="breadcrumb-item active text-primary" aria-current="page">{{ grid.title }}</li>
+            </ol>
+        </nav>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            {{ grid.render() | safe }}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+    {% if grid.render_assets_html %}
+        {{ grid.render_assets_html() | safe }}
+    {% endif %}
+    
+    {% if grid.render_js %}
+        {{ grid.render_js() | safe }}
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,8 @@
+ÇALIŞTIRILACAKLAR
+
+db_init.py
+db_menu.py
+db_fiyat_listesi.py
+init_fatura_sablon.py
+init_siparis_sablon.py
+setup_templates.py

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Satış Fişi</title>
+    <style>
+        /* Termal Yazıcı İçin Genel Ayarlar */
+        body {
+            margin: 0;
+            padding: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            color: #000;
+            background-color: #fff;
+        }
+
+        /* 80mm Kağıt Genişliği */
+        .ticket {
+            width: 72mm; 
+            max-width: 72mm;
+            margin: 0 auto;
+        }
+
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+        .fw-bold { font-weight: bold; }
+        
+        .line { border-bottom: 1px dashed #000; margin: 5px 0; }
+        .double-line { border-bottom: 3px double #000; margin: 5px 0; }
+
+        table { width: 100%; border-collapse: collapse; }
+        td, th { padding: 2px 0; vertical-align: top; }
+        
+        .col-qty { width: 15%; text-align: center; }
+        .col-price { width: 25%; text-align: right; }
+        .col-total { width: 25%; text-align: right; }
+
+        @media print {
+            .no-print { display: none !important; }
+            @page { margin: 0; }
+        }
+
+        .action-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            border: 1px solid #000;
+            background: #eee;
+            cursor: pointer;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #000;
+        }
+        .btn-primary { background: #000; color: #fff; }
+    </style>
+</head>
+<body>
+
+<div class="ticket">
+    <div class="text-center fw-bold" style="font-size: 14px;">
+        {{ current_user.firma.unvan }}
+    </div>
+    <div class="text-center" style="font-size: 10px;">
+        {{ current_user.firma.vergi_dairesi }} / {{ current_user.firma.vergi_no }}
+    </div>
+    <div class="line"></div>
+
+    <div>Tarih: {{ fatura.tarih.strftime('%d.%m.%Y') }} Saat: {{ now_time }}</div>
+    <div>Fiş No: {{ fatura.belge_no }}</div>
+    <div>Plasiyer: {{ current_user.ad_soyad }}</div>
+    <div class="line"></div>
+    
+    <div class="fw-bold">Sayın: {{ fatura.cari.unvan }}</div>
+    <div class="line"></div>
+
+    <table>
+        <thead>
+            <tr style="border-bottom: 1px solid #000;">
+                <th class="text-left">Ürün</th>
+                <th class="col-qty">Mik</th>
+                <th class="col-price">Fiyat</th>
+                <th class="col-total">Tutar</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for kalem in fatura.kalemler %}
+            <tr>
+                <td colspan="4" class="fw-bold">{{ kalem.stok.ad }}</td>
+            </tr>
+            <tr>
+                <td></td> 
+                <td class="col-qty">{{ "{:,.0f}".format(kalem.miktar or 0) }}</td>
+                <td class="col-price">{{ "{:,.2f}".format(kalem.birim_fiyat or 0) }}</td>
+                
+                <td class="col-total">{{ "{:,.2f}".format(kalem.satir_toplami or 0) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="line"></div>
+
+    <table style="font-size: 14px;">
+        <tr>
+            <td class="fw-bold">GENEL TOPLAM:</td>
+            <td class="text-right fw-bold">{{ "{:,.2f}".format(fatura.genel_toplam or 0) }} TL</td>
+        </tr>
+    </table>
+
+    <div class="double-line"></div>
+    <div class="text-center" style="margin-top: 10px;">
+        Mali Değeri Yoktur.<br>
+        Bizi tercih ettiğiniz için teşekkürler.
+    </div>
+    <br><br>
+    .
+</div>
+
+<div class="action-buttons no-print">
+    <button onclick="window.print()" class="btn btn-primary">YAZDIR</button>
+    <a href="{{ url_for('mobile.sicak_satis') }}" class="btn">Yeni Satış</a>
+    <a href="{{ url_for('mobile.dashboard') }}" class="btn">Ana Menü</a>
+</div>
+
+<script>
+    // Sayfa açılınca otomatik yazdırma penceresini aç
+    window.onload = function() { 
+        setTimeout(function() { window.print(); }, 500); 
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Rapor Arşivi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-clock-history me-2 text-primary"></i>AI Rapor Arşivi</h5>
+            <a href="{{ url_for('rapor.anomali_dedektifi') }}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-plus-lg"></i> Yeni Analiz
+            </a>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Tarih</th>
+                            <th>Rapor Türü</th>
+                            <th>Başlık</th>
+                            <th class="text-end pe-4">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rapor in raporlar %}
+                        <tr>
+                            <td class="ps-4 text-muted small">
+                                <i class="bi bi-calendar3 me-1"></i> {{ rapor.tarih.strftime('%d.%m.%Y %H:%M') }}
+                            </td>
+                            <td>
+                                {% if rapor.rapor_turu == 'CEO_BRIFING' %}
+                                    <span class="badge bg-dark text-white"><i class="bi bi-robot me-1"></i> CEO Özeti</span>
+                                {% elif rapor.rapor_turu == 'ANOMALI' %}
+                                    <span class="badge bg-danger"><i class="bi bi-incognito me-1"></i> Anomali</span>
+                                {% elif rapor.rapor_turu == 'OLU_STOK' %}
+                                    <span class="badge bg-warning text-dark"><i class="bi bi-skull me-1"></i> Ölü Stok</span>
+                                {% else %}
+                                    <span class="badge bg-info text-dark">{{ rapor.rapor_turu }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="fw-bold">{{ rapor.baslik }}</td>
+                            <td class="text-end pe-4">
+                                <a href="{{ url_for('rapor.rapor_detay', rapor_id=rapor.id) }}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-eye"></i> İncele
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox display-4 opacity-25"></i>
+                                <p class="mt-3">Henüz kaydedilmiş bir rapor bulunmuyor.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

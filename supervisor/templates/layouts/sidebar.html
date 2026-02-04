@@ -1,0 +1,112 @@
+<!-- supervisor/templates/layouts/sidebar.html -->
+
+<div class="sidebar">
+    <!-- Logo -->
+    <div class="sidebar-header">
+        <a href="{{ url_for('dashboard.index') }}" class="sidebar-logo">
+            <div class="sidebar-logo-icon">
+                <i class="bi bi-shield-lock"></i>
+            </div>
+            <span class="sidebar-logo-text">Supervisor</span>
+        </a>
+    </div>
+    
+    <!-- Menu -->
+    <div class="sidebar-menu">
+        <!-- Dashboard -->
+        <div class="sidebar-menu-title">Ana Menü</div>
+        <ul class="sidebar-menu-items">
+            <li class="sidebar-menu-item">
+                <a href="{{ url_for('dashboard.index') }}" class="sidebar-menu-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+                    <i class="bi bi-speedometer2 sidebar-menu-icon"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+        </ul>
+        
+        <!-- Yönetim -->
+        <div class="sidebar-menu-title">Yönetim</div>
+        <ul class="sidebar-menu-items">
+            <li class="sidebar-menu-item">
+                <a href="{{ url_for('tenants.index') }}" class="sidebar-menu-link {% if request.endpoint and 'tenants' in request.endpoint %}active{% endif %}">
+                    <i class="bi bi-building sidebar-menu-icon"></i>
+                    <span>Firmalar</span>
+                    <span class="sidebar-menu-badge">{{ active_tenants }}</span>
+                </a>
+            </li>
+            <li class="sidebar-menu-item">
+                <a href="{{ url_for('licenses.index') }}" class="sidebar-menu-link {% if request.endpoint and 'licenses' in request.endpoint %}active{% endif %}">
+                    <i class="bi bi-key sidebar-menu-icon"></i>
+                    <span>Lisanslar</span>
+                    {% if expiring_soon > 0 %}
+                    <span class="sidebar-menu-badge">{{ expiring_soon }}</span>
+                    {% endif %}
+                </a>
+            </li>
+            <!-- Kullanıcılar -->
+			<li class="sidebar-menu-item">
+				<a href="{{ url_for('users.index') }}" class="sidebar-menu-link {% if request.endpoint and 'users' in request.endpoint %}active{% endif %}">
+					<i class="bi bi-people sidebar-menu-icon"></i>
+					<span>Kullanıcılar</span>
+				</a>
+			</li>
+
+        </ul>
+        
+		<!-- Sistem -->
+		<div class="sidebar-menu-title">Sistem</div>
+		<ul class="sidebar-menu-items">
+			<li class="sidebar-menu-item">
+				<a href="{{ url_for('backup.index') }}" class="sidebar-menu-link {% if request.endpoint and 'backup' in request.endpoint %}active{% endif %}">
+					<i class="bi bi-cloud-download sidebar-menu-icon"></i>
+					<span>Yedekleme</span>
+				</a>
+			</li>
+			<li class="sidebar-menu-item">
+				<a href="{{ url_for('monitoring.index') }}" class="sidebar-menu-link {% if request.endpoint and 'monitoring' in request.endpoint %}active{% endif %}">
+					<i class="bi bi-activity sidebar-menu-icon"></i>
+					<span>Monitoring</span>
+				</a>
+			</li>
+			<li class="sidebar-menu-item">
+				<a href="#" class="sidebar-menu-link">
+					<i class="bi bi-receipt sidebar-menu-icon"></i>
+					<span>Faturalama</span>
+				</a>
+			</li>
+			<li class="sidebar-menu-item">
+				<a href="#" class="sidebar-menu-link">
+					<i class="bi bi-headset sidebar-menu-icon"></i>
+					<span>Destek</span>
+				</a>
+			</li>
+		</ul>
+        
+        <!-- Analiz -->
+        <div class="sidebar-menu-title">Analiz</div>
+        <ul class="sidebar-menu-items">
+            <li class="sidebar-menu-item">
+                <a href="#" class="sidebar-menu-link">
+                    <i class="bi bi-graph-up sidebar-menu-icon"></i>
+                    <span>Raporlar</span>
+                </a>
+            </li>
+            <li class="sidebar-menu-item">
+                <a href="{{ url_for('audit.index') }}" class="sidebar-menu-link {% if request.endpoint and 'audit' in request.endpoint %}active{% endif %}">
+                    <i class="bi bi-file-earmark-text sidebar-menu-icon"></i>
+                    <span>Denetim Logları</span>
+                </a>
+            </li>
+        </ul>
+        <!-- Ayarlar -->
+        <div class="sidebar-menu-title">Ayarlar</div>
+        <ul class="sidebar-menu-items">
+            <li class="sidebar-menu-item">
+                <a href="#" class="sidebar-menu-link">
+                    <i class="bi bi-gear sidebar-menu-icon"></i>
+                    <span>Sistem Ayarları</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>

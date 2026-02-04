@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Çek / Senet{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><i class="bi bi-ticket-perforated me-2"></i>Çek & Senet Portföyü</h3>
+        
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary dropdown-toggle px-4" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-plus-lg me-2"></i> Yeni İşlem
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow">
+                <li>
+                    <a class="dropdown-item py-2" href="{{ url_for('cek.ekle', yon='alinan') }}">
+                        <i class="bi bi-arrow-down-left-square-fill text-success me-2"></i> 
+                        <strong>Müşteri Çeki/Senedi Girişi</strong>
+                        <div class="small text-muted ms-4">Tahsilat (Portföye Giriş)</div>
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item py-2" href="{{ url_for('cek.ekle', yon='verilen') }}">
+                        <i class="bi bi-arrow-up-right-square-fill text-danger me-2"></i> 
+                        <strong>Kendi Çekimiz/Senedimiz</strong>
+                        <div class="small text-muted ms-4">Ödeme (Portföyden Çıkış)</div>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div class="row mb-4">
+        
+        <div class="col-md-3 mb-3">
+            <div class="card border-start border-success border-4 shadow-sm h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs fw-bold text-success text-uppercase mb-1">Portföydeki Çekler</div>
+                            <div class="h5 mb-0 fw-bold text-gray-800">
+                                {{ "{:,.2f}".format(toplam_alinan_cek or 0) }} ₺
+                            </div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-cash-stack fs-1 text-success opacity-25"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card border-start border-info border-4 shadow-sm h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs fw-bold text-info text-uppercase mb-1">Portföydeki Senetler</div>
+                            <div class="h5 mb-0 fw-bold text-gray-800">
+                                {{ "{:,.2f}".format(toplam_alinan_senet or 0) }} ₺
+                            </div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-file-earmark-text fs-1 text-info opacity-25"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card border-start border-danger border-4 shadow-sm h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs fw-bold text-danger text-uppercase mb-1">Verilen Çekler</div>
+                            <div class="h5 mb-0 fw-bold text-gray-800">
+                                {{ "{:,.2f}".format(toplam_verilen_cek or 0) }} ₺
+                            </div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-arrow-up-right-circle fs-1 text-danger opacity-25"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card border-start border-warning border-4 shadow-sm h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs fw-bold text-warning text-uppercase mb-1">Verilen Senetler</div>
+                            <div class="h5 mb-0 fw-bold text-gray-800">
+                                {{ "{:,.2f}".format(toplam_verilen_senet or 0) }} ₺
+                            </div>
+                        </div>
+                        <div class="col-auto"><i class="bi bi-file-text fs-1 text-warning opacity-25"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+ {{ grid.render('cek.index')|safe }}
+<div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-bold">
+                    <i class="bi bi-pie-chart-fill me-2 text-primary"></i>Portföy Dağılımı
+                </div>
+                <div class="card-body">
+                    <canvas id="pieChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-bold">
+                    <i class="bi bi-bar-chart-line-fill me-2 text-success"></i>Aylık Tahsilat Planı (Nakit Akışı)
+                </div>
+                <div class="card-body">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Backend'den gelen verileri al
+            const pieData = JSON.parse('{{ pie_chart_data|safe }}');
+            const barData = JSON.parse('{{ bar_chart_data|safe }}');
+
+            // 1.PASTA GRAFİK (Çek vs Senet)
+            if(pieData.data.length > 0) {
+                new Chart(document.getElementById('pieChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: pieData.labels,
+                        datasets: [{
+                            data: pieData.data,
+                            backgroundColor: ['#1cc88a', '#36b9cc'], // Yeşil, Mavi
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
+                    }
+                });
+            }
+
+            // 2.ÇUBUK GRAFİK (Aylık Tahsilat)
+            if(barData.data.length > 0) {
+                new Chart(document.getElementById('barChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: barData.labels,
+                        datasets: [{
+                            label: 'Tahsil Edilecek Tutar (TL)',
+                            data: barData.data,
+                            backgroundColor: 'rgba(78, 115, 223, 0.7)', // Mavi
+                            borderColor: 'rgba(78, 115, 223, 1)',
+                            borderWidth: 1,
+                            borderRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        return value.toLocaleString('tr-TR') + ' ₺';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+   
+</div>
+{% endblock %}

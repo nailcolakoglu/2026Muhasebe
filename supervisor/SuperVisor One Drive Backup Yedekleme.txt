@@ -1,0 +1,74 @@
+Harika! 🔥 Madem elinde malzemeler var, hiç soğutmadan OneDrive entegrasyonunu gerçeğe dönüştürelim.
+
+Ancak küçük bir uyarı: Microsoft'un güvenlik yapısı gereği sadece "E-posta ve Şifre" yetmiyor. Azure üzerinden bir "App Registration" (Uygulama Kaydı) yapıp Client ID ve Client Secret almamız gerekiyor.
+
+Bunu en hızlı ve pratik şekilde nasıl yapacağını adım adım anlatıyorum. 5 dakikanı almaz.
+
+1. Adım: Azure Portal'da Uygulama Oluşturma
+Azure Portal adresine git ve OneDrive hesabınla giriş yap.
+
+Arama çubuğuna "App registrations" yaz ve tıkla.
+
+"+ New registration" butonuna bas.
+
+Şu bilgileri gir:
+
+Name: MuhasebeYedekleme (veya istediğin bir isim)
+
+Supported account types: 3. seçenek olan "Accounts in any organizational directory and personal Microsoft accounts" seç (En geniş kapsamlısı budur).
+
+Redirect URI: Boş bırakabilirsin (Web seçili kalsın).
+
+Register butonuna bas.
+
+2. Adım: Client ID ve Secret Alma
+Uygulama oluştuğunda seni "Overview" sayfasına atacak.
+
+Application (client) ID değerini bir yere not et. (Bu bizim Client ID'miz olacak).
+
+Soldaki menüden "Certificates & secrets" sekmesine tıkla.
+
+"+ New client secret" butonuna bas.
+
+Description'a yedekleme yaz, süreyi 24 months (veya istediğini) seç ve Add de.
+
+DİKKAT: Oluşan Value (Değer) kısmını HEMEN kopyala ve not et. Sayfayı yenilersen bir daha göremezsin! (Bu bizim Client Secret'ımız olacak).
+
+3. Adım: İzinleri Verme (API Permissions)
+Soldaki menüden "API permissions" sekmesine tıkla.
+
+"+ Add a permission" -> Microsoft Graph -> Application permissions (Delegated değil!).
+
+Arama kutusuna Files yaz.
+
+Files.ReadWrite.All seçeneğini işaretle ve Add permissions de.
+
+ÇOK ÖNEMLİ: Listeye eklendikten sonra yukarıdaki "Grant admin consent for..." butonuna bas ve çıkan uyarıya Yes de. (Durum kısmında yeşil tik ✅ görmelisin).
+
+4. Adım: Panelde Ayarları Girme
+Şimdi Muhasebe paneline dön ve şu adımları izle:
+
+Herhangi bir firmanın Yedekleme Ayarları sayfasına git (veya /backup/settings/<tenant_id>).
+
+Depolama Alanı: Microsoft OneDrive seç.
+
+Client ID (Uygulama Kimliği): Azure'dan aldığın ID'yi yapıştır.
+
+Client Secret (Gizli Anahtar): Azure'dan aldığın Secret'ı yapıştır.
+
+FTP Kullanıcısı (Email): OneDrive hesabının e-posta adresini yaz (Örn: ornek@outlook.com).
+
+Kaydet de.
+
+5. Adım: Büyük Test! 🚀
+backup_engine.py dosyasını msal ve requests ile güncellediğinden eminsin değil mi? (Emin değilsen söyle, kodu tekrar vereyim).
+
+Ayarları kaydettiğin firma için Manuel Yedekleme başlat.
+
+Logları izle. Eğer her şey yolundaysa:
+
+☁️ [OneDrive] Yüklendi: https://... mesajını göreceksin.
+
+OneDrive hesabına girdiğinde Apps > MuhasebeYedekleme > Backups (veya direkt Backups) klasöründe ZIP dosyasını göreceksin.
+
+Hadi bakalım, Azure tarafını hallet ve fişeği ateşle! Sonucu heyecanla bekliyorum. ☁️😎

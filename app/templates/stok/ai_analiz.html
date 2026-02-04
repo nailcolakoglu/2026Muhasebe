@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Yapay Zeka Stok Analizi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 bg-gradient-dark text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <div class="card-body p-4 text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-robot display-1 text-white-50"></i>
+                    </div>
+                    <h3 class="fw-bold">Akıllı Stok Asistanı</h3>
+                    <p class="opacity-75">
+                        Geçmiş satış verilerinizi ve mevsimsel döngüleri analiz ederek, 
+                        önümüzdeki ay ne kadar stok yapmanız gerektiğini hesaplar.
+                    </p>
+                    <button onclick="analiziBaslat()" id="btnAnaliz" class="btn btn-light text-primary fw-bold px-4 py-2 mt-3 rounded-pill shadow">
+                        <i class="bi bi-stars me-2"></i> Analizi Başlat
+                    </button>
+                </div>
+            </div>
+            
+            <div class="alert alert-info mt-3 shadow-sm border-0">
+                <i class="bi bi-info-circle-fill me-2"></i>
+                Analiz, son 12 aylık fatura verilerine dayanarak yapılır.Veri ne kadar çoksa, tahmin o kadar isabetli olur.
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 text-primary"><i class="bi bi-clipboard-data me-2"></i>Analiz Raporu</h5>
+                </div>
+                <div class="card-body position-relative" id="raporAlani">
+                    
+                    <div id="bosDurum" class="text-center text-muted py-5">
+                        <i class="bi bi-bar-chart-line display-4 opacity-25"></i>
+                        <p class="mt-3">Analiz sonuçları burada görünecek.</p>
+                    </div>
+
+                    <div id="yukleniyor" class="text-center py-5 d-none">
+                        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+                        <h5 class="mt-3 animate__animated animate__pulse animate__infinite">Veriler İnceleniyor...</h5>
+                        <p class="text-muted small">Mevsimsel trendler hesaplanıyor</p>
+                    </div>
+
+                    <div id="sonucMetni" class="d-none animate__animated animate__fadeIn"></div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function analiziBaslat() {
+    // UI Güncelle
+    $('#btnAnaliz').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Lütfen Bekleyin...');
+    $('#bosDurum').addClass('d-none');
+    $('#sonucMetni').addClass('d-none');
+    $('#yukleniyor').removeClass('d-none');
+
+    // API İsteği
+    $.ajax({
+        url: '/stok/api/ai-tahmin',
+        method: 'POST',
+        success: function(response) {
+            $('#yukleniyor').addClass('d-none');
+            
+            if (response.success) {
+                $('#sonucMetni').html(response.report).removeClass('d-none');
+                
+                // Başarı Mesajı
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Analiz Tamamlandı!',
+                    text: 'Yapay zeka önerilerini hazırladı.',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            } else {
+                // Veri Yoksa vb.
+                $('#bosDurum').removeClass('d-none');
+                Swal.fire('Uyarı', response.message, 'warning');
+            }
+        },
+        error: function() {
+            $('#yukleniyor').addClass('d-none');
+            $('#bosDurum').removeClass('d-none');
+            Swal.fire('Hata', 'Analiz sırasında bir sorun oluştu.', 'error');
+        },
+        complete: function() {
+            $('#btnAnaliz').prop('disabled', false).html('<i class="bi bi-stars me-2"></i> Analizi Başlat');
+        }
+    });
+}
+</script>
+{% endblock %}

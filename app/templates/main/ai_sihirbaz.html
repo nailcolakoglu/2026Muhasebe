@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Yapay Zeka Form Sihirbazı{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-gradient-primary text-white py-3">
+                    <h5 class="mb-0"><i class="bi bi-magic me-2"></i>Form Sihirbazı</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Oluşturmak istediğiniz formu doğal dille anlatın.Yapay zeka sizin için tasarlayacak.
+                    </p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Ne Lazım?</label>
+                        <textarea id="promptInput" class="form-control" rows="5" 
+                            placeholder="Örn: Personel izin talep formu istiyorum.Ad soyad, izin türü (yıllık/mazeret), başlangıç ve bitiş tarihi olsun."></textarea>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button onclick="formOlustur()" id="btnGenerate" class="btn btn-primary">
+                            <i class="bi bi-stars me-2"></i> Oluştur
+                        </button>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-top">
+                        <h6 class="small fw-bold text-muted">Örnek İstekler:</h6>
+                        <ul class="list-unstyled small text-muted">
+                            <li class="mb-2 cursor-pointer text-primary" onclick="setPrompt(this)">
+                                <i class="bi bi-caret-right me-1"></i> Müşteri memnuniyet anketi, puanlama ve yorum alanı olsun.
+                            </li>
+                            <li class="mb-2 cursor-pointer text-primary" onclick="setPrompt(this)">
+                                <i class="bi bi-caret-right me-1"></i> Araç bakım formu, plaka, km, yapılan işlemler ve fatura tutarı.
+                            </li>
+                            <li class="cursor-pointer text-primary" onclick="setPrompt(this)">
+                                <i class="bi bi-caret-right me-1"></i> Masraf formu, fiş fotoğrafı yüklenebilsin.
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-muted"><i class="bi bi-eye me-2"></i>Canlı Önizleme</h5>
+                    <button class="btn btn-sm btn-outline-success" onclick="copyHTML()" id="btnCopy" style="display:none;">
+                        <i class="bi bi-clipboard me-1"></i> Kodu Kopyala
+                    </button>
+                </div>
+                <div class="card-body bg-light d-flex align-items-center justify-content-center" id="previewArea">
+                    <div class="text-center text-muted">
+                        <i class="bi bi-layout-text-window-reverse display-1 opacity-25"></i>
+                        <p class="mt-3">Form önizlemesi burada görünecek.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loadingOverlay" class="position-fixed top-0 start-0 w-100 h-100 bg-white bg-opacity-75 d-none justify-content-center align-items-center" style="z-index: 2000;">
+    <div class="text-center">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+        <h5 class="mt-3 text-primary animate__animated animate__pulse animate__infinite">Yapay Zeka Düşünüyor...</h5>
+        <p class="text-muted small">Form yapısı kurgulanıyor</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function setPrompt(el) {
+        document.getElementById('promptInput').value = el.innerText.trim();
+    }
+
+    function formOlustur() {
+        const prompt = document.getElementById('promptInput').value;
+        if(!prompt) {
+            Swal.fire('Eksik Bilgi', 'Lütfen oluşturmak istediğiniz formu tarif edin.', 'warning');
+            return;
+        }
+
+        // UI Güncelle
+        document.getElementById('loadingOverlay').classList.remove('d-none');
+        document.getElementById('loadingOverlay').classList.add('d-flex');
+        
+        fetch('/ai/create-form', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': "{{ csrf_token() }}" // Güvenlik tokenı
+            },
+            body: JSON.stringify({ prompt: prompt })
+        })
+        .then(response => {
+            if (!response.ok) throw new Error("Sunucu Hatası");
+            return response.text(); // HTML döner
+        })
+        .then(html => {
+            const preview = document.getElementById('previewArea');
+            // Kart içine alarak gösterelim
+            preview.innerHTML = `<div class="card w-100 border shadow-sm"><div class="card-body p-4">${html}</div></div>`;
+            preview.classList.remove('align-items-center', 'justify-content-center'); // Ortalamayı kaldır
+            
+            // Kopyala butonunu göster
+            document.getElementById('btnCopy').style.display = 'block';
+            
+            // Eğer FormBuilder scriptleri gerekiyorsa yeniden tetikle
+            if(window.FormBuilderValidation) FormBuilderValidation.init();
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Form Hazır!',
+                text: 'Yapay zeka formunuzu başarıyla oluşturdu.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            Swal.fire('Hata', 'Form oluşturulurken bir sorun oluştu.Lütfen tekrar deneyin.', 'error');
+        })
+        .finally(() => {
+            document.getElementById('loadingOverlay').classList.add('d-none');
+            document.getElementById('loadingOverlay').classList.remove('d-flex');
+        });
+    }
+
+    function copyHTML() {
+        const html = document.getElementById('previewArea').innerHTML;
+        navigator.clipboard.writeText(html).then(() => {
+            const btn = document.getElementById('btnCopy');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Kopyalandı!';
+            btn.classList.replace('btn-outline-success', 'btn-success');
+            
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.classList.replace('btn-success', 'btn-outline-success');
+            }, 2000);
+        });
+    }
+</script>
+
+<style>
+    .cursor-pointer { cursor: pointer; }
+    .bg-gradient-primary {
+        background: linear-gradient(45deg, #4e73df, #224abe);
+    }
+</style>
+{% endblock %}

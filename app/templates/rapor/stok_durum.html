@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Stok Durum Raporu{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            {{ form.render()|safe }}
+        </div>
+    </div>
+
+    {% if sonuclar %}
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">Rapor Sonucu</h5>
+            <button class="btn btn-success btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> Yazdır</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Kod</th>
+                        <th>Ürün Adı</th>
+                        <th>Birim</th>
+                        <th class="text-end">Mevcut Miktar</th>
+                        <th class="text-end">Alış Fiyatı</th>
+                        <th class="text-end">Toplam Değer</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set ns = namespace(genel_toplam=0) %}
+                    {% for row in sonuclar %}
+                        {# --- DEĞİŞİKLİK BURADA: row.StokKart yerine row.stok --- #}
+                        {% set stok = row.stok %}
+                        {% set miktar = row.toplam_miktar %}
+                        {% set deger = miktar * (stok.alis_fiyati or 0) %}
+                        {% set ns.genel_toplam = ns.genel_toplam + deger %}
+                    <tr>
+                        <td>{{ stok.kod }}</td>
+                        <td>{{ stok.ad }}</td>
+                        <td>{{ stok.birim }}</td>
+                        <td class="text-end fw-bold {{ 'text-danger' if miktar <= stok.kritik_seviye else 'text-success' }}">
+                            {{ "{:,.2f}".format(miktar) }}
+                        </td>
+                        <td class="text-end">{{ "{:,.2f}".format(stok.alis_fiyati) }} ₺</td>
+                        <td class="text-end">{{ "{:,.2f}".format(deger) }} ₺</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td colspan="5" class="text-end">GENEL TOPLAM STOK DEĞERİ:</td>
+                        <td class="text-end text-primary">{{ "{:,.2f}".format(ns.genel_toplam) }} ₺</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}{{ cari.unvan }} - Hesap Ekstresi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="fw-bold mb-0"><i class="bi bi-person-lines-fill me-2 text-primary"></i>{{ cari.unvan }}</h4>
+            <span class="badge bg-secondary">{{ cari.kod }}</span>
+            <span class="text-muted small ms-2"><i class="bi bi-geo-alt"></i> {{ cari.sehir.ad if cari.sehir else '-' }} / {{ cari.ilce.ad if cari.ilce else '-' }}</span>
+        </div>
+        <div class="text-end">
+            <div class="p-2 border rounded bg-light d-inline-block text-center me-2">
+                <small class="d-block text-muted">TOPLAM BORÇ</small>
+                <span class="fw-bold text-danger">{{ "{:,.2f}".format(cari.borc_bakiye or 0) }} ₺</span>
+            </div>
+            <div class="p-2 border rounded bg-light d-inline-block text-center me-2">
+                <small class="d-block text-muted">TOPLAM ALACAK</small>
+                <span class="fw-bold text-success">{{ "{:,.2f}".format(cari.alacak_bakiye or 0) }} ₺</span>
+            </div>
+            <div class="p-2 border rounded bg-dark text-white d-inline-block text-center">
+                <small class="d-block opacity-75">NET BAKİYE</small>
+                <span class="fw-bold">{{ "{:,.2f}".format(cari.net_bakiye or 0) }} ₺</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3">
+            <h6 class="mb-0 fw-bold"><i class="bi bi-activity me-2"></i>Hesap Hareketleri (Muhasebe Entegre)</h6>
+        </div>
+        <div class="table-responsive">
+            <div class="card shadow mt-4">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Hesap Hareketleri (Ekstre)</h5>
+        <div>
+            <span class="badge bg-secondary me-2">Toplam İşlem: {{ hareketler|length }}</span>
+            <button onclick="window.print()" class="btn btn-sm btn-outline-dark"><i class="bi bi-printer"></i> Yazdır</button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width: 100px;">Tarih</th>
+                        <th style="width: 120px;">Belge No</th>
+                        <th style="width: 100px;">Tür</th>
+                        <th>Açıklama</th>
+                        <th class="text-end" style="width: 130px;">Borç</th>
+                        <th class="text-end" style="width: 130px;">Alacak</th>
+                        <th class="text-end" style="width: 130px;">Bakiye</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in hareketler %}
+                    <tr>
+                        <td>{{ h.tarih.strftime('%d.%m.%Y') }}</td>
+                        <td class="fw-bold text-secondary">{{ h.belge_no }}</td>
+                        <td>
+                            <span class="badge bg-light text-dark border">
+                                {{ h.islem_turu.value if h.islem_turu.value is defined else h.islem_turu }}
+                            </span>
+                        </td>
+                        <td>{{ h.aciklama }}</td>
+                        
+                        <td class="text-end {{ 'fw-bold text-dark' if h.borc > 0 else 'text-muted' }}">
+                            {{ "{:,.2f}".format(h.borc) if h.borc > 0 else '-' }}
+                        </td>
+                        
+                        <td class="text-end {{ 'fw-bold text-dark' if h.alacak > 0 else 'text-muted' }}">
+                            {{ "{:,.2f}".format(h.alacak) if h.alacak > 0 else '-' }}
+                        </td>
+                        
+                        <td class="text-end fw-bold">
+                            {% if h.bakiye > 0 %}
+                                <span class="text-danger">{{ "{:,.2f}".format(h.bakiye) }} (B)</span>
+                            {% elif h.bakiye < 0 %}
+                                <span class="text-success">{{ "{:,.2f}".format(h.bakiye|abs) }} (A)</span>
+                            {% else %}
+                                <span class="text-muted">0,00</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            Henüz kayıtlı hareket yok.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold" style="border-top: 2px solid #333;">
+                    <tr>
+                        <td colspan="4" class="text-end">GENEL TOPLAM:</td>
+                        <td class="text-end">{{ "{:,.2f}".format(toplam_borc) }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(toplam_alacak) }}</td>
+                        <td class="text-end">
+                            {% if genel_bakiye > 0 %}
+                                <span class="text-danger">{{ "{:,.2f}".format(genel_bakiye) }} (B)</span>
+                            {% elif genel_bakiye < 0 %}
+                                <span class="text-success">{{ "{:,.2f}".format(genel_bakiye|abs) }} (A)</span>
+                            {% else %}
+                                0,00
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+        </div>
+    </div>
+    
+    <div class="d-flex justify-content-end mt-3">
+        <a href="{{ url_for('cari.index') }}" class="btn btn-outline-secondary me-2">Listeye Dön</a>
+        <button onclick="window.print()" class="btn btn-primary"><i class="bi bi-printer me-2"></i>Yazdır</button>
+    </div>
+
+</div>
+{% endblock %}

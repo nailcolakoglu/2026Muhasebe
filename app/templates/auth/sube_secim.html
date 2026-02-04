@@ -1,0 +1,22 @@
+{% extends "base_auth.html" %} {% block title %}Şube Seçimi{% endblock %}
+
+{% block content %}
+<div class="card shadow-lg border-0 rounded-lg mt-5">
+    <div class="card-header"><h3 class="text-center font-weight-light my-4">Çalışma Alanı Seçiniz</h3></div>
+    <div class="card-body">
+        <p class="text-center text-muted mb-4">Birden fazla şubede yetkiniz var.Lütfen işlem yapmak istediğiniz şubeyi seçiniz.</p>
+        
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="d-grid gap-3">
+                {% for sube in subeler %}
+                <button type="submit" name="sube_id" value="{{ sube.id }}" class="btn btn-outline-primary btn-lg text-start">
+                    <i class="bi bi-building me-2"></i> {{ sube.ad }}
+                    <small class="d-block text-muted ms-4" style="font-size: 0.7rem;">{{ sube.sehir }}</small>
+                </button>
+                {% endfor %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

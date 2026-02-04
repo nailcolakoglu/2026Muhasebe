@@ -1,0 +1,284 @@
+Aşağıda, DevExpress'teki "Calc Edit" (hesap makinesi editörü) benzeri bir CALC field tipi ekledim.
+Tıklayınca popup açılır, hesap yapar, sonucu alana yazar.
+Tüm stil ve davranışlar Delphi / DevExpress hesap makinesine çok yakın.
+
+📌 1) FieldTypes Enum’a yeni değer
+
+# field_types.py içine
+class FieldType(Enum):
+    # ... diğerleri ...
+    CALC = "calc"          # 🆕 Hesap makinesi editörü
+
+
+📌 2) FormField içine _render_calc metodu
+
+# form_field.py içine (FormField sınıfı içine)
+
+    def _render_calc(self):
+        """DevExpress tarzı popup hesap makinesi"""
+        calc_id = f"calc_{self.name}"
+        btn_id = f"calc_btn_{self.name}"
+        display_id = f"calc_display_{self.name}"
+
+        # Mevcut değeri al (sayısal)
+        current_val = str(self.value or "0").replace(",", ".")
+        if not self._is_float(current_val):
+            current_val = "0"
+
+        # HTML
+        html = f"""
+        <div class="calc-container" data-field="{self.name}">
+            <div class="input-group">
+                <input type="text" name="{self.name}" id="{self.name}"
+                       class="{self.get_css_classes()} calc-input"
+                       value="{current_val.replace('.', ',')}" 
+                       readonly
+                       {self.get_html_attributes_string()}>
+                <button class="btn btn-outline-secondary calc-opener" type="button"
+                        id="{btn_id}" data-calc-id="{calc_id}">
+                    <i class="fas fa-calculator"></i>
+                </button>
+            </div>
+
+            <!-- Popup Hesap Makinesi -->
+            <div class="calc-popup shadow-lg" id="{calc_id}" style="display:none;">
+                <div class="calc-header">
+                    <span>Hesap Makinesi</span>
+                    <button type="button" class="btn-close calc-close" aria-label="Kapat"></button>
+                </div>
+                <div class="calc-body">
+                    <input type="text" class="calc-display form-control text-end" id="{display_id}"
+                           value="{current_val.replace('.', ',')}" readonly>
+                    <div class="calc-buttons">
+                        <button type="button" data-key="C" class="btn btn-danger">C</button>
+                        <button type="button" data-key="CE" class="btn btn-warning">CE</button>
+                        <button type="button" data-key="back" class="btn btn-secondary">←</button>
+                        <button type="button" data-key="/" class="btn btn-primary">÷</button>
+
+                        <button type="button" data-key="7">7</button>
+                        <button type="button" data-key="8">8</button>
+                        <button type="button" data-key="9">9</button>
+                        <button type="button" data-key="*" class="btn btn-primary">×</button>
+
+                        <button type="button" data-key="4">4</button>
+                        <button type="button" data-key="5">5</button>
+                        <button type="button" data-key="6">6</button>
+                        <button type="button" data-key="-" class="btn btn-primary">−</button>
+
+                        <button type="button" data-key="1">1</button>
+                        <button type="button" data-key="2">2</button>
+                        <button type="button" data-key="3">3</button>
+                        <button type="button" data-key="+" class="btn btn-primary">+</button>
+
+                        <button type="button" data-key="0" class="zero">0</button>
+                        <button type="button" data-key=".">,</button>
+                        <button type="button" data-key="=" class="btn btn-success">=</button>
+                    </div>
+                </div>
+                <div class="calc-footer">
+                    <button type="button" class="btn btn-sm btn-success calc-apply">
+                        <i class="fas fa-check me-1"></i>Uygula
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary calc-cancel">
+                        İptal
+                    </button>
+                </div>
+            </div>
+        </div>
+        """
+
+        # JS & CSS ekleyelim (tek seferlik)
+        self._ensure_calc_assets()
+        return html
+
+    # ---------- yardımcılar ----------
+    def _is_float(self, s):
+        try:
+            float(s.replace(",", "."))
+            return True
+        except:
+            return False
+
+    def _ensure_calc_assets(self):
+        """CSS ve JS’i sadece 1 kere ekle"""
+        if getattr(FormField, '_calc_assets_added', False):
+            return
+        FormField._calc_assets_added = True
+
+
+📌 3) CSS – DevExpress görünümü
+
+/* form-builder.css içine ekle */
+.calc-container { position: relative; }
+
+.calc-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1055;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  width: 260px;
+  margin-top: 4px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.calc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  font-weight: 600;
+}
+
+.calc-body { padding: 12px; }
+
+.calc-display {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  background: #e9ecef;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+}
+
+.calc-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.calc-buttons button {
+  padding: 12px 0;
+  font-size: 1.1rem;
+  border: 1px solid #dee2e6;
+  background: #fff;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.calc-buttons button:hover {
+  background: #f1f3f5;
+}
+
+.calc-buttons button.zero { grid-column: span 2; }
+
+.calc-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid #dee2e6;
+}
+
+
+📌 4) JavaScript – Hesap & popup yönetimi
+
+/* form-builder.js içine ekle */
+function initCalcFields() {
+  debugOutput('Initializing Calc fields...');
+
+  // Popup aç/kapat
+  $(document).off('click.calc').on('click.calc', '.calc-opener', function () {
+    const calcId = $(this).data('calc-id');
+    $('.calc-popup').hide(); // diğerlerini kapat
+    $(`#${calcId}`).fadeIn(150);
+  });
+
+  $(document).off('click.calcClose').on('click.calc', '.calc-close, .calc-cancel', function () {
+    $(this).closest('.calc-popup').fadeOut(150);
+  });
+
+  // Tuşlar
+  $(document).off('click.calcKey').on('click.calc', '.calc-buttons button', function () {
+    const $btn = $(this);
+    const key = $btn.data('key');
+    const $popup = $btn.closest('.calc-popup');
+    const $display = $popup.find('.calc-display');
+    let val = $display.val().replace(',', '.');
+
+    if (key === 'C') { $display.val('0'); return; }
+    if (key === 'CE') { $display.val('0'); return; }
+    if (key === 'back') {
+      $display.val(val.length > 1 ? val.slice(0, -1).replace('.', ',') : '0');
+      return;
+    }
+    if (key === '=') {
+      try {
+        // eslint-disable-next-line no-eval
+        const res = eval(val);
+        $display.val(parseFloat(res.toFixed(10)).toString().replace('.', ','));
+      } catch (e) {
+        $display.val('Hata');
+      }
+      return;
+    }
+    if (['+', '-', '*', '/'].includes(key)) {
+      // operatör
+      $display.val(val + key);
+      return;
+    }
+    // rakam veya nokta
+    if (val === '0' && key !== '.') val = '';
+    $display.val((val + key).replace('.', ','));
+  });
+
+  // Uygula butonu
+  $(document).off('click.calcApply').on('click.calc', '.calc-apply', function () {
+    const $popup = $(this).closest('.calc-popup');
+    const $container = $popup.closest('.calc-container');
+    const fieldName = $container.data('field');
+    const result = $popup.find('.calc-display').val().replace(',', '.');
+    $(`#${fieldName}`).val(result.replace('.', ','));
+    $popup.fadeOut(150);
+  });
+
+  // Dışarı tıklanınca kapat
+  $(document).on('click', function (e) {
+    if (!$(e.target).closest('.calc-popup, .calc-opener').length) {
+      $('.calc-popup').fadeOut(150);
+    }
+  });
+}
+
+
+
+*------
+
+Sonra init() fonksiyonuna çağır:
+
+
+*-------
+
+function init(){
+  // ... diğerleri ...
+  initCalcFields();   // 🆕
+  // ... diğerleri ...
+}
+
+
+
+📌 5) Kullanım – 1 satır
+
+field = FormField("unit_price", FieldType.CALC, "Birim Fiyat",
+                 required=True,
+                 currency_symbol="₺")
+
+
+veya hesap sonucunu başka alanda kullan:
+
+
+javascript
+// Örnek: Tutar = BirimFiyat * Miktar
+$(document).on('calcApplied', function (e, fieldName, result) {
+  if (fieldName === 'unit_price' || fieldName === 'quantity') {
+     const price = parseFloat($('#unit_price').val().replace(',', '.')) || 0;
+     const qty   = parseFloat($('#quantity').val()) || 0;
+     $('#total').val((price * qty).toFixed(2).replace('.', ','));
+  }
+});
+
+

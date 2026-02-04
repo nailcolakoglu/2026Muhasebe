@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}{{ grid.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold text-primary"><i class="fas fa-list me-2"></i>{{ grid.title }}</h4>
+        <a href="{{ create_url }}" class="btn btn-success shadow-sm">
+            <i class="fas fa-plus me-1"></i> Yeni Ekle
+        </a>
+    </div>
+
+    {{ grid.render('stok.muhasebe_gruplari') | safe }}
+    
+</div>
+{% endblock %}

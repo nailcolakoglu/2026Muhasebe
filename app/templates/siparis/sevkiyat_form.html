@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="flash-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>
+
+<div class="container mt-4">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-truck me-2"></i>Sipariş Sevkiyatı (İrsaliye) - {{ siparis.belge_no }}
+            </h5>
+            <span class="badge bg-white text-primary">{{ siparis.depo_id }} Nolu Depo</span>
+        </div>
+        <div class="card-body">
+            
+            <form id="sevkiyatForm">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Ürün</th>
+                                <th class="text-center">Sipariş Edilen</th>
+                                <th class="text-center">Daha Önce Sevk</th>
+                                <th class="text-center">Kalan (Bekleyen)</th>
+                                <th class="text-center" width="150">Şimdi Sevk Et</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for detay in siparis.detaylar %}
+                                {% set miktar = detay.miktar|float %}
+                                {% set teslim = detay.teslim_edilen_miktar|float %}
+                                {% set kalan = miktar - teslim %}
+                                
+                                {% if kalan > 0.001 %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ detay.stok.kod }}</strong><br>
+                                        <small class="text-muted">{{ detay.stok.ad }}</small>
+                                    </td>
+                                    <td class="text-center">{{ miktar }}</td>
+                                    <td class="text-center text-secondary">{{ teslim }}</td>
+                                    <td class="text-center text-danger fw-bold">{{ kalan }}</td>
+                                    <td>
+                                        <input type="hidden" name="detay_id[]" value="{{ detay.id }}">
+                                        <input type="number" step="0.01" min="0" max="{{ kalan }}" 
+                                               name="sevk_miktar[]" 
+                                               class="form-control text-center fw-bold border-primary" 
+                                               placeholder="0">
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <a href="{{ url_for('siparis.index') }}" class="btn btn-secondary">İptal</a>
+                    <button type="button" onclick="sevkiyatKaydet()" class="btn btn-primary">
+                        <i class="bi bi-save me-1"></i> Sevkiyatı Kaydet ve Stoktan Düş
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+</div>
+
+<script>
+// --- 1.ÖZEL FLASH MESAJ FONKSİYONU ---
+function showFlash(type, message) {
+    // type: 'success' (yeşil) veya 'danger' (kırmızı)
+    const container = document.getElementById('flash-container');
+    
+    // Benzersiz ID oluştur
+    const id = 'toast-' + Date.now();
+    
+    // HTML Oluştur (Bootstrap Alert kullanıyoruz)
+    const html = `
+        <div id="${id}" class="alert alert-${type} alert-dismissible fade show shadow-lg" role="alert" style="min-width: 300px;">
+            <strong>${type === 'success' ? 'Başarılı!' : 'Hata!'}</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <div class="progress mt-2" style="height: 3px;">
+                <div class="progress-bar bg-${type}" role="progressbar" style="width: 100%; transition: width 10s linear;"></div>
+            </div>
+        </div>
+    `;
+    
+    // Ekrana Bas
+    container.innerHTML += html; // Yeni mesajı ekle (eskiler kalsın istenirse)
+    // Veya container.innerHTML = html; // Sadece son mesajı göster
+
+    const toastElement = document.getElementById(id);
+    const progressBar = toastElement.querySelector('.progress-bar');
+    
+    // Progress Bar Animasyonu (Görsel süre sayacı)
+    setTimeout(() => {
+        progressBar.style.width = '0%';
+    }, 100);
+
+    // 10 Saniye Sonra Kaldır
+    setTimeout(() => {
+        // Bootstrap fade efektiyle kaldır
+        toastElement.classList.remove('show');
+        setTimeout(() => toastElement.remove(), 500); // Animasyon bitince DOM'dan sil
+    }, 10000); // 10000 ms = 10 saniye
+}
+
+// --- 2.KAYIT İŞLEMİ ---
+function sevkiyatKaydet() {
+    // Butonu devre dışı bırak (Çift tıklamayı önle)
+    const btn = document.querySelector('button[onclick="sevkiyatKaydet()"]');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> İşleniyor...';
+
+    $.post("{{ url_for('siparis.sevk_et', id=siparis.id) }}", $('#sevkiyatForm').serialize())
+        .done(function(res) {
+            if(res.success) {
+                showFlash('success', res.message);
+                // Başarılıysa yönlendir (Biraz bekletip mesajın görünmesini sağlayabiliriz)
+                setTimeout(() => {
+                    window.location.href = res.redirect;
+                }, 1500);
+            } else {
+                showFlash('danger', res.message);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        })
+        .fail(function(err) {
+            // Sunucudan dönen JSON hata mesajını al (Python'daki return ..., 400 mesajı)
+            let msg = "Sunucu hatası oluştu.";
+            if (err.responseJSON && err.responseJSON.message) {
+                msg = err.responseJSON.message;
+            } else if (err.responseText) {
+                 // Eğer JSON dönmezse text al (Hata ayıklama için)
+                 console.log(err.responseText);
+            }
+            
+            showFlash('danger', msg);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        });
+}
+</script>
+{% endblock %}

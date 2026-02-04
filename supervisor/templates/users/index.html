@@ -1,0 +1,94 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Kullanıcılar{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">Kullanıcılar</h2>
+        <p class="text-muted mb-0">Tüm müşteri kullanıcılarının yönetimi</p>
+    </div>
+    <a href="{{ url_for('users.new') }}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Yeni Kullanıcı
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light">
+                    <tr>
+                        <th class="ps-4">Kullanıcı</th>
+                        <th>İletişim</th>
+                        <th>Yetkili Olduğu Firmalar</th> <th>Durum</th>
+                        <th class="text-end pe-4">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td class="ps-4">
+                            <div class="d-flex align-items-center">
+                                <div class="avatar-initials bg-light text-primary rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px; font-weight: bold;">
+                                    {{ user.full_name[0]|upper }}
+                                </div>
+                                <div>
+                                    <div class="fw-bold">{{ user.full_name }}</div>
+                                    <small class="text-muted">Kayıt: {{ user.created_at.strftime('%d.%m.%Y') }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="small">{{ user.email }}</div>
+                        </td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for role in user.tenant_roles %}
+                                <span class="badge bg-white text-secondary border fw-normal" title="Rol: {{ role.role_display }}">
+                                    <i class="bi bi-building me-1 text-primary"></i>
+                                    {{ role.tenant.unvan|truncate(20) }}
+                                    <span class="fw-bold text-dark ms-1">({{ role.role_display }})</span>
+                                </span>
+                                {% else %}
+                                <span class="text-muted small fs-italic">Yetki atanmamış</span>
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Aktif</span>
+                            {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">Pasif</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="btn-group">
+                                <a href="{{ url_for('users.edit', user_id=user.id) }}" class="btn btn-sm btn-outline-primary" title="Detay ve Yetkiler">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <a href="{{ url_for('users.delete', user_id=user.id) }}" 
+                                   class="btn btn-sm btn-outline-danger" 
+                                   onclick="return confirm('DİKKAT: Bu kullanıcıyı ve TÜM firmalardaki yetkilerini silmek üzeresiniz. Emin misiniz?');"
+                                   title="Komple Sil">
+                                    <i class="bi bi-trash"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5 text-muted">
+                            <i class="bi bi-people display-4 d-block mb-3"></i>
+                            Henüz kayıtlı kullanıcı bulunmuyor.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

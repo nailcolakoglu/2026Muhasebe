@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Rapor Merkezi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold"><i class="bi bi-graph-up me-2"></i>Rapor Merkezi</h3>
+    </div>
+
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card border-0 shadow-lg" style="background: linear-gradient(to right, #141e30, #243b55);">
+                <div class="card-body p-4 text-white">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                        <div>
+                            <h2 class="fw-bold mb-1">
+                                <i class="bi bi-robot me-2 text-info"></i>Günaydın, {{ current_user.ad_soyad }}
+                            </h2>
+                            <p class="text-white-50 mb-0">Yapay Zeka destekli günlük şirket özetiniz hazır.</p>
+                        </div>
+                        <div>
+                            <a href="{{ url_for('rapor.ai_ayarlari') }}" class="btn btn-outline-light btn-sm me-2">
+                                <i class="bi bi-sliders"></i> Kriter Ayarları
+                            </a>
+                            <a href="{{ url_for('rapor.gecmis_raporlar') }}" class="btn btn-outline-light btn-sm me-2">
+                                <i class="bi bi-clock-history"></i> Arşiv
+                            </a>
+                            <button onclick="brifingGetir()" class="btn btn-info fw-bold text-dark shadow">
+                                <i class="bi bi-lightning-charge-fill me-1"></i> Analizi Çalıştır
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="ceoRaporAlani" class="mt-4 d-none bg-white text-dark p-4 rounded shadow-sm animate__animated animate__fadeIn">
+                        </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h5 class="mb-3 text-muted border-bottom pb-2 mt-5">Resmi Defterler & Muhasebe</h5>
+    <div class="row g-4">
+        
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 hover-shadow transition-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-box bg-info bg-opacity-10 text-info mb-3 mx-auto rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                        <i class="bi bi-journal-bookmark-fill fs-2"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Yevmiye Defteri</h5>
+                    <p class="card-text text-muted small">Günlük fiş kayıtları, madde numaraları ve nakli yekün dökümü.</p>
+                    <a href="{{ url_for('rapor.yevmiye_defteri') }}" class="btn btn-outline-info text-dark stretched-link btn-sm">Defteri Aç</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 hover-shadow transition-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-box bg-primary bg-opacity-10 text-primary mb-3 mx-auto rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                        <i class="bi bi-book-half fs-2"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Büyük Defter</h5>
+                    <p class="card-text text-muted small">Hesap bazlı muavin dökümleri ve defter-i kebir kayıtları.</p>
+                    <button class="btn btn-sm btn-outline-secondary disabled">Yakında</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 hover-shadow transition-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-box bg-danger bg-opacity-10 text-danger mb-3 mx-auto rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                        <i class="bi bi-calculator fs-2"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Genel Mizan</h5>
+                    <p class="card-text text-muted small">Hesapların borç/alacak bakiyeleri ve kümülatif toplamlar.</p>
+                    <a href="{{ url_for('muhasebe.mizan') }}" class="btn btn-outline-danger stretched-link btn-sm">Görüntüle</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+
+    <h5 class="mb-3 text-muted border-bottom pb-2">Genel Raporlar</h5>
+    <div class="row g-4">
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 hover-shadow transition-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-box bg-primary bg-opacity-10 text-primary mb-3 mx-auto rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                        <i class="bi bi-box-seam fs-2"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Stok Durum</h5>
+                    <p class="card-text text-muted small">Depo envanteri, maliyetler ve toplam stok değeri.</p>
+                    <a href="{{ url_for('rapor.stok_durum') }}" class="btn btn-outline-primary stretched-link btn-sm">Görüntüle</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 hover-shadow transition-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-box bg-success bg-opacity-10 text-success mb-3 mx-auto rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                        <i class="bi bi-file-earmark-spreadsheet fs-2"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Cari Ekstre</h5>
+                    <p class="card-text text-muted small">Borç/alacak hareketleri ve detaylı hesap dökümü.</p>
+                    <a href="{{ url_for('rapor.cari_ekstre') }}" class="btn btn-outline-success stretched-link btn-sm">Görüntüle</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 hover-shadow transition-card">
+                <div class="card-body text-center p-4">
+                    <div class="icon-box bg-warning bg-opacity-10 text-warning mb-3 mx-auto rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                        <i class="bi bi-person-lines-fill fs-2"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Plasiyer Analizi</h5>
+                    <p class="card-text text-muted small">Personel sipariş, tahsilat ve satış performansı.</p>
+                    <a href="{{ url_for('rapor.plasiyer_performans') }}" class="btn btn-outline-warning text-dark stretched-link btn-sm">Görüntüle</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 bg-light opacity-75">
+                <div class="card-body text-center p-4">
+                    <div class="icon-box bg-secondary bg-opacity-10 text-secondary mb-3 mx-auto rounded-circle d-flex align-items-center justify-content-center" style="width: 64px; height: 64px;">
+                        <i class="bi bi-pie-chart fs-2"></i>
+                    </div>
+                    <h5 class="card-title fw-bold text-muted">Gelişmiş Satış</h5>
+                    <p class="card-text text-muted small">Detaylı grafikler ve trend analizleri (Yakında).</p>
+                    <button class="btn btn-secondary btn-sm disabled">Yakında</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .hover-shadow:hover { transform: translateY(-5px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+    .transition-card { transition: all 0.3s ease; }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function brifingGetir() {
+    // UI Güncelleme (Yükleniyor...)
+    $('#ceoRaporAlani').removeClass('d-none').html(`
+        <div class="text-center py-4">
+            <div class="spinner-border text-info" role="status" style="width: 3rem; height: 3rem;"></div>
+            <h5 class="mt-3 animate__animated animate__pulse animate__infinite">Yapay Zeka Verileri Analiz Ediyor...</h5>
+            <p class="text-muted">Stok, Finans ve Risk modülleri taranıyor...</p>
+        </div>
+    `);
+    
+    // API İsteği
+    $.ajax({
+        url: '/rapor/api/ceo-brifing-olustur',
+        method: 'POST',
+        success: function(res) {
+            if(res.success) {
+                // AI'dan gelen HTML içeriğini animasyonla göster
+                $('#ceoRaporAlani').hide().html(res.report).fadeIn(800);
+            } else {
+                // Hata mesajı
+                $('#ceoRaporAlani').html(`
+                    <div class="alert alert-danger d-flex align-items-center">
+                        <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+                        <div>
+                            <strong>Hata:</strong> ${res.message}
+                        </div>
+                    </div>
+                `);
+            }
+        },
+        error: function() {
+            // Sunucu hatası
+            $('#ceoRaporAlani').html(`
+                <div class="alert alert-danger">
+                    <strong>Sunucu Hatası:</strong> Analiz servisine ulaşılamadı.
+                </div>
+            `);
+        }
+    });
+}
+</script>
+{% endblock %}

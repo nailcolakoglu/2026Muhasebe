@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Yevmiye Defteri{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow-lg border-0 rounded-3">
+                <div class="card-header bg-white border-0 pt-4 pb-0 text-center">
+                    <div class="icon-box bg-primary bg-opacity-10 text-primary d-inline-flex align-items-center justify-content-center rounded-circle mb-3" style="width: 60px; height: 60px;">
+                        <i class="bi bi-journal-bookmark-fill fs-2"></i>
+                    </div>
+                    </div>
+                
+                <div class="card-body p-4">
+                    {{ form.render()|safe }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+
+<script>
+    $(document).ready(function() {
+        // Tarih alanlarını yan yana getirmek için row sınıfı ekleyelim
+        // FormBuilder elemanları alt alta basıyor, bunları CSS ile hizalayalım
+        
+        // Form submit olduğunda yeni sekmede açılması için (Rapor olduğu için)
+        $('form[name="frm_yevmiye_filter"]').attr('target', '_blank');
+        
+        // İki tarih alanını yan yana almak için (DOM Manipülasyonu)
+        // container_baslangic ve container_bitis ID'li divleri bulup bir row içine alabiliriz
+        // Ama FormField tanımında column_class="col-md-6" verdik.
+        // Sadece kapsayıcı bir .row div'ine ihtiyaçları var.
+        
+        var $dates = $('#container_baslangic, #container_bitis');
+        if ($dates.length === 2) {
+            $dates.wrapAll('<div class="row g-3"></div>');
+        }
+    });
+</script>
+{% endblock %}

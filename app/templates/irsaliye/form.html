@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}{{ form.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-12 col-xl-11">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3 class="m-0 fw-bold text-secondary">
+                    <button onclick="history.back()" class="btn btn-light btn-sm me-2 rounded-circle">
+                        <i class="bi bi-arrow-left"></i>
+                    </button>
+                    {{ form.title }}
+                </h3>
+                
+                <div class="d-flex gap-2">
+                    <button type="button" onclick="aiAnalizBaslat()" class="btn btn-warning text-white shadow-sm">
+                        <i class="bi bi-magic me-1"></i> AI Analiz
+                    </button>
+
+                    {% if request.endpoint.endswith('duzenle') %}
+                        <button type="button" onclick="eIrsaliyeGonder()" class="btn btn-success shadow-sm">
+                            <i class="bi bi-cloud-upload me-1"></i> GİB'e Gönder
+                        </button>
+                        
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                <i class="bi bi-printer"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="{{ url_for('rapor.calistir', tur='irsaliye', id=form.instance_id, format='html') }}" target="_blank">Önizle</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('rapor.calistir', tur='irsaliye', id=form.instance_id, format='pdf') }}">PDF İndir</a></li>
+                            </ul>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    {{ form.render()|safe }}
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="aiModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title"><i class="bi bi-robot me-2"></i>Yapay Zeka Analizi</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="aiResultContent" class="text-center py-4">
+                    <div class="spinner-border text-warning" role="status"></div>
+                    <p class="mt-2 text-muted">İrsaliye verileri analiz ediliyor...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    /**
+     * AI Analiz Fonksiyonu
+     * Form verilerini toplar ve backend'e gönderir.
+     */
+    function aiAnalizBaslat() {
+        // 1.Modalı Aç
+        var aiModal = new bootstrap.Modal(document.getElementById('aiModal'));
+        aiModal.show();
+        
+        // 2.Form Verilerini Topla (Master-Detail Dahil)
+        var formData = {};
+        
+        // Basit alanlar
+        $('input, select, textarea').each(function(){
+            if(this.name) formData[this.name] = $(this).val();
+        });
+        
+        // Kalemleri Topla (Basit yöntem)
+        formData['kalemler'] = [];
+        $('#kalemler_table tbody tr').each(function(){
+            var miktar = $(this).find('input[name="kalemler_miktar[]"]').val();
+            if(miktar) {
+                formData['kalemler'].push({ 'miktar': parseFloat(miktar) });
+            }
+        });
+        console.log(miktar);
+        // 3.API'ye Gönder
+        $.ajax({
+            url: '/irsaliye/api/ai-analiz',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(res) {
+                if(res.success) {
+                    renderAIResult(res.analiz);
+                } else {
+                    $('#aiResultContent').html('<div class="alert alert-danger">Analiz hatası oluştu.</div>');
+                }
+            },
+            error: function() {
+                $('#aiResultContent').html('<div class="alert alert-danger">Sunucuya ulaşılamadı.</div>');
+            }
+        });
+    }
+
+    function renderAIResult(data) {
+        var html = `
+            <div class="d-flex justify-content-between mb-3">
+                <div class="card bg-light p-3 flex-fill me-2">
+                    <small>Risk Skoru</small>
+                    <h3 class="${data.risk_skoru === 'Yüksek' ? 'text-danger' : 'text-success'}">${data.risk_skoru}</h3>
+                </div>
+            </div>
+            <h6 class="border-bottom pb-2">Öneriler</h6>
+            <ul class="list-group list-group-flush text-start">
+        `;
+        
+        data.oneriler.forEach(function(item){
+            html += `<li class="list-group-item"><i class="bi bi-lightbulb text-warning me-2"></i>${item}</li>`;
+        });
+        
+        html += '</ul>';
+        $('#aiResultContent').html(html);
+    }
+
+    /**
+     * E-İrsaliye Gönderim
+     */
+    function eIrsaliyeGonder() {
+        if(!confirm("Bu irsaliye GİB'e iletilecek.Emin misiniz?")) return;
+        
+        // Backend route'u henüz eklemedik ama hazır olsun
+        // $.post(...)
+        Swal.fire("Bilgi", "E-İrsaliye gönderim servisi hazırlanıyor...", "info");
+    }
+</script>
+{% endblock %}

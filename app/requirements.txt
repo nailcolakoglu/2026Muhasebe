@@ -1,0 +1,34 @@
+# requirements.txt
+
+# Core
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1  # ⬅️ Güncellendi
+Flask-Migrate==4.0.5
+Flask-Login==0.6.3
+Flask-Babel==4.0.0
+Flask-WTF==1.2.1
+
+# Zamanlı Yedekleme İçin
+Flask-APScheduler-1.13.1
+
+
+# Database
+SQLAlchemy==2.0.23
+firebird-driver==1.10.6
+
+
+# Security
+Werkzeug==3.0.1
+WTForms==3.1.1
+
+# Utilities
+python-dotenv==1.0.0
+click==8.1.7
+
+# Optional (eğer kullanıyorsanız)
+# Flask-Caching==2.1.0
+# Flask-Limiter==3.5.0 
+
+
+# Şifreleme
+cryptography==41.0.7

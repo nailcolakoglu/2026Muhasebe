@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Cari Hesaplar{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><i class="bi bi-people me-2"></i>Cari Hesaplar</h3>
+        <a href="{{ url_for('cari.ekle') }}" class="btn btn-primary">
+            <i class="bi bi-person-plus me-2"></i> Yeni Cari
+        </a>
+    </div>
+    {{ grid.render('cari.index')|safe }}
+</div>
+{% endblock %}

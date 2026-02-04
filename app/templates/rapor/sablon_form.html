@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Şablon Düzenle{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold"><i class="bi bi-palette me-2"></i>Tasarım Editörü</h5>
+                    
+                    <div>
+                        {% if sablon %}
+                        <a href="{{ url_for('rapor.sablon_onizle', id=sablon.id) }}" target="_blank" class="btn btn-warning btn-sm me-2">
+                            <i class="bi bi-eye"></i> Canlı Önizle
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('rapor.sablonlar') }}" class="btn btn-outline-secondary btn-sm">Listeye Dön</a>
+                    </div>
+                </div>
+                <div class="card-body p-4">
+                    {{ form.render()|safe }}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 bg-light">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="bi bi-magic me-2"></i>Değişken Rehberi</h6>
+                </div>
+                <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                    <p class="small text-muted">Aşağıdaki kodları kopyalayıp tasarıma yapıştırabilirsiniz:</p>
+                    
+                    <div class="accordion" id="rehberAccordion">
+                        
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#accFirma">
+                                    🏢 Firma Bilgileri
+                                </button>
+                            </h2>
+                            <div id="accFirma" class="accordion-collapse collapse show" data-bs-parent="#rehberAccordion">
+                                <div class="accordion-body p-2">
+                                    <ul class="list-group list-group-flush small">
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Firma Adı</span> <code>{{ firma.unvan }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Adres</span> <code>{{ firma.adres }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Telefon</span> <code>{{ firma.telefon }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Vergi No</span> <code>{{ firma.vergi_no }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Logo (URL)</span> <code>{{ firma.logo_url }}</code>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accBelge">
+                                    📄 Belge Verileri
+                                </button>
+                            </h2>
+                            <div id="accBelge" class="accordion-collapse collapse" data-bs-parent="#rehberAccordion">
+                                <div class="accordion-body p-2">
+                                    <ul class="list-group list-group-flush small">
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Belge No</span> <code>{{ belge.belge_no }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Tarih</span> <code>{{ belge.tarih }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Genel Toplam</span> <code>{{ belge.genel_toplam }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Yazıyla</span> <code>{{ belge.genel_toplam | yaziyla }}</code>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                         <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accCari">
+                                    👤 Müşteri (Cari)
+                                </button>
+                            </h2>
+                            <div id="accCari" class="accordion-collapse collapse" data-bs-parent="#rehberAccordion">
+                                <div class="accordion-body p-2">
+                                    <ul class="list-group list-group-flush small">
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Müşteri Adı</span> <code>{{ belge.cari.unvan }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Adres</span> <code>{{ belge.cari.adres }}</code>
+                                        </li>
+                                        <li class="list-group-item d-flex justify-content-between">
+                                            <span>Vergi Dairesi</span> <code>{{ belge.cari.vergi_dairesi }}</code>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+<script>
+    // İstenirse buraya basit bir kod renklendirme (Highlight.js) veya editör eklenebilir.
+    // Şimdilik textarea'nın fontunu monospace yaptık, iş görür.
+</script>
+{% endblock %}

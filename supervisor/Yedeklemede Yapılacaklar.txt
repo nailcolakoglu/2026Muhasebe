@@ -1,0 +1,7 @@
+Bileşen	Durum	Profesyonel Yorum
+Lisanslama Motoru	✅ Tamamlandı	RSA şifreleme ve Donanım Kilidi (HWID) entegre edildi. Sektör standardında bir güvenlik.
+Enforcement (Zorlama)	✅ Tamamlandı	App tarafında kullanıcı/şube limitlerini aşmayı engelleyen "Bekçi (Decorator)" yapısı kuruldu.
+Yerel Yedekleme	⚠️ Kısmen Var	Firebird gbak ile yedek alabiliyoruz ama sadece yerel diske. Fidye yazılımlarına (Ransomware) karşı savunmasız.
+Immutable Backup	❌ Eksik	Yedek dosyası alındıktan sonra silinemez/değiştirilemez (WORM - Write Once Read Many) formatında kilitlenmiyor.
+Bulut Yedekleme	❌ Eksik	Yedekler sadece sunucuda duruyor. Sunucu diski bozulursa veya yangın çıkarsa veri kaybı %100.
+Yedek Doğrulama	❌ Eksik	"Yedek alındı" diyoruz ama o yedek dosyasının bozuk olup olmadığını (Restore Test) otomatik kontrol etmiyoruz.

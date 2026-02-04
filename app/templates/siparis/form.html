@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">{{ form.title }}</h5>
+            <a href="{{ url_for('siparis.index') }}" class="btn btn-outline-secondary btn-sm">Listeye Dön</a>
+        </div>
+        <div class="card-body p-4">
+            {{ form.render()|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    
+    // =========================================================
+    // 1.YARDIMCI FONKSİYONLAR
+    // =========================================================
+function parseLocaleNumber(stringNumber) {
+        if (stringNumber === undefined || stringNumber === null || stringNumber === '') return 0;
+        
+        // Zaten sayıysa direkt döndür
+        if (typeof stringNumber === 'number') return stringNumber;
+        
+        let str = stringNumber.toString();
+
+        // SENARYO A: TR Formatı (Virgül içeriyor) -> "1,5" veya "1.000,50"
+        if (str.includes(',')) {
+            // Noktaları (binlik) sil, Virgülü noktaya (ondalık) çevir
+            return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+        }
+
+        // SENARYO B: Standart Float (Sadece nokta var) -> "1.5" veya "1000.50"
+        // Eski kod burada noktayı sildiği için 1.0 -> 10 oluyordu.ARTIK SİLMİYORUZ.
+        if (str.includes('.')) {
+            return parseFloat(str) || 0;
+        }
+
+        // SENARYO C: Düz Tamsayı -> "10"
+        return parseFloat(str) || 0;
+    }
+
+    // =========================================================
+    // 2.MERKEZİ FİYAT GÜNCELLEME MOTORU
+    // =========================================================
+    function satirGuncelle($row) {
+        if (!$row || $row.length === 0) return;
+
+        var stokSelect = $row.find('select[name$="_stok_id[]"]');
+        var stokId = stokSelect.val();
+        if (!stokId) return;
+
+        var cariId = $('select[name="cari_id"]').val();
+        var kurDegeri = parseLocaleNumber($('input[name="doviz_kuru"]').val()) || 1;
+        var fiyatListesiId = $('select[name="fiyat_listesi_id"]').val() || 0;
+
+        // Görsel efekt
+        $row.css('opacity', '0.6');
+
+        var url = `/siparis/api/get-urun-detay?stok_id=${stokId}&cari_id=${cariId}&kur=${kurDegeri}&fiyat_listesi_id=${fiyatListesiId}`;
+
+        fetch(url)
+            .then(r => {
+                if (!r.ok) throw new Error("Sunucu Hatası: " + r.status);
+                return r.json();
+            })
+            .then(data => {
+                if(data.fiyat !== undefined) {
+                    console.log(`Veri Geldi: ${data.stok_kodu} | Fiyat: ${data.fiyat} | Kaynak: ${data.debug_kaynak}`);
+
+                    // 1.Birim Güncelle
+                    var birimSelect = $row.find('select[name$="_birim[]"]');
+                    if(data.birim && birimSelect.length && birimSelect.val() !== data.birim) {
+                        birimSelect.val(data.birim).trigger('change');
+                    }
+
+                    // 2.Fiyat ve KDV Güncelle
+                    var fiyatInput = $row.find('input[name$="_birim_fiyat[]"]');
+                    var kdvInput = $row.find('input[name$="_kdv_orani[]"]');
+                    var iskontoInput = $row.find('input[name$="_iskonto_orani[]"]');
+
+                    // Input değerini güncelle (TR Formatında)
+                    fiyatInput.val(data.fiyat.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                    kdvInput.val(data.kdv_orani);
+                    iskontoInput.val(data.iskonto_orani);
+                    console.log(data);
+                    // 3.Hesaplamayı Tetikle (Manuel)
+                    hesapla($row[0]);
+                }
+            })
+            .catch(err => {
+                console.error("API Hatası:", err);
+            })
+            .finally(() => {
+                $row.css('opacity', '1');
+            });
+    }
+
+    // --- GÜVENLİ HESAPLAMA FONKSİYONU ---
+    function hesapla(row) {
+        if (!row) return;
+
+        // Değişkenleri güvenli tanımla
+        let tutarInput = row.querySelector('input[name$="_tutar[]"]');
+        if (!tutarInput) return; // Input yoksa çık
+
+        let miktar = parseLocaleNumber(row.querySelector('input[name$="_miktar[]"]').value);
+        let fiyat = parseLocaleNumber(row.querySelector('input[name$="_birim_fiyat[]"]').value);
+        let iskonto = parseLocaleNumber(row.querySelector('input[name$="_iskonto_orani[]"]').value);
+        let kdv = parseLocaleNumber(row.querySelector('input[name$="_kdv_orani[]"]').value);
+
+        // Hesaplama
+        let brut = miktar * fiyat;
+        let iskontoTutari = brut * (iskonto / 100);
+        let net = brut - iskontoTutari;
+        let kdvTutari = net * (kdv / 100);
+        let genelToplam = net + kdvTutari;
+
+        // Sonucu TR Formatında Yazdır
+        tutarInput.value = genelToplam.toLocaleString('tr-TR', {
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2
+        });
+    }
+
+    // =========================================================
+    // 3.OLAY DİNLEYİCİLER
+    // =========================================================
+
+    // A) Ürün Seçimi
+    $(document).on('select2:select change', 'select[name$="_stok_id[]"]', function() {
+        satirGuncelle($(this).closest('tr'));
+    });
+
+    // B) Fiyat Listesi veya Kur Değişimi -> Tüm Satırları Güncelle
+    function tumSatirlariGuncelle() {
+        console.log("Tablo güncelleniyor...");
+        $('table tbody tr').each(function() {
+            var $row = $(this);
+            // Sadece ürünü seçilmiş satırları güncelle
+            if ($row.find('select[name$="_stok_id[]"]').val()) {
+                satirGuncelle($row);
+            }
+        });
+    }
+
+    $('select[name="fiyat_listesi_id"]').on('select2:select change', tumSatirlariGuncelle);
+    $('input[name="doviz_kuru"]').on('change', tumSatirlariGuncelle);
+
+    // C) Döviz Türü Değişimi
+    $('select[name="doviz_turu"]').on('select2:select change', function(e) {
+        var kod = $(this).val();
+        var kurInput = $('input[name="doviz_kuru"]');
+        if (kod) {
+            fetch(`/siparis/api/get-kur/${kod}`)
+                .then(r => r.json())
+                .then(data => {
+                    if(data.kur) {
+                        kurInput.val(parseFloat(data.kur).toLocaleString('tr-TR', {minimumFractionDigits: 4}));
+                        tumSatirlariGuncelle(); // Kuru aldıktan sonra tabloyu güncelle
+                    }
+                });
+        }
+    });
+
+    // D) Elle Giriş Yapılırsa Hesapla (Miktar, Fiyat, İskonto elle değişirse)
+    document.addEventListener('input', function(e) {
+        if (e.target.closest('tr') && e.target.name && 
+           (e.target.name.includes('detaylar_') || e.target.name.includes('miktar') || e.target.name.includes('fiyat'))) {
+            hesapla(e.target.closest('tr'));
+        }
+    });
+    
+    // Cari Değişimi
+    $('select[name="cari_id"]').on('select2:select change', function(e) {
+        if (e.type === 'select2:select' || e.type === 'change') {
+            var cariId = $(this).val();
+            if(cariId) {
+                fetch(`/siparis/api/get-cari-detay/${cariId}`).then(r => r.json()).then(data => {
+                    if(data.odeme_plani_id) $('select[name="odeme_plani_id"]').val(data.odeme_plani_id).trigger('change');
+                });
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Mali Dönemler{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3><i class="bi bi-calendar-range me-2"></i>Mali Dönemler</h3>
+        <a href="{{ url_for('firmalar.donem_ekle') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-2"></i> Yeni Dönem Oluştur
+        </a>
+    </div>
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle-fill me-2"></i>
+        Sistemde aynı anda sadece <b>bir dönem</b> aktif olabilir.Yeni bir dönemi "Aktif" yaptığınızda, diğerleri otomatik olarak kapanır.
+    </div>
+    {{ grid.render('firmalar.donemler')|safe }}
+</div>
+{% endblock %}

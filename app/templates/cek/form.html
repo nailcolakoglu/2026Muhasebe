@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }}{% endblock %}
+{% block extra_css %}
+<style>
+    .blink {
+        animation: blinker 1.5s linear infinite;
+        font-weight: bold;
+        color: #0d6efd;
+    }
+    @keyframes blinker {
+        50% { opacity: 0.5; }
+    }
+    /* OCR Spinner Alanı */
+    #ocr_loading {
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        position: absolute;
+        z-index: 100;
+        top: 100%;
+        left: 0;
+        width: 100%;
+        text-align: center;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    
+                    {% if form.show_title %}
+                        <h5 class="mb-0 fw-bold">{{ form.title }}</h5>
+                    {% else %}
+                        <div></div> 
+                    {% endif %} 
+                    <a href="{{ url_for('cek.index') }}" class="btn btn-outline-secondary btn-sm">Listeye Dön</a>
+                </div>
+                <div class="card-body p-4">
+                    {{ form.render()|safe }}
+
+            {% if timeline %}
+            <div class="mt-5">
+                <h5 class="fw-bold mb-4 border-bottom pb-2"><i class="bi bi-clock-history me-2"></i>İşlem Tarihçesi</h5>
+                
+                <div class="timeline-wrapper">
+                    {% for item in timeline %}
+                    <div class="d-flex mb-4 position-relative">
+                        {% if not loop.last %}
+                        <div class="position-absolute" style="left: 24px; top: 35px; bottom: -25px; width: 2px; background: #e9ecef;"></div>
+                        {% endif %}
+                        
+                        <div class="flex-shrink-0 me-3">
+                            <div class="rounded-circle d-flex align-items-center justify-content-center text-white bg-{{ item.renk }} shadow-sm" 
+                                 style="width: 50px; height: 50px;">
+                                <i class="bi {{ item.icon }} fs-5"></i>
+                            </div>
+                        </div>
+                        
+                        <div class="flex-grow-1 pt-1">
+                            <div class="d-flex justify-content-between">
+                                <h6 class="fw-bold mb-1">{{ item.baslik }}</h6>
+                                <small class="text-muted">{{ item.tarih.strftime('%d.%m.%Y %H:%M') }}</small>
+                            </div>
+                            <p class="text-muted mb-0 small bg-light p-2 rounded border-start border-4 border-{{ item.renk }}">
+                                {{ item.detay }}
+                            </p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+<script>
+$(document).ready(function() {
+    
+    // --- YARDIMCI FONKSIYONLAR ---
+    function formatIBAN(iban) {
+        if (!iban) return '';
+        // 1.Boşlukları ve harf dışı karakterleri temizle, büyüt
+        var clean = iban.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        
+        // 2.4'erli gruplara ayır
+        var parts = [];
+        for (var i = 0; i < clean.length; i += 4) {
+            parts.push(clean.substring(i, i + 4));
+        }
+        return parts.join(' ');
+    }
+    // Para Birimi Formatlama (12345.50 -> 12.345,50)
+    function formatCurrency(amount) {
+        if (!amount) return '';
+        // Gelen değer sayı ise formatla, değilse olduğu gibi döndür
+        let val = parseFloat(amount);
+        if (isNaN(val)) return amount;
+        
+        return val.toLocaleString('tr-TR', {
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2
+        });
+    }
+
+    // --- OCR EVENT LISTENER ---
+    
+    // data-ocr-target="true" olan dosya inputunu dinle
+    $(document).on('change', 'input[type="file"][data-ocr-target="true"]', function(e) {
+        var fileInput = this;
+        var file = fileInput.files[0];
+        
+        if (!file) return;
+
+        // Sadece resim dosyalarına izin ver
+        if (!file.type.match('image.*')) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Hatalı Dosya',
+                text: 'Lütfen sadece resim dosyası (JPG, PNG) yükleyiniz.'
+            });
+            $(fileInput).val(''); // Seçimi temizle
+            return;
+        }
+
+        // UX: Yükleniyor Göstergesi
+        var $wrapper = $(fileInput).closest('.input-group');
+        // Eğer input-group yoksa parent'a bak (FormBuilder yapısına göre değişebilir)
+        if($wrapper.length === 0) $wrapper = $(fileInput).parent();
+        
+        // Geçici yükleme mesajı ekle
+        var loadingHtml = `
+            <div id="ocr_loading">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span class="blink ms-2">Yapay Zeka çeki okuyor, lütfen bekleyin...</span>
+            </div>
+        `;
+        $wrapper.css('position', 'relative').append(loadingHtml);
+        $(fileInput).prop('disabled', true); // Tekrar basmayı engelle
+
+        // Form Data Hazırla
+        var formData = new FormData();
+        formData.append('file', file);
+        
+        // CSRF Token (Güvenlik için)
+        var csrfToken = $('input[name="csrf_token"]').val();
+        if(csrfToken) {
+            formData.append('csrf_token', csrfToken);
+        }
+
+        // API İsteği
+        $.ajax({
+            url: '/cek/api/cek-ocr', // Backend rotası
+            type: 'POST',
+            data: formData,
+            contentType: false,
+            processData: false,
+            success: function(response) {
+                if (response.success) {
+                    var data = response.data;
+                    console.log("AI Yanıtı:", data); // Debug için
+
+                    // --- ALANLARI DOLDUR ---
+                    
+                    // 1.Çek Numarası
+                    if(data.cek_no) {
+                        $('input[name="cek_no"]').val(data.cek_no).trigger('input');
+                    }
+                    
+                    // 2.Tutar (Formatlayarak)
+                    if(data.tutar) {
+                        $('input[name="tutar"]').val(formatCurrency(data.tutar)).trigger('input');
+                    }
+                    
+                    // 3.Vade Tarihi
+                    if(data.vade_tarihi) {
+                        // Gelen format YYYY-MM-DD ise direkt atayabiliriz
+                        // FormBuilder date inputu native date ise YYYY-MM-DD ister
+                        $('input[name="vade_tarihi"]').val(data.vade_tarihi).trigger('change');
+                    }
+                    
+                    // 4.Banka Bilgileri
+                    if(data.banka_adi) $('input[name="banka_adi"]').val(data.banka_adi);
+                    // ✅ YENİ EKLENENLER: Şube ve Hesap No
+                    if(data.sube_adi) $('input[name="sube_adi"]').val(data.sube_adi);
+                    if(data.hesap_no) $('input[name="hesap_no"]').val(data.hesap_no);
+                    // 5.Keşideci Bilgileri (AKILLI GÜNCELLEME)
+                    // AI bazen 'kesideci_vkn', bazen 'kesideci_tckn' olarak döndürebilir.
+                    // Hangisi doluysa onu alıp formdaki 'kesideci_tc_vkn' alanına yazıyoruz.
+                    var kimlikNo = data.kesideci_vkn || data.kesideci_tckn;
+                    if(kimlikNo) {
+                        $('input[name="kesideci_tc_vkn"]').val(kimlikNo);
+                    }
+                    
+                    if(data.kesideci_unvan) {
+                        $('input[name="kesideci_unvan"]').val(data.kesideci_unvan);
+                    }
+                    if(data.iban) {
+                        // AI'dan gelen ham veriyi (TR6900...) al, 4'lü gruplara böl (TR69 00...)
+                        var formattedIban = formatIBAN(data.iban);
+                        
+                        // Input'a yaz ve validasyonu tetikle
+                        $('input[name="iban"]').val(formattedIban).trigger('input');
+                    }               
+                    
+                    // Başarı Mesajı (Toast)
+                    const Toast = Swal.mixin({
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 3000,
+                        timerProgressBar: true,
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer)
+                            toast.addEventListener('mouseleave', Swal.resumeTimer)
+                        }
+                    });
+                    Toast.fire({
+                        icon: 'success',
+                        title: 'Çek bilgileri başarıyla okundu!'
+                    });
+                    
+                } else {
+                    // AI Başarısız
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Kısmi Okuma',
+                        html: 'Resim yüklendi ancak bilgiler tam okunamadı.<br><small class="text-muted">' + response.message + '</small>'
+                    });
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error("OCR Hatası:", error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Sistem Hatası',
+                    text: 'Sunucu ile iletişim kurulurken bir hata oluştu.'
+                });
+            },
+            complete: function() {
+                // Temizlik
+                $('#ocr_loading').remove();
+                $(fileInput).prop('disabled', false);
+            }
+        });
+    });
+});
+</script>
+
+{% endblock %}

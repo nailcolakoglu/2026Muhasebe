@@ -1,0 +1,157 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Denetim Kayıtları{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-gray-800">
+            <i class="bi bi-shield-check text-primary me-2"></i>Denetim Logları
+        </h2>
+        <div>
+            <a href="{{ url_for('audit.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-clockwise"></i> Yenile
+            </a>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-3 bg-light rounded">
+            <form method="GET" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">İşlem Tipi</label>
+                    <select name="action" class="form-select form-select-sm">
+                        <option value="">Tümü</option>
+                        {% for act in actions %}
+                        <option value="{{ act }}" {% if filters.action == act %}selected{% endif %}>{{ act }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Kullanıcı (Admin)</label>
+                    <input type="text" name="user" class="form-control form-control-sm" value="{{ filters.user }}" placeholder="Admin ara...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Başlangıç</label>
+                    <input type="date" name="date_start" class="form-control form-control-sm" value="{{ filters.date_start }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Bitiş</label>
+                    <input type="date" name="date_end" class="form-control form-control-sm" value="{{ filters.date_end }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">
+                        <i class="bi bi-filter"></i> Filtrele
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4" style="width: 50px;">#</th>
+                            <th>Zaman</th>
+                            <th>Admin</th>
+                            <th>İşlem</th>
+                            <th>Kaynak</th>
+                            <th>Açıklama</th>
+                            <th class="text-end pe-4">Detay</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                        <tr>
+                            <td class="ps-4">
+                                <i class="{{ log.action_icon }} fs-5"></i>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark small">{{ log.created_at.strftime('%d.%m.%Y') }}</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">{{ log.created_at.strftime('%H:%M:%S') }}</div>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    <i class="bi bi-person-circle me-1"></i>{{ log.supervisor_username }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="fw-bold text-primary small">{{ log.action }}</span>
+                            </td>
+                            <td>
+                                <div class="small">{{ log.resource_type }}</div>
+                                <div class="text-muted font-monospace" style="font-size: 0.7rem;">{{ log.resource_id }}</div>
+                            </td>
+                            <td>
+                                <span class="text-secondary small">{{ log.description }}</span>
+                                {% if log.changes %}
+                                    <span class="badge bg-warning-subtle text-warning-emphasis ms-1" title="Değişiklik Var">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <button type="button" class="btn btn-sm btn-light border" 
+                                        data-bs-toggle="collapse" data-bs-target="#log_detail_{{ log.id }}">
+                                    <i class="bi bi-chevron-down"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr class="collapse bg-light" id="log_detail_{{ log.id }}">
+                            <td colspan="7" class="p-3">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <h6 class="fw-bold small text-muted mb-2">Değişiklik Detayı (JSON Diff)</h6>
+                                        {% if log.changes %}
+                                            <pre class="bg-white border rounded p-2 small text-secondary mb-0" style="max-height: 150px;">{{ log.changes }}</pre>
+                                        {% else %}
+                                            <span class="text-muted small">Değişiklik kaydı yok.</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-4 border-start">
+                                        <h6 class="fw-bold small text-muted mb-2">Teknik Detay</h6>
+                                        <ul class="list-unstyled small mb-0">
+                                            <li><strong>IP:</strong> {{ log.ip_address }}</li>
+                                            <li><strong>Tarayıcı:</strong> {{ log.user_agent|truncate(30) }}</li>
+                                            <li><strong>Metod:</strong> {{ log.request_method }} {{ log.request_path }}</li>
+                                            <li><strong>Durum:</strong> <span class="badge bg-{{ log.status_badge }}">{{ log.status }}</span></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">Kayıt bulunamadı.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card-footer bg-white py-3">
+            <nav aria-label="Page navigation">
+                <ul class="pagination justify-content-center mb-0 pagination-sm">
+                    {% if pagination.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('audit.index', page=pagination.prev_num, **filters) }}">Önceki</a>
+                    </li>
+                    {% endif %}
+                    
+                    <li class="page-item disabled"><span class="page-link">{{ pagination.page }} / {{ pagination.pages }}</span></li>
+                    
+                    {% if pagination.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('audit.index', page=pagination.next_num, **filters) }}">Sonraki</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}

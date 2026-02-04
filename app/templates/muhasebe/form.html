@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Master-Detail içindeki gereksiz etiketleri gizle */
+    label[for="detaylar"], label[for="detaylar"] + div { display: none !important; }
+    
+    /* Buton sütunu için genişlik ayarı */
+    .master-detail-table td:last-child { width: 1px; white-space: nowrap; }
+
+    @media print {
+        body * { visibility: hidden; }
+        .card, .card * { visibility: visible; }
+        .card { position: absolute; left: 0; top: 0; width: 100%; border: none !important; }
+        .btn, .card-header a, .no-print { display: none !important; }
+    }
+</style>
+
+<div class="container-fluid mt-4 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-xl-11"> 
+            
+            {% set color = form.extra_context.get('card_color', 'primary') if form.extra_context else 'primary' %}
+            {% set fis_id = form.extra_context.get('fis_id') %}
+            
+            <div class="card shadow border-0 border-top border-5 border-{{ color }}">
+                
+                {# HEADER #}
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold text-{{ color }}">
+                        <i class="bi bi-file-earmark-text me-2"></i>{{ form.title }}
+                    </h5>
+                    <div>
+                        {% if fis_id %}
+                        <div class="btn-group me-2">
+                            <button type="button" class="btn btn-outline-dark btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                <i class="bi bi-printer"></i> Yazdır
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{{ url_for('muhasebe.yazdir_dos', id=fis_id) }}" target="_blank">Nokta Vuruşlu (Txt)</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="window.print()">Lazer / PDF</a></li>
+                            </ul>
+                        </div>
+                        {% endif %}
+                        <a href="{{ url_for('muhasebe.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Vazgeç</a>
+                    </div>
+                </div>
+
+                <div class="card-body p-4">
+                    {{ form.render()|safe }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+
+
+<script>
+    // 1.DEBUG: Script'in yüklendiğini konsola yaz
+    console.log("✅ Muhasebe Scripti Başarıyla Yüklendi!");
+    // alert("Script Çalışıyor!"); // Eğer konsolu göremiyorsanız bunu açın
+
+    $(document).ready(function() {
+        console.log("✅ Document Ready Tetiklendi!");
+
+        // ---------------------------------------------------------
+        // 1.BORÇ / ALACAK ÇAKIŞMA KONTROLÜ
+        // ---------------------------------------------------------
+        
+        // Borç girilirse -> Alacak sıfırlanır
+        $(document).on('input keyup', '.js-borc', function() {
+            var val = $(this).val();
+            // Sayısal değer kontrolü (Virgül/Nokta temizliği)
+            var numVal = parseFloat(val.replace(/\./g, '').replace(',', '.') || 0);
+            
+            if (numVal > 0) {
+                var $row = $(this).closest('tr');
+                var $alacak = $row.find('.js-alacak');
+                // Sadece değer varsa sıfırla ki gereksiz tetikleme olmasın
+                if ($alacak.val() !== '' && $alacak.val() !== '0,00') {
+                    $alacak.val('').trigger('input'); // Inputmask varsa tetiklensin
+                    console.log("Borç girildiği için Alacak silindi.");
+                }
+            }
+        });
+
+        // Alacak girilirse -> Borç sıfırlanır
+        $(document).on('input keyup', '.js-alacak', function() {
+            var val = $(this).val();
+            var numVal = parseFloat(val.replace(/\./g, '').replace(',', '.') || 0);
+            
+            if (numVal > 0) {
+                var $row = $(this).closest('tr');
+                var $borc = $row.find('.js-borc');
+                if ($borc.val() !== '' && $borc.val() !== '0,00') {
+                    $borc.val('').trigger('input');
+                    console.log("Alacak girildiği için Borç silindi.");
+                }
+            }
+        });
+
+        // ---------------------------------------------------------
+        // 2.TAB TUŞU YÖNETİMİ (Alacak -> Ekle Butonu -> Yeni Satır)
+        // ---------------------------------------------------------
+        
+        $(document).on('keydown', '.js-alacak', function(e) {
+            // Eğer basılan tuş TAB (KeyCode 9) ise
+            if (e.which === 9 && !e.shiftKey) {
+                e.preventDefault(); // Varsayılan hareketi durdur
+                
+                var $row = $(this).closest('tr');
+                // Satırdaki "Ekle" butonunu bul (.btn-add-inline sınıfını form_field.py'de vermiştik)
+                var $addBtn = $row.find('.btn-add-inline');
+                
+                if ($addBtn.length > 0) {
+                    $addBtn.focus(); // Butona odaklan
+                    console.log("Tab tuşu ile butona odaklanıldı.");
+                }
+            }
+        });
+
+        // Butonun üzerindeyken Enter'a basılırsa tıklamayı tetikle
+        /*$(document).on('keydown', '.btn-add-inline', function(e) {
+            if (e.which === 13) { // Enter
+                e.preventDefault();
+                $(this).click();
+            }
+        });
+        */
+        // Yeni satır eklendiğinde ilk inputa odaklan (Klavye sürekliliği için)
+        // FormBuilder'ın satır ekleme fonksiyonunu dinleyemiyoruz ama 
+        // DOM değişikliğini MutationObserver ile izleyebiliriz.
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.addedNodes.length) {
+                    var $newRows = $(mutation.addedNodes).filter('tr');
+                    if ($newRows.length > 0) {
+                        // Yeni satırın ilk select veya inputuna odaklan
+                        setTimeout(function(){
+                            $newRows.find('.select2-container, input').first().focus();
+                            // Eğer select2 ise aç
+                            var $sel = $newRows.find('select');
+                            if($sel.length && $sel.data('select2')) {
+                                $sel.select2('open');
+                            }
+                        }, 100);
+                    }
+                }
+            });
+        });
+
+        var targetNode = document.querySelector('.master-detail-container tbody');
+        if(targetNode) {
+            observer.observe(targetNode, { childList: true });
+        }
+
+        // F2 Kısayolu
+        /*$(document).on('keydown', function(e) {
+            if (e.which == 113) { // F2
+                e.preventDefault();
+                $('.btn-add-row').first().click();
+            }
+        });
+        */
+    });
+</script>
+{% endblock %}

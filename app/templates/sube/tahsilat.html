@@ -1,0 +1,42 @@
+{% extends "mobile/base_mobile.html" %}
+{% block content %}
+<div class="card shadow-sm border-0">
+    <div class="card-body">
+        <form id="mobilTahsilatForm">
+            <div class="mb-3">
+                <label class="fw-bold">Müşteri</label>
+                <select name="cari_id" class="form-select form-select-lg" required>
+                    {% for c in cariler %}<option value="{{ c.id }}">{{ c.unvan }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="fw-bold">Tutar</label>
+                <input type="number" name="tutar" class="form-control form-control-lg" step="0.01" required>
+            </div>
+            <div class="mb-3">
+                <label class="fw-bold">Ödeme Türü</label>
+                <select name="tur" class="form-select form-select-lg">
+                    <option value="NAKIT">Nakit</option>
+                    <option value="CEK">Çek</option>
+                    <option value="SENET">Senet</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 btn-lg py-3">TAHSİLAT AL</button>
+        </form>
+    </div>
+</div>
+<script>
+    $('#mobilTahsilatForm').on('submit', function(e) {
+        e.preventDefault();
+        $.post("{{ url_for('mobile.tahsilat') }}", $(this).serialize(), function(res){
+            if(res.success) {
+                Swal.fire("Başarılı", res.message, "success").then(() => {
+                    window.location.href = "{{ url_for('mobile.dashboard') }}";
+                });
+            } else {
+                Swal.fire("Hata", res.message, "error");
+            }
+        });
+    });
+</script>
+{% endblock %}

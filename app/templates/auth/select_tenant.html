@@ -1,0 +1,89 @@
+{% extends "base_auth.html" %}
+{% block title %}Çalışma Alanı Seçimi{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="card-header bg-primary text-white text-center py-4 position-relative">
+                <div class="mb-2">
+                    <i class="bi bi-buildings-fill display-4 text-white-50"></i>
+                </div>
+                <h4 class="fw-bold mb-1">Hoş Geldiniz, {{ user_name }}</h4>
+                <p class="mb-0 text-white-50 small">Lütfen işlem yapmak istediğiniz firmayı seçiniz.</p>
+            </div>
+
+            <div class="card-body p-4 bg-light">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <div class="d-grid gap-3">
+                        {% for tenant_role in tenants %}
+                        <button type="submit" name="tenant_id" value="{{ tenant_role.tenant_id }}" 
+                                class="btn btn-white text-start p-3 shadow-sm border position-relative tenant-card">
+                            
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-3 bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fs-4 fw-bold me-3" 
+                                     style="width: 50px; height: 50px;">
+                                    {{ tenant_role.tenant.unvan[0] }}
+                                </div>
+                                
+                                <div class="flex-grow-1">
+                                    <div class="fw-bold text-dark">{{ tenant_role.tenant.unvan }}</div>
+                                    <div class="d-flex align-items-center mt-1">
+                                        {% if tenant_role.role == 'admin' %}
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill me-2">
+                                                <i class="bi bi-shield-lock-fill me-1"></i>Yönetici
+                                            </span>
+                                        {% elif 'mudur' in tenant_role.role %}
+                                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill me-2">
+                                                <i class="bi bi-briefcase-fill me-1"></i>{{ tenant_role.role_display }}
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill me-2">
+                                                <i class="bi bi-person me-1"></i>{{ tenant_role.role_display }}
+                                            </span>
+                                        {% endif %}
+                                        
+                                        <small class="text-muted" style="font-size: 0.75rem;">{{ tenant_role.tenant.kod }}</small>
+                                    </div>
+                                </div>
+                                
+                                <i class="bi bi-chevron-right text-muted opacity-50"></i>
+                            </div>
+
+                            <div class="tenant-overlay"></div>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </form>
+
+                <div class="text-center mt-4">
+                    <a href="{{ url_for('auth.logout') }}" class="text-decoration-none text-muted small">
+                        <i class="bi bi-arrow-left me-1"></i> Farklı bir hesapla giriş yap
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background-color: #f8f9fa; /* Hafif gri arka plan */
+    }
+    .btn-white {
+        background-color: #fff;
+        transition: all 0.2s ease-in-out;
+    }
+    .tenant-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+        border-color: var(--bs-primary)!important;
+    }
+    .tenant-card:hover .bi-chevron-right {
+        color: var(--bs-primary)!important;
+        opacity: 1!important;
+    }
+</style>
+{% endblock %}

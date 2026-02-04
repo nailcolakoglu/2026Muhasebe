@@ -1,0 +1,346 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Manuel Yedekleme{% endblock %}
+
+{% block extra_css %}
+<style>
+    .info-card {
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border: 2px solid #bae6fd;
+        border-radius: 12px;
+        padding: 20px;
+    }
+    
+    .info-card-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 24px;
+        margin-bottom: 12px;
+    }
+    
+    .feature-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .feature-list li {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap:  10px;
+    }
+    
+    .feature-list li:last-child {
+        border-bottom: none;
+    }
+    
+    .feature-list i {
+        color: var(--primary-color);
+        font-size: 18px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="bi bi-cloud-upload text-primary me-2"></i>
+            Manuel Yedekleme
+        </h2>
+        <p class="text-muted mb-0">Firebird veritabanı yedeği oluşturun</p>
+    </div>
+    <div>
+        <a href="{{ url_for('backup.index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i>
+            Geri
+        </a>
+    </div>
+</div>
+
+<!-- Form -->
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="stat-card">
+            <form method="POST" action="{{ url_for('backup.create') }}" id="backupForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                
+                <!-- Firma Seçimi -->
+                <div class="mb-4">
+                    <label class="form-label">
+                        <i class="bi bi-building"></i>
+                        Firma
+                        <span class="text-danger">*</span>
+                    </label>
+                    <select name="tenant_id" class="form-select" id="tenantSelect" required>
+                        <option value="">Firma seçin...</option>
+                        {% for tenant in tenants %}
+                        <option value="{{ tenant.id }}" 
+                                data-db="{{ tenant.db_name }}"
+                                data-kod="{{ tenant.kod }}">
+                            {{ tenant.unvan }} ({{ tenant.kod }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle"></i>
+                        Yedeklenecek firmanın veritabanını seçin
+                    </small>
+                </div>
+                
+                <!-- Veritabanı Bilgisi -->
+                <div id="dbInfo" class="alert alert-info" style="display: none;">
+                    <i class="bi bi-database"></i>
+                    <div>
+                        <strong>Veritabanı: </strong> <code id="dbName">-</code><br>
+                        <small>Bu veritabanı yedeklenecektir</small>
+                    </div>
+                </div>
+                
+                <!-- Açıklama -->
+                <div class="mb-4">
+                    <label class="form-label">
+                        <i class="bi bi-pencil"></i>
+                        Açıklama
+                        <span class="text-muted">(Opsiyonel)</span>
+                    </label>
+                    <textarea name="description" 
+                              class="form-control" 
+                              rows="3"
+                              placeholder="Örn: Aylık düzenli yedekleme, Yıl sonu kapatma öncesi yedek"></textarea>
+                    <small class="text-muted">
+                        <i class="bi bi-lightbulb"></i>
+                        Bu yedekleme hakkında not ekleyebilirsiniz
+                    </small>
+                </div>
+                
+                <!-- Yedekleme Seçenekleri -->
+                <div class="card border-primary mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <i class="bi bi-gear-fill me-2"></i>
+                        Yedekleme Ayarları
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="compress" 
+                                   name="compress"
+                                   checked>
+                            <label class="form-check-label" for="compress">
+                                <strong>
+                                    <i class="bi bi-file-zip text-primary"></i>
+                                    Sıkıştırma Uygula
+                                </strong>
+                                <small class="text-muted">
+                                    Dosya boyutunu küçültür (~65% tasarruf).Önerilen ayar.
+                                </small>
+                            </label>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="verify" 
+                                   name="verify"
+                                   checked>
+                            <label class="form-check-label" for="verify">
+                                <strong>
+                                    <i class="bi bi-shield-check text-success"></i>
+                                    Yedek Doğrulama
+                                </strong>
+                                <small class="text-muted">
+                                    Yedekleme sonrası bütünlük kontrolü yapar.Daha güvenli.
+                                </small>
+                            </label>
+                        </div>
+                        
+                        <div class="form-check">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="metadata"
+                                   name="metadata">
+                            <label class="form-check-label" for="metadata">
+                                <strong>
+                                    <i class="bi bi-table text-info"></i>
+                                    Sadece Metadata
+                                </strong>
+                                <small class="text-muted">
+                                    Veri olmadan sadece tablo yapısını yedekler (hızlı).
+                                </small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Uyarı -->
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <div>
+                        <strong>Önemli Uyarı</strong>
+                        <p class="mb-0">
+                            Yedekleme sırasında veritabanı performansı etkilenebilir.
+                            Yoğun saatlerde (mesai saatleri) yedekleme yapmaktan kaçının.
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Butonlar -->
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                        <i class="bi bi-cloud-upload"></i>
+                        Yedeklemeyi Başlat
+                    </button>
+                    <a href="{{ url_for('backup.index') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i>
+                        İptal
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Bilgilendirme Sidebar -->
+    <div class="col-lg-4">
+        <!-- Yedekleme Hakkında -->
+        <div class="stat-card mb-3">
+            <div class="info-card-icon">
+                <i class="bi bi-info-circle"></i>
+            </div>
+            <h5 class="mb-3">Yedekleme Süreci</h5>
+            
+            <ul class="feature-list">
+                <li>
+                    <i class="bi bi-1-circle-fill"></i>
+                    <span>Firebird gbak komutu çalıştırılır</span>
+                </li>
+                <li>
+                    <i class="bi bi-2-circle-fill"></i>
+                    <span>Veritabanı .FDB dosyası yedeklenir</span>
+                </li>
+                <li>
+                    <i class="bi bi-3-circle-fill"></i>
+                    <span>Sıkıştırma uygulanır</span>
+                </li>
+                <li>
+                    <i class="bi bi-4-circle-fill"></i>
+                    <span>Güvenli dizine kaydedilir</span>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Tahmini Süre -->
+        <div class="stat-card mb-3" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #fbbf24;">
+            <h6 class="mb-3">
+                <i class="bi bi-clock-history text-warning"></i>
+                Tahmini Süre
+            </h6>
+            <ul class="list-unstyled mb-0">
+                <li class="mb-2">
+                    <i class="bi bi-circle-fill text-success" style="font-size: 8px;"></i>
+                    Küçük DB (&lt;100MB): <strong>1-2 dakika</strong>
+                </li>
+                <li class="mb-2">
+                    <i class="bi bi-circle-fill text-warning" style="font-size: 8px;"></i>
+                    Orta DB (100MB-1GB): <strong>2-5 dakika</strong>
+                </li>
+                <li>
+                    <i class="bi bi-circle-fill text-danger" style="font-size: 8px;"></i>
+                    Büyük DB (&gt;1GB): <strong>5-15 dakika</strong>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Depolama -->
+        <div class="stat-card mb-3">
+            <h6 class="mb-3">
+                <i class="bi bi-hdd text-primary"></i>
+                Depolama Konumu
+            </h6>
+            <p class="text-muted small mb-0">
+                Yedekler güvenli bir dizine kaydedilir: <br>
+                <code style="background: #f8fafc; padding: 4px 8px; border-radius: 6px; display: block; margin-top: 8px;">
+                    D:\Backups\Muhasebe\
+                </code>
+            </p>
+        </div>
+        
+        <!-- İpucu -->
+        <div class="alert alert-success">
+            <i class="bi bi-lightbulb-fill"></i>
+            <div>
+                <strong>💡 İpucu</strong>
+                <p class="small mb-0">
+                    Otomatik yedekleme için 
+                    <a href="{{ url_for('backup.schedule') }}" style="color: #065f46; font-weight: 600;">
+                        zamanlama ayarlarını
+                    </a> 
+                    kullanın.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Firma seçildiğinde DB bilgisini göster
+document.getElementById('tenantSelect').addEventListener('change', function() {
+    const selected = this.options[this.selectedIndex];
+    const dbName = selected.getAttribute('data-db');
+    const dbInfo = document.getElementById('dbInfo');
+    const dbNameSpan = document.getElementById('dbName');
+    
+    if (dbName) {
+        dbNameSpan.textContent = dbName;
+        dbInfo.style.display = 'flex';
+        dbInfo.classList.add('animate__animated', 'animate__fadeIn');
+    } else {
+        dbInfo.style.display = 'none';
+    }
+});
+
+// Form submit - loading state
+document.getElementById('backupForm').addEventListener('submit', function(e) {
+    const btn = document.getElementById('submitBtn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+    
+    // Simülasyon - gerçekte backend'den cevap gelene kadar bekler
+    setTimeout(() => {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+    }, 3000);
+});
+
+// Form validasyonu
+(function() {
+    'use strict';
+    
+    const forms = document.querySelectorAll('form');
+    
+    Array.from(forms).forEach(form => {
+        form.addEventListener('submit', event => {
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            
+            form.classList.add('was-validated');
+        }, false);
+    });
+})();
+</script>
+{% endblock %}

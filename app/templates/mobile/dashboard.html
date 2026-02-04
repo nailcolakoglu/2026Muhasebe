@@ -1,0 +1,36 @@
+{% extends "mobile/base_mobile.html" %}
+{% block content %}
+<div class="row g-3">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm p-3 mb-3">
+            <h6 class="text-muted mb-1">Hoşgeldin,</h6>
+            <h4 class="fw-bold text-primary">{{ current_user.ad_soyad }}</h4>
+        </div>
+    </div>
+
+    <div class="col-6">
+        <a href="{{ url_for('mobile.sicak_satis') }}" class="card text-center p-4 border-0 shadow-sm text-decoration-none">
+            <i class="bi bi-cart-check-fill display-4 text-primary mb-2"></i>
+            <h6 class="fw-bold text-dark">Satış Yap</h6>
+        </a>
+    </div>
+    <div class="col-6">
+        <a href="{{ url_for('mobile.tahsilat') }}" class="card text-center p-4 border-0 shadow-sm text-decoration-none">
+            <i class="bi bi-wallet2 display-4 text-success mb-2"></i>
+            <h6 class="fw-bold text-dark">Tahsilat</h6>
+        </a>
+    </div>
+    <div class="col-6">
+    <a href="{{ url_for('mobile.arac_stok') }}" class="card text-center p-4 border-0 shadow-sm text-decoration-none">
+        <i class="bi bi-box-seam display-4 text-warning mb-2"></i>
+        <h6 class="fw-bold text-dark">Araç Stoğu</h6>
+    </a>
+    </div>
+    <div class="col-6">
+        <a href="{{ url_for('siparis.index') }}" class="card text-center p-4 border-0 shadow-sm text-decoration-none">
+            <i class="bi bi-journal-text display-4 text-info mb-2"></i>
+            <h6 class="fw-bold text-dark">Siparişler</h6>
+        </a>
+    </div>
+</div>
+{% endblock %}

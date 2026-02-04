@@ -1,0 +1,127 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="h4 mb-1">{{ title }}</h2>
+        <p class="text-muted small mb-0">Kullanıcı bilgileri ve firma yetkilendirmeleri</p>
+    </div>
+    <a href="{{ url_for('users.index') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Listeye Dön
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-5">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light py-3">
+                <h6 class="mb-0 fw-bold">Bilgiler & Yeni Yetki</h6>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted">KİŞİSEL BİLGİLER</label>
+                        {{ form.full_name(class="form-control mb-2", placeholder="Ad Soyad") }}
+                        {{ form.email(class="form-control", placeholder="ornek@sirket.com") }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Şifre</label>
+                        {{ form.password(class="form-control") }}
+                        {% if 'edit' in request.endpoint %}
+                        <div class="form-text text-muted small">Değiştirmek istemiyorsanız boş bırakın.</div>
+                        {% endif %}
+                    </div>
+                    
+                    <hr class="my-4 border-secondary-subtle">
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-primary">
+                            <i class="bi bi-plus-circle me-1"></i>YETKİ EKLE / GÜNCELLE
+                        </label>
+                        <div class="bg-primary-subtle p-3 rounded border border-primary-subtle">
+                            <div class="mb-2">
+                                <label class="form-label small">Hangi Firma?</label>
+                                {{ form.tenant_id(class="form-select") }}
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small">Hangi Rol?</label>
+                                {{ form.role(class="form-select") }}
+                            </div>
+                            <div class="form-text small text-muted">
+                                * Kullanıcı zaten bu firmada yetkiliyse, rolü güncellenir.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            {{ form.is_active(class="form-check-input") }}
+                            <label class="form-check-label" for="is_active">Kullanıcı Hesabı Aktif</label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-save me-1"></i> Kaydet ve Uygula
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {% if 'edit' in request.endpoint and current_roles %}
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold text-dark">Mevcut Yetkiler ({{ current_roles|length }})</h6>
+                <span class="badge bg-info text-dark">Çoklu Firma</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light text-secondary small text-uppercase">
+                        <tr>
+                            <th class="ps-4">Firma</th>
+                            <th>Atanan Rol</th>
+                            <th>Tarih</th>
+                            <th class="text-end pe-4">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for role in current_roles %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold text-dark">{{ role.tenant.unvan }}</div>
+                                <small class="text-muted">{{ role.tenant.kod }}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    {{ role.role_display }}
+                                </span>
+                            </td>
+                            <td class="small text-muted">
+                                {{ role.granted_at.strftime('%d.%m.%Y') }}
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{{ url_for('users.revoke_role', role_id=role.id) }}" 
+                                   class="btn btn-sm btn-outline-danger bg-white"
+                                   onclick="return confirm('Bu firmadaki yetkiyi kaldırmak istediğinize emin misiniz?');"
+                                   title="Yetkiyi Kaldır">
+                                    <i class="bi bi-x-lg"></i> Sil
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

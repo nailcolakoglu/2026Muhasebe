@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}SaaS Firma Yönetimi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-dark"><i class="bi bi-building-gear me-2 text-primary"></i>Firma Yönetimi (SaaS)</h3>
+            <p class="text-muted mb-0">Sisteme kayıtlı kiracı firmaların yönetimi ve takibi.</p>
+        </div>
+        <button class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#modalYeniFirma">
+            <i class="bi bi-plus-circle me-2"></i>Yeni Firma Kur
+        </button>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Kod</th>
+                            <th>Firma Ünvanı</th>
+                            <th>Vergi No</th>
+                            <th>Admin Email</th>
+                            <th>Kayıt Tarihi</th>
+                            <th class="text-center">Durum</th>
+                            <th class="text-end">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in firmalar %}
+                        <tr>
+                            <td><span class="badge bg-secondary font-monospace">{{ f.kod }}</span></td>
+                            <td class="fw-bold">{{ f.unvan }}</td>
+                            <td>{{ f.vergi_no or '-' }}</td>
+                            <td>{{ f.email }}</td>
+                            <td>{{ f.olusturma_tarihi.strftime('%d.%m.%Y') if f.olusturma_tarihi else '-' }}</td>
+                            <td class="text-center">
+                                {% if f.aktif %}
+                                    <span class="badge bg-success bg-opacity-10 text-success"><i class="bi bi-check-circle me-1"></i>Aktif</span>
+                                {% else %}
+                                    <span class="badge bg-danger bg-opacity-10 text-danger"><i class="bi bi-ban me-1"></i>Pasif</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-dark" onclick="firmayaGecis({{ f.id }})" title="Yönetici Olarak Giriş Yap">
+                                    <i class="bi bi-box-arrow-in-right"></i> Giriş
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" title="Düzenle">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5 text-muted">
+                                <i class="bi bi-buildings fs-1 d-block mb-3"></i>
+                                Sisteme kayıtlı hiç firma yok.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalYeniFirma" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold"><i class="bi bi-stars me-2 text-warning"></i>Yeni Kiracı Oluştur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="frmYeniFirma">
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Bu işlem; yeni bir firma, dönem, şube, kasa, depo ve hesap planını <b>otomatik</b> oluşturur.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Firma Ünvanı</label>
+                        <input type="text" class="form-control" name="unvan" required placeholder="Örn: ABC Teknoloji A.Ş.">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Vergi No / VKN</label>
+                        <input type="text" class="form-control" name="vergi_no" required placeholder="10 haneli VKN">
+                    </div>
+
+                    <hr>
+                    <h6 class="text-primary small fw-bold">YÖNETİCİ BİLGİLERİ</h6>
+
+                    <div class="mb-3">
+                        <label class="form-label">Yönetici Email (Kullanıcı Adı)</label>
+                        <input type="email" class="form-control" name="email" required placeholder="admin@firma.com">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Yönetici Şifresi</label>
+                        <input type="password" class="form-control" name="sifre" required placeholder="******">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-primary" onclick="firmaKur()">
+                    <i class="bi bi-rocket-takeoff me-2"></i>Kurulumu Başlat
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function firmaKur() {
+        var form = $('#frmYeniFirma');
+        if(!form[0].checkValidity()) {
+            form[0].reportValidity();
+            return;
+        }
+
+        var data = form.serialize();
+        var btn = $('.modal-footer .btn-primary');
+        var orgText = btn.html();
+
+        // Butonu Kilitle
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Kuruluyor...');
+
+        // AJAX İsteği
+        // Not: Rota adını app/modules/sistem/routes.py dosyasındaki ile eşleştirdik
+        $.post('/sistem/yeni-firma', data, function(res) {
+            if(res.success) {
+                Swal.fire({
+                    title: 'Harika!',
+                    text: 'Yeni firma ve tüm altyapısı başarıyla kuruldu.',
+                    icon: 'success',
+                    confirmButtonText: 'Tamam'
+                }).then(() => {
+                    location.reload();
+                });
+            } else {
+                Swal.fire('Hata', res.message || 'Bir hata oluştu', 'error');
+                btn.prop('disabled', false).html(orgText);
+            }
+        }).fail(function(xhr) {
+            Swal.fire('Hata', 'Sunucu hatası: ' + xhr.status, 'error');
+            btn.prop('disabled', false).html(orgText);
+        });
+    }
+
+    function firmayaGecis(id) {
+    Swal.fire({
+        title: 'Firmaya Geçiş',
+        text: "Mevcut oturumunuz kapatılacak ve seçilen firmanın yöneticisi olarak giriş yapacaksınız.Onaylıyor musunuz?",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Evet, Geçiş Yap',
+        cancelButtonText: 'İptal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.post('/sistem/giris-yap/' + id, function(res) {
+                if(res.success) {
+                    window.location.href = res.redirect;
+                } else {
+                    Swal.fire('Hata', res.message, 'error');
+                }
+            });
+        }
+    });
+}
+</script>
+{% endblock %}

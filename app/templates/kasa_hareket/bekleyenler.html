@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Teslim Bekleyenler{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <script>
+        var csrf_token = "{{ csrf_token() }}";
+    </script>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-0">Saha Tahsilat Onayı</h3>
+            <span class="text-muted">Personel üzerindeki nakit ve evrakların teslim alma ekranı.</span>
+        </div>
+        <a href="{{ url_for('kasa_hareket.index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Listeye Dön
+        </a>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-warning bg-opacity-10 py-3">
+            <h5 class="mb-0 text-dark"><i class="bi bi-cash-stack me-2"></i> Personeldeki Nakitler</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Tarih</th>
+                        <th>Personel</th>
+                        <th>Cari Hesap</th>
+                        <th>Kasa</th>
+                        <th class="text-end">Tutar</th>
+                        <th class="text-center">İşlem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in bekleyenler %}
+                    <tr id="row-kasa-{{ h.id }}">
+                        <td>{{ h.tarih.strftime('%d.%m.%Y') }}</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-secondary text-white rounded-circle d-flex justify-content-center align-items-center me-2" style="width:30px;height:30px;font-size:0.8rem;">
+                                    {{ h.plasiyer.ad_soyad[:1] }}
+                                </div>
+                                {{ h.plasiyer.ad_soyad }}
+                            </div>
+                        </td>
+                        <td>{{ h.cari.unvan }}</td>
+                        <td>{{ h.kasa.ad }}</td>
+                        <td class="text-end fw-bold">{{ "{:,.2f}".format(h.tutar) }} ₺</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-success" onclick="teslimAl({{ h.id }}, 'NAKIT')">
+                                <i class="bi bi-check-lg me-1"></i> Teslim Al
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-3">Onay bekleyen nakit işlem yok.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    function teslimAl(id, tur) {
+        if(!confirm('Bu tahsilatı teslim aldığınızı onaylıyor musunuz?')) return;
+        
+        // 1.Token'ı Taze Olarak Al
+        var csrf_token = $('meta[name="csrf-token"]').attr('content');
+        
+        // Token Yoksa Uyar
+        if (!csrf_token) {
+            alert("Güvenlik hatası: CSRF Token bulunamadı.Lütfen sayfayı yenileyin.");
+            return;
+        }
+
+        var rowId = `#row-${tur.toLowerCase()}-${id}`;
+        var btn = $(rowId).find('button');
+        var orjHtml = btn.html();
+        
+        btn.prop('disabled', true).html('<i class="spinner-border spinner-border-sm"></i>');
+
+        $.ajax({
+            url: `/kasa-hareket/teslim-al/${id}?tur=${tur}`,
+            type: 'POST',
+            // 2.Token'ı Doğrudan İsteğe Gömüyoruz (En Garanti Yöntem)
+            headers: {
+                "X-CSRFToken": csrf_token
+            },
+            success: function(res) {
+                if(res.success) {
+                    Swal.fire({
+                        title: 'Başarılı',
+                        text: res.message,
+                        icon: 'success',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    $(rowId).fadeOut(500, function(){ $(this).remove(); });
+                } else {
+                    Swal.fire('Hata', res.message, 'error');
+                    btn.prop('disabled', false).html(orjHtml);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error("Hata:", xhr.responseText);
+                var msg = "Bir hata oluştu.";
+                
+                if(xhr.status === 400) msg = "Güvenlik (CSRF) hatası.Token geçersiz veya eksik.";
+                if(xhr.status === 500) msg = "Sunucu hatası.Logları kontrol edin.";
+                
+                Swal.fire('Hata', msg, 'error');
+                btn.prop('disabled', false).html(orjHtml);
+            }
+        });
+    }
+</script>
+{% endblock %}

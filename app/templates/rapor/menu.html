@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Rapor Merkezi{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-0"><i class="bi bi-bar-chart-line-fill me-2"></i>Rapor Merkezi</h3>
+            <span class="text-muted">Resmi defterler ve yönetim raporları.</span>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4 bg-light">
+        <div class="card-body">
+            <form id="raporForm" target="_blank" method="GET">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Başlangıç Tarihi</label>
+                        <input type="date" name="baslangic" class="form-control" value="{{ bugun_yil }}-01-01" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Bitiş Tarihi</label>
+                        <input type="date" name="bitis" class="form-control" value="{{ bugun }}" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Çıktı Formatı</label>
+                        <select name="format" class="form-select">
+                            <option value="html">💻 Ekranda Önizle (HTML)</option>
+                            <option value="excel">📊 Excel Olarak İndir</option>
+                        </select>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+        
+        <div class="col">
+            <div class="card h-100 shadow-sm border-0 hover-effect">
+                <div class="card-body text-center p-4">
+                    <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex p-3 mb-3">
+                        <i class="bi bi-book fs-1"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Yevmiye Defteri</h5>
+                    <p class="card-text text-muted small">Günlük muhasebe fişlerinin kronolojik dökümü.</p>
+                    <button onclick="raporCalistir('yevmiye')" class="btn btn-outline-primary w-100 stretched-link">
+                        Raporu Al
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card h-100 shadow-sm border-0 hover-effect">
+                <div class="card-body text-center p-4">
+                    <div class="bg-success bg-opacity-10 text-success rounded-circle d-inline-flex p-3 mb-3">
+                        <i class="bi bi-journals fs-1"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Büyük Defter (Kebir)</h5>
+                    <p class="card-text text-muted small">Ana hesapların borç/alacak bakiyeleri.</p>
+                    <button onclick="raporCalistir('kebir')" class="btn btn-outline-success w-100 stretched-link">
+                        Raporu Al
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card h-100 shadow-sm border-0 hover-effect">
+                <div class="card-body text-center p-4">
+                    <div class="bg-warning bg-opacity-10 text-warning rounded-circle d-inline-flex p-3 mb-3">
+                        <i class="bi bi-graph-up-arrow fs-1"></i>
+                    </div>
+                    <h5 class="card-title fw-bold">Gelir Tablosu</h5>
+                    <p class="card-text text-muted small">600-699 arası hesapların kar/zarar analizi.</p>
+                    <button onclick="raporCalistir('gelir')" class="btn btn-outline-warning w-100 stretched-link">
+                        Raporu Al
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    function raporCalistir(tur) {
+        var form = document.getElementById('raporForm');
+        // Rapor türüne göre URL'i güncelle ve gönder
+        form.action = "/rapor/calistir/" + tur;
+        form.submit();
+    }
+</script>
+
+<style>
+    .hover-effect:hover { transform: translateY(-5px); transition: 0.3s; }
+</style>
+{% endblock %}

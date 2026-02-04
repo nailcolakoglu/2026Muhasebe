@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% block title %}Banka Ekstre Aktarımı{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-0">
+                <i class="bi bi-file-earmark-spreadsheet-fill text-success me-2"></i>
+                Banka Ekstre Aktarımı (Import)
+            </h3>
+            <p class="text-muted">Excel ekstrenizi yükleyin, sistem otomatik eşleştirsin.</p>
+        </div>
+        <div>
+            <a href="/banka-import/sablonlar" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-gear"></i> Şablon Ayarları
+            </a>
+            <a href="/banka-import/kurallar" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-robot"></i> Eşleştirme Kuralları
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body p-4">
+            <form id="uploadForm" enctype="multipart/form-data">
+                {{ form.hidden_tag() }}
+                <div class="row g-3 align-items-end">
+                    
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Hangi Bankaya İşlenecek?</label>
+                        <select name="banka_id" class="form-select" required>
+                            {% for b in bankalar %}
+                            <option value="{{ b.id }}">{{ b.banka_adi }} - {{ b.ad }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Hangi Excel Şablonu?</label>
+                        <select name="sablon_id" class="form-select" required>
+                            {% for s in sablonlar %}
+                            <option value="{{ s.id }}">{{ s.banka_adi }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Excel Dosyası Seç</label>
+                        <input type="file" name="file" class="form-control" accept=".xlsx, .xls" required>
+                    </div>
+
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-success w-100" id="btnPreview">
+                            <i class="bi bi-eye"></i> Önizle
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="previewSection" class="card shadow-sm border-0 d-none">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold">Aktarılacak İşlemler (<span id="rowCount">0</span>)</h6>
+            <button onclick="aktarimiTamamla()" class="btn btn-primary">
+                <i class="bi bi-check-circle"></i> Seçilenleri Aktar
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped align-middle mb-0" id="importTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="40"><input type="checkbox" id="selectAll" checked></th>
+                            <th>Tarih</th>
+                            <th>Açıklama</th>
+                            <th>Belge No</th>
+                            <th class="text-end">Tutar</th>
+                            <th>Yön</th>
+                            <th>Hesap / Eşleşme Durumu</th>
+                            <th>Komisyon (POS)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    let formData = new FormData(this);
+    let btn = document.getElementById('btnPreview');
+    
+    // Butonu Kilitle
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Analiz Ediliyor...';
+
+    fetch('/banka-import/yukle', {
+        method: 'POST',
+        body: formData
+    })
+    .then(async response => {
+        // Eğer sunucu hata verdiyse (500, 404 vb.)
+        if (!response.ok) {
+            // Hata metnini (HTML veya Text) al
+            const text = await response.text();
+            throw new Error(`Sunucu Hatası (${response.status}): ${text}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.error) {
+            alert("İşlem Hatası: " + data.error);
+        } else {
+            renderTable(data.data, data.file_hash);
+        }
+        resetButton();
+    })
+    .catch(err => {
+        console.error("Detaylı Hata:", err);
+        // Hatanın ilk 200 karakterini göster (Çok uzun HTML basmasın)
+        let msg = err.message.substring(0, 300);
+        alert("Bir hata oluştu!\n\nDetay:\n" + msg);
+        resetButton();
+    });
+
+    function resetButton() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-eye"></i> Önizle';
+    }
+});
+
+let globalHash = "";
+
+function renderTable(rows, hash) {
+    globalHash = hash;
+    let tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+    
+    document.getElementById('rowCount').innerText = rows.length;
+    document.getElementById('previewSection').classList.remove('d-none');
+
+    rows.forEach((row, index) => {
+        let matchStatus = '';
+        let targetSelect = '';
+        let rowClass = '';
+        
+        // --- 1.EŞLEŞME DURUMU VE KURAL KAYDETME BUTONU ---
+        if (row.oneri.bulundu) {
+            rowClass = 'table-success';
+            let kaynakBadge = '';
+            let saveRuleCheckbox = '';
+
+            // Kaynak Gösterimi
+            if(row.oneri.kaynak === 'kural') {
+                kaynakBadge = '<span class="badge bg-primary ms-1">Kural</span>';
+            }
+            else if(row.oneri.kaynak === 'vkn_eslesmesi' || row.oneri.kaynak === 'isim_eslesmesi') {
+                // Eğer İsim veya VKN ile bulunduysa "Sarı" badge ve "Kural Kaydet" kutusu koy
+                kaynakBadge = '<span class="badge bg-warning text-dark ms-1">İsim/VKN</span>';
+                
+                // 👇 YENİ: Kural Kaydetme Seçeneği (Varsayılan Seçili)
+                saveRuleCheckbox = `
+                    <div class="form-check form-check-inline ms-2" title="İşlem aktarılırken bu eşleşme KURAL olarak kaydedilsin mi?">
+                        <input class="form-check-input save-rule-check" type="checkbox" checked id="ruleCheck${index}">
+                        <label class="form-check-label small text-muted" for="ruleCheck${index}">
+                            <i class="bi bi-save"></i> Öğren
+                        </label>
+                    </div>
+                `;
+            }
+
+            matchStatus = `<span class="badge bg-success"><i class="bi bi-check-all"></i> ${row.oneri.display}</span> ${kaynakBadge}`;
+            
+            targetSelect = `
+                <input type="hidden" class="target-id" value="${row.oneri.target_id}">
+                <input type="hidden" class="target-type" value="${row.oneri.hedef_turu}">
+                
+                <input type="hidden" class="match-source" value="${row.oneri.kaynak}">
+                <input type="hidden" class="match-key" value="${row.oneri.kural_anahtar}">
+                
+                ${matchStatus}
+                ${saveRuleCheckbox} `;
+        } else {
+            rowClass = 'table-warning';
+            targetSelect = `<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i> Eşleşmedi</span>`;
+        }
+
+        // POS Bilgisi
+        let posInfo = '-';
+        if (row.oneri.is_pos) {
+            posInfo = `
+                <div class="small text-danger">Kom: ${formatMoney(row.oneri.komisyon)}</div>
+                <div class="small text-muted">Brüt: ${formatMoney(row.oneri.brut_tutar)}</div>
+            `;
+        }
+
+        let html = `
+            <tr class="${rowClass}">
+                <td><input type="checkbox" class="row-check" checked data-index="${index}"></td>
+                <td>${formatDate(row.tarih)}</td>
+                <td class="small text-truncate" style="max-width: 250px;" title="${row.aciklama}">${row.aciklama}</td>
+                <td>${row.belge_no}</td>
+                <td class="text-end fw-bold ${row.yon === 'giris' ? 'text-success' : 'text-danger'}">
+                    ${formatMoney(row.tutar)}
+                </td>
+                <td>${row.yon === 'giris' ? 'GİRİŞ' : 'ÇIKIŞ'}</td>
+                <td>${targetSelect}</td>
+                <td>${posInfo}</td>
+            </tr>
+        `;
+        tbody.insertAdjacentHTML('beforeend', html);
+        
+        // Data'yı sakla
+        tbody.lastElementChild.dataset.rowData = JSON.stringify(row);
+    });
+}
+
+function aktarimiTamamla() {
+    let selectedRows = [];
+    let bankaId = document.querySelector('select[name="banka_id"]').value;
+
+    // 1.DOM'daki Gizli Input'tan CSRF Token'ı Al
+    // (Daha önce formun içine {{ form.hidden_tag() }} eklediğimiz için bu değer sayfada var)
+    let csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    document.querySelectorAll('.row-check:checked').forEach(chk => {
+        let tr = chk.closest('tr');
+        let rowData = JSON.parse(tr.dataset.rowData);
+        
+        // Checkbox'ı DOM'dan bul
+        let checkboxEl = tr.querySelector('.save-rule-check');
+        let shouldSaveRule = false;
+        if (checkboxEl && checkboxEl.checked) {
+            shouldSaveRule = true;
+        }
+
+        // Sadece hedefi belli olanları listeye ekle
+        if (rowData.oneri.target_id) {
+            selectedRows.push({
+                tarih: rowData.tarih,
+                belge_no: rowData.belge_no,
+                aciklama: rowData.aciklama,
+                tutar: rowData.tutar,
+                yon: rowData.yon,
+                target_type: rowData.oneri.hedef_turu,
+                target_id: rowData.oneri.target_id,
+                
+                // POS Verileri
+                is_pos: rowData.oneri.is_pos,
+                komisyon_tutari: rowData.oneri.komisyon,
+                brut_tutar: rowData.oneri.brut_tutar,
+                komisyon_hesap_id: rowData.oneri.komisyon_hesap_id,
+                komisyon_orani: rowData.oneri.oran,
+                
+                // Otomatik Öğrenme Parametreleri
+                match_source: rowData.oneri.kaynak,
+                match_key: rowData.oneri.kural_anahtar,
+                save_rule: shouldSaveRule
+            });
+        }
+    });
+
+    if (selectedRows.length === 0) {
+        alert("Aktarılacak geçerli (eşleşmiş) kayıt bulunamadı!");
+        return;
+    }
+
+    if (!confirm(`${selectedRows.length} adet işlem aktarılacak.\n("Öğren" seçili olanlar kural olarak kaydedilecek)`)) return;
+
+    // 2.Fetch İsteğine Header Ekle
+    fetch('/banka-import/kaydet', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken // <--- İŞTE EKSİK OLAN PARÇA BU!
+        },
+        body: JSON.stringify({
+            satirlar: selectedRows,
+            banka_id: bankaId,
+            file_hash: globalHash
+        })
+    })
+    .then(async response => {
+        // Hata kontrolünü burada yapalım ki detay görelim
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Hata (${response.status}): ${text}`);
+        }
+        return response.json();
+    })
+    .then(res => {
+        if(res.success) {
+            alert(res.message);
+            console.log("res.message", res.message)
+            window.location.href = "/banka-hareket";
+        } else {
+            alert("Sunucu Hatası: " + (res.error || res.message));
+        }
+    })
+    .catch(err => {
+        console.error("Aktarım Hatası:", err);
+        // HTML hatası gelirse kullanıcıya özet geç
+        let msg = err.message;
+        if (msg.includes("CSRF")) msg = "Güvenlik hatası (CSRF).Sayfayı yenileyip tekrar deneyin.";
+        alert("Bir sorun oluştu: " + msg);
+    });
+}
+
+// Yardımcı Formatörler
+function formatMoney(amount) {
+    return parseFloat(amount).toLocaleString('tr-TR', {minimumFractionDigits: 2}) + ' ₺';
+}
+function formatDate(dateStr) {
+    if(!dateStr) return '-';
+    let d = new Date(dateStr);
+    return d.toLocaleDateString('tr-TR');
+}
+
+// Tümünü Seç/Kaldır
+document.getElementById('selectAll').addEventListener('change', function() {
+    document.querySelectorAll('.row-check').forEach(c => c.checked = this.checked);
+});
+</script>
+{% endblock %}

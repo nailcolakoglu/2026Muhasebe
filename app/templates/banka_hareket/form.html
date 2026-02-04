@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ form.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">{{ form.title }}</h5>
+            <a href="{{ url_for('banka_hareket.index') }}" class="btn btn-outline-secondary btn-sm">Listeye Dön</a>
+        </div>
+        <div class="card-body p-4">
+            {{ form.render()|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.render_assets_html()|safe }}
+
+<script>
+    $(document).ready(function() {
+        // Form Alanlarını Tanımla
+        const sourceBankSelect = $('#banka_id');
+        const targetBankSelect = $('#hedef_banka_id');
+
+        // Banka Seçimi Değiştiğinde Çalışacak Fonksiyon
+        function filterTargetBanks() {
+            const selectedSourceId = sourceBankSelect.val();
+            
+            // 1.Hedef Banka listesindeki tüm seçenekleri önce bir temizle/aktif et
+            targetBankSelect.find('option').prop('disabled', false);
+
+            if (selectedSourceId) {
+                // 2.Kaynak banka ile aynı ID'ye sahip olan hedef banka seçeneğini bul ve PASİF yap
+                targetBankSelect.find('option[value="' + selectedSourceId + '"]').prop('disabled', true);
+                
+                // 3.Eğer kullanıcı yanlışlıkla pasif olanı seçmişse, seçimi temizle
+                if (targetBankSelect.val() == selectedSourceId) {
+                    targetBankSelect.val(null).trigger('change');
+                }
+            }
+
+            // 4.Select2 kullanıldığı için değişikliği arayüze yansıt (Re-render)
+            // Select2, 'disabled' özelliğini algılar ve o seçeneği grileştirir/seçilemez yapar.
+            if (targetBankSelect.hasClass("select2-hidden-accessible")) {
+                targetBankSelect.select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Hedef Banka Seçiniz',
+                    allowClear: true
+                });
+            }
+        }
+
+        // --- Event Listeners ---
+        
+        // Kaynak Banka değiştiğinde filtrele
+        sourceBankSelect.on('change', function() {
+            filterTargetBanks();
+        });
+
+        // Sayfa ilk açıldığında (Edit modunda) da çalıştır
+        filterTargetBanks();
+        
+        // İşlem Türü Değiştiğinde "Hedef Banka" görünür/gizlenir.
+        // Görünür olduğunda filtrelemenin doğru olduğundan emin olalım.
+        $('#islem_turu').on('change', function() {
+            setTimeout(filterTargetBanks, 100); // UI render süresi için minik gecikme
+        });
+    });
+</script>
+{% endblock %}

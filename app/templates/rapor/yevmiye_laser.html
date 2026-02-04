@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Yevmiye Defteri</title>
+    <style>
+        body { font-family: "Courier New", Courier, monospace; font-size: 11px; margin: 0; padding: 20px; }
+        
+        .page {
+            width: 210mm; min-height: 297mm; margin: 0 auto;
+            border: 1px solid #ddd; background: white; padding: 10mm;
+            box-sizing: border-box; position: relative; page-break-after: always;
+        }
+
+        @media print {
+            body { background: none; padding: 0; }
+            .page { border: none; margin: 0; page-break-after: always; height: 100vh; }
+            .no-print { display: none; }
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; table-layout: fixed; }
+        th, td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        th { background-color: #eee; text-align: center; font-weight: bold; }
+        
+        .text-end { text-align: right; }
+        .fw-bold { font-weight: bold; }
+        
+        /* Satır Stilleri */
+        .row-kebir { font-weight: bold; background-color: #f8f9fa; }
+        .row-grup { font-weight: 600; color: #444; }
+        .row-muavin { font-weight: normal; }
+        
+        /* Alacaklı Satır Girintisi */
+        .indent-alacak { padding-left: 40px !important; }
+        
+        /* Madde Başlığı */
+        .madde-header {
+            background-color: #fff; border-top: 2px solid #000; border-bottom: 1px solid #000;
+            padding: 5px; font-weight: bold; font-size: 12px; text-align: center;
+        }
+        
+        /* Fiş Sonu Toplam Satırı */
+        .fis-footer td {
+            border-top: 2px solid #000 !important;
+            border-bottom: 2px solid #000 !important;
+            font-weight: bold;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="no-print" style="position: fixed; top: 10px; right: 10px; z-index: 100;">
+        <button onclick="window.print()" style="padding: 10px 20px; background: #0d6efd; color: white; border: none; cursor: pointer;">YAZDIR</button>
+    </div>
+
+    {% if not sayfalar %}
+        <div class="page" style="display: flex; align-items: center; justify-content: center; height: 100vh;">
+            <div style="text-align: center;">
+                <h3>KAYIT BULUNAMADI</h3>
+                <p>Seçilen tarih aralığında yevmiye kaydı bulunmamaktadır.</p>
+                <button onclick="window.close()" style="padding: 5px 10px; cursor: pointer;">Pencereyi Kapat</button>
+            </div>
+        </div>
+    {% endif %}
+
+    {% for sayfa in sayfalar %}
+    <div class="page">
+        <div style="text-align: center; margin-bottom: 10px;">
+            <h3 style="margin: 5px 0;">YEVMİYE DEFTERİ</h3>
+            <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 5px;">
+                <span><strong>Firma:</strong> {{ aktif_firma.unvan }}</span>
+                <span><strong>Dönem:</strong> {{ aktif_donem.yil }}</span>
+                <span><strong>Sayfa:</strong> {{ sayfa.no }}</span>
+            </div>
+        </div>
+
+        <table>
+            <colgroup>
+                <col style="width: 12%"> <col style="width: 28%"> <col style="width: 24%"> <col style="width: 12%"> <col style="width: 12%"> <col style="width: 12%"> </colgroup>
+            <thead>
+                <tr>
+                    <th>HESAP KODU</th>
+                    <th>HESAP ADI</th>
+                    <th>AÇIKLAMA</th>
+                    <th>DETAY</th>
+                    <th>BORÇ</th>
+                    <th>ALACAK</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if sayfa.no > 1 %}
+                <tr style="background:#eee; font-weight:bold;">
+                    <td colspan="4" class="text-end">NAKLİ YEKÜN (DEVREDEN):</td>
+                    <td class="text-end">{{ "{:,.2f}".format(sayfa.header.borc) }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(sayfa.header.alacak) }}</td>
+                </tr>
+                {% endif %}
+
+                {% for fis in sayfa.data %}
+                    <tr>
+                        <td colspan="6" class="madde-header">
+                            ------ {{ fis.madde_no }} NI.{{ fis.tarih.strftime('%d/%m/%Y') }} Tarihli Yevmiye Kaydı (Fiş: {{ fis.fis_no }}) ------
+                        </td>
+                    </tr>
+
+                    {% for row in fis.satirlar %}
+                        <tr class="row-{{ row.row_type }}">
+                            <td style="{{ 'padding-left: 20px;' if row.is_alacak else '' }}">
+                                {{ row.kod }}
+                            </td>
+
+                            <td class="{{ 'indent-alacak' if row.is_alacak else '' }}">
+                                {{ row.ad }}
+                            </td>
+
+                            <td>{{ row.aciklama }}</td>
+
+                            <td class="text-end" style="border-right: 1px solid #ccc;">
+                                {% if row.tutar_detay %}
+                                    {{ "{:,.2f}".format(row.tutar_detay) }}
+                                {% endif %}
+                            </td>
+
+                            <td class="text-end">
+                                {% if not row.is_alacak and row.tutar_ana %}
+                                    {{ "{:,.2f}".format(row.tutar_ana) }}
+                                {% endif %}
+                            </td>
+
+                            <td class="text-end">
+                                {% if row.is_alacak and row.tutar_ana %}
+                                    {{ "{:,.2f}".format(row.tutar_ana) }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    
+                    <tr class="fis-footer">
+                        <td colspan="4" style="text-align: left; padding-left: 10px;">
+                            {{ fis.aciklama }} &nbsp;&nbsp;&nbsp; 
+                            <span style="float:right;">Fiş Toplamı:</span>
+                        </td>
+                        <td class="text-end">{{ "{:,.2f}".format(fis.fis_toplam_borc) }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(fis.fis_toplam_alacak) }}</td>
+                    </tr>
+
+                    <tr><td colspan="6" style="border:none; height:15px;"></td></tr>
+                    
+                {% endfor %}
+            </tbody>
+            
+            <tfoot>
+                <tr style="background:#eee; font-weight:bold; border-top: 2px solid #000;">
+                    <td colspan="4" class="text-end">
+                        {% if sayfa.is_last %}GENEL TOPLAM:{% else %}NAKLİ YEKÜN:{% endif %}
+                    </td>
+                    <td class="text-end">{{ "{:,.2f}".format(sayfa.footer.borc) }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(sayfa.footer.alacak) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% endfor %}
+
+</body>
+</html>

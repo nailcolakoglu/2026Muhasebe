@@ -1,0 +1,158 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Yedekleme Ayarları - {{ tenant.unvan }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-primary">
+                        <i class="bi bi-cloud-arrow-up me-2"></i>Yedekleme Stratejisi
+                    </h5>
+                    <span class="badge bg-light text-dark">{{ tenant.unvan }}</span>
+                </div>
+                
+                <div class="card-body p-4">
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Yedekleme Hedefi</label>
+                            {{ form.provider(class="form-select form-select-lg", id="providerSelect") }}
+                            <div class="form-text">Verileriniz nerede saklansın?</div>
+                        </div>
+
+                        <div id="awsSection" class="provider-section border rounded p-3 mb-4 bg-light" style="display: none;">
+                            <h6 class="text-warning mb-3"><i class="bi bi-amazon me-2"></i>Amazon S3 Ayarları</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    {{ form.aws_access_key.label(class="form-label small") }}
+                                    {{ form.aws_access_key(class="form-control") }}
+                                </div>
+                                <div class="col-md-6">
+                                    {{ form.aws_secret_key.label(class="form-label small") }}
+                                    {{ form.aws_secret_key(class="form-control", placeholder="Değiştirmek için giriniz") }}
+                                </div>
+                                <div class="col-md-6">
+                                    {{ form.aws_bucket_name.label(class="form-label small") }}
+                                    {{ form.aws_bucket_name(class="form-control") }}
+                                </div>
+                                <div class="col-md-6">
+                                    {{ form.aws_region.label(class="form-label small") }}
+                                    {{ form.aws_region(class="form-control") }}
+                                </div>
+                            </div>
+                        </div>
+
+						<div class="card mb-4" id="onedrive_settings">
+							<div class="card-header bg-primary text-white">
+								<h6 class="mb-0"><i class="bi bi-microsoft me-2"></i>OneDrive Ayarları</h6>
+							</div>
+							<div class="card-body">
+								<div class="alert alert-info">
+									<small>OneDrive entegrasyonu için Azure Portal üzerinden bir uygulama oluşturup aşağıdaki bilgileri girmelisiniz.</small>
+								</div>
+								<div class="row">
+									<div class="col-md-6 mb-3">
+										{{ form.aws_access_key.label(class="form-label", text="Client ID (Uygulama Kimliği)") }}
+										{{ form.aws_access_key(class="form-control", placeholder="Azure Client ID") }}
+									</div>
+									<div class="col-md-6 mb-3">
+										{{ form.aws_secret_key.label(class="form-label", text="Client Secret (Gizli Anahtar)") }}
+										{{ form.aws_secret_key(class="form-control", placeholder="Azure Client Secret") }}
+									</div>
+								</div>
+							</div>
+						</div>
+
+
+
+
+                        <div id="ftpSection" class="provider-section border rounded p-3 mb-4 bg-light" style="display: none;">
+                            <h6 class="text-info mb-3"><i class="bi bi-hdd-network me-2"></i>FTP Sunucu Ayarları</h6>
+                            <div class="row g-3">
+                                <div class="col-md-8">
+                                    {{ form.ftp_host.label(class="form-label small") }}
+                                    {{ form.ftp_host(class="form-control", placeholder="ftp.ornek.com") }}
+                                </div>
+                                <div class="col-md-4">
+                                    {{ form.ftp_port.label(class="form-label small") }}
+                                    {{ form.ftp_port(class="form-control") }}
+                                </div>
+                                <div class="col-md-6">
+                                    {{ form.ftp_user.label(class="form-label small") }}
+                                    {{ form.ftp_user(class="form-control") }}
+                                </div>
+                                <div class="col-md-6">
+                                    {{ form.ftp_password.label(class="form-label small") }}
+                                    {{ form.ftp_password(class="form-control") }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                {{ form.frequency.label(class="form-label fw-bold") }}
+                                {{ form.frequency(class="form-select") }}
+                            </div>
+                            <div class="col-md-6">
+                                {{ form.retention_days.label(class="form-label fw-bold") }}
+                                {{ form.retention_days(class="form-control") }}
+                                <div class="form-text">Eski yedekler kaç gün sonra silinsin?</div>
+                            </div>
+                        </div>
+
+                        <div class="form-check form-switch mb-4 p-3 border rounded bg-opacity-10 bg-success">
+                            {{ form.encrypt_backups(class="form-check-input", role="switch") }}
+                            <label class="form-check-label fw-bold text-success" for="encrypt_backups">
+                                <i class="bi bi-shield-lock-fill me-1"></i> Askeri Standartta Şifreleme (AES-256)
+                            </label>
+                            <div class="form-text small">
+                                Aktif edilirse, yedek dosyalarınız buluta gönderilmeden önce şifrelenir.
+                                Cloud hesabınız hacklense bile verileriniz okunamaz.
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            {{ form.submit(class="btn btn-primary btn-lg") }}
+                            <a href="{{ url_for('tenants.index') }}" class="btn btn-outline-secondary">İptal</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const providerSelect = document.getElementById('providerSelect');
+    const awsSection = document.getElementById('awsSection');
+    const ftpSection = document.getElementById('ftpSection');
+
+    function toggleSections() {
+        const val = providerSelect.value;
+        
+        // Hepsini gizle
+        awsSection.style.display = 'none';
+        ftpSection.style.display = 'none';
+        
+        // Seçime göre aç
+        if (val === 'aws_s3') {
+            awsSection.style.display = 'block';
+        } else if (val === 'ftp') {
+            ftpSection.style.display = 'block';
+        }
+    }
+
+    // İlk açılışta çalıştır
+    toggleSections();
+
+    // Değişiklik olunca çalıştır
+    providerSelect.addEventListener('change', toggleSections);
+});
+</script>
+{% endblock %}

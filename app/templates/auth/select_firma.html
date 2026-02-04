@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Firma Seçimi{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-building"></i> Firma Seçimi
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Holding bünyesinde birden fazla firma bulunmaktadır. 
+                        Lütfen çalışmak istediğiniz firmayı seçin.
+                    </p>
+                    
+                    <form method="POST" action="{{ url_for('auth.select_firma') }}">
+                        <div class="list-group mb-3">
+                            {% for firma in firmalar %}
+                            <label class="list-group-item list-group-item-action cursor-pointer">
+                                <div class="d-flex align-items-center">
+                                    <input 
+                                        class="form-check-input me-3" 
+                                        type="radio" 
+                                        name="firma_id" 
+                                        value="{{ firma.id }}"
+                                        {% if loop.first %}checked{% endif %}
+                                    >
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-0">{{ firma.unvan }}</h6>
+                                        <small class="text-muted">
+                                            Kod: {{ firma.kod }} | 
+                                            VKN: {{ firma.vergi_no or '-' }}
+                                        </small>
+                                    </div>
+                                    <div>
+                                        <span class="badge bg-success">Aktif</span>
+                                    </div>
+                                </div>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-check-circle"></i> Firmayı Seç ve Devam Et
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

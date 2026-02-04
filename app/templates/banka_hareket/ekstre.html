@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if secilen_banka %}
+        {{ secilen_banka.banka_adi }} - Hesap Ekstresi
+    {% else %}
+        Banka Ekstresi
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="card shadow-sm mb-4 no-print">
+        <div class="card-body py-3">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Banka Hesabı Seçimi</label>
+                    <select name="banka_id" class="form-select select2" onchange="this.form.submit()">
+                        <option value="">Banka Seçiniz...</option>
+                        {% for b in banka_opts %}
+                        <option value="{{ b.id }}" {% if secilen_banka and b.id == secilen_banka.id %}selected{% endif %}>
+                            {{ b.banka_adi }} / {{ b.sube_adi }} ({{ b.doviz_cinsi }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Başlangıç</label>
+                    <input type="date" name="bas_tarih" class="form-control" value="{{ bas_tarih }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Bitiş</label>
+                    <input type="date" name="bit_tarih" class="form-control" value="{{ bit_tarih }}">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-filter"></i> Raporla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if secilen_banka %}
+    
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-secondary text-white shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-white-50">DEVİR (ÖNCEKİ)</h6>
+                    <h3>{{ "{:,.2f}".format(devir_bakiye) }} <small class="fs-6">{{ secilen_banka.doviz_cinsi }}</small></h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-white-50">DÖNEM GİRİŞ</h6>
+                    <h3>+ {{ "{:,.2f}".format(toplam_giris) }} <small class="fs-6">{{ secilen_banka.doviz_cinsi }}</small></h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-white-50">DÖNEM ÇIKIŞ</h6>
+                    <h3>- {{ "{:,.2f}".format(toplam_cikis) }} <small class="fs-6">{{ secilen_banka.doviz_cinsi }}</small></h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-primary text-white shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-white-50">NET BAKİYE</h6>
+                    <h3>{{ "{:,.2f}".format(son_bakiye) }} <small class="fs-6">{{ secilen_banka.doviz_cinsi }}</small></h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4 no-print">
+        <div class="card-header bg-white">
+            <h6 class="m-0 fw-bold">Banka Bakiye Seyri</h6>
+        </div>
+        <div class="card-body">
+            <canvas id="bankaChart" height="70"></canvas>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h5 class="m-0 text-primary">{{ secilen_banka.banka_adi }} - Hesap Ekstresi</h5>
+            <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
+                <i class="bi bi-printer"></i> Yazdır
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 100px;">Tarih</th>
+                        <th>Dekont No</th>
+                        <th>İşlem Türü</th>
+                        <th>Açıklama / Cari</th>
+                        <th class="text-end text-success">Giriş (Alacak)</th>
+                        <th class="text-end text-danger">Çıkış (Borç)</th>
+                        <th class="text-end fw-bold">Bakiye</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="bg-light fw-bold text-secondary">
+                        <td>{{ bas_tarih }}</td>
+                        <td>DEVİR</td>
+                        <td>-</td>
+                        <td>Dönem Başı Devir Bakiyesi</td>
+                        <td class="text-end">-</td>
+                        <td class="text-end">-</td>
+                        <td class="text-end">{{ "{:,.2f}".format(devir_bakiye) }}</td>
+                    </tr>
+                    
+                    {% for h in hareketler %}
+                    <tr>
+                        <td>{{ h.tarih.strftime('%d.%m.%Y') }}</td>
+                        <td><span class="badge bg-light text-dark border">{{ h.belge_no }}</span></td>
+                        <td><small class="text-uppercase">{{ h.islem_turu.value if h.islem_turu.value else h.islem_turu }}</small></td>
+                        <td>
+                            {{ h.aciklama }}
+                            {% if h.cari %}<br><small class="text-primary"><i class="bi bi-person"></i> {{ h.cari.unvan }}</small>{% endif %}
+                            {% if h.kasa %}<br><small class="text-warning"><i class="bi bi-safe"></i> {{ h.kasa.ad }}</small>{% endif %}
+                        </td>
+                        <td class="text-end text-success">
+                            {% if h.giris > 0 %}{{ "{:,.2f}".format(h.giris) }}{% endif %}
+                        </td>
+                        <td class="text-end text-danger">
+                            {% if h.cikis > 0 %}{{ "{:,.2f}".format(h.cikis) }}{% endif %}
+                        </td>
+                        <td class="text-end fw-bold">{{ "{:,.2f}".format(h.yuruyen_bakiye) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td colspan="4" class="text-end">TOPLAMLAR:</td>
+                        <td class="text-end text-success">{{ "{:,.2f}".format(toplam_giris) }}</td>
+                        <td class="text-end text-danger">{{ "{:,.2f}".format(toplam_cikis) }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(son_bakiye) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="alert alert-warning text-center py-5">
+        <h4><i class="bi bi-bank"></i></h4>
+        <p>Lütfen ekstre almak istediğiniz banka hesabını yukarıdan seçiniz.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    {% if secilen_banka %}
+    const ctx = document.getElementById('bankaChart').getContext('2d');
+    
+    const labels = [{% for h in hareketler %}"{{ h.tarih.strftime('%d.%m') }}",{% endfor %}];
+    const dataPoints = [{% for h in hareketler %}{{ h.yuruyen_bakiye }},{% endfor %}];
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Banka Bakiyesi',
+                data: dataPoints,
+                borderColor: '#198754', // Banka için Yeşil ton
+                backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                tension: 0.3,
+                fill: true,
+                pointRadius: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: false } }
+        }
+    });
+    {% endif %}
+</script>
+
+<style>
+    @media print {
+        .no-print, .sidebar, .navbar { display: none !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        .table th { background-color: #f8f9fa !important; color: #000 !important; }
+    }
+</style>
+{% endblock %}

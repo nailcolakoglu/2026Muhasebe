@@ -1,0 +1,272 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Lisans Yönetimi{% endblock %}
+
+{% block content %}
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">Lisans Yönetimi</h2>
+        <p class="text-muted mb-0">Firma lisansları ve süreleri</p>
+    </div>
+    <div>
+        <a href="{{ url_for('licenses.new') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle me-2"></i>
+            Yeni Lisans
+        </a>
+    </div>
+</div>
+
+<!-- Filtreler -->
+<div class="stat-card mb-4">
+    <form method="GET" action="{{ url_for('licenses.index') }}">
+        <div class="row g-3">
+            <!-- Durum -->
+            <div class="col-md-3">
+                <label class="form-label">Durum</label>
+                <select name="status" class="form-select" onchange="this.form.submit()">
+                    <option value="all" {% if status == 'all' %}selected{% endif %}>Tümü</option>
+                    <option value="active" {% if status == 'active' %}selected{% endif %}>Aktif</option>
+                    <option value="expiring" {% if status == 'expiring' %}selected{% endif %}>Dolmak Üzere (30 Gün)</option>
+                    <option value="expired" {% if status == 'expired' %}selected{% endif %}>Süresi Dolmuş</option>
+                </select>
+            </div>
+            
+            <!-- Lisans Tipi -->
+            <div class="col-md-3">
+                <label class="form-label">Lisans Tipi</label>
+                <select name="type" class="form-select" onchange="this.form.submit()">
+                    <option value="all" {% if license_type == 'all' %}selected{% endif %}>Tümü</option>
+                    {% for type_key in available_types %}
+                    <option value="{{ type_key }}" {% if license_type == type_key %}selected{% endif %}>
+                        {{ type_key|title }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- Arama -->
+            <div class="col-md-4">
+                <label class="form-label">Firma Ara</label>
+                <input type="text" 
+                       name="search" 
+                       class="form-control" 
+                       placeholder="Firma adı..."
+                       value="{{ search }}">
+            </div>
+            
+            <!-- Butonlar -->
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- İstatistikler -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon primary">
+                    <i class="bi bi-key"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Toplam Lisans</p>
+            <h3 class="stat-card-value">{{ pagination.total }}</h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon success">
+                    <i class="bi bi-check-circle"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Aktif</p>
+            <h3 class="stat-card-value">
+                {{ licenses|selectattr('remaining_days', 'gt', 0)|list|length }}
+            </h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Dolmak Üzere</p>
+            <h3 class="stat-card-value">
+                {% set expiring = licenses|selectattr('remaining_days', 'gt', 0)|selectattr('remaining_days', 'le', 30)|list %}
+                {{ expiring|length }}
+            </h3>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon danger">
+                    <i class="bi bi-x-circle"></i>
+                </div>
+            </div>
+            <p class="stat-card-title">Süresi Dolmuş</p>
+            <h3 class="stat-card-value">
+                {{ licenses|selectattr('remaining_days', 'le', 0)|list|length }}
+            </h3>
+        </div>
+    </div>
+</div>
+
+<!-- Lisans Listesi -->
+<div class="stat-card">
+    {% if licenses %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Durum</th>
+                    <th>Firma</th>
+                    <th>Lisans Tipi</th>
+                    <th>Başlangıç</th>
+                    <th>Bitiş</th>
+                    <th>Kalan Gün</th>
+                    <th>Kullanıcı Limiti</th>
+                    <th class="text-end">İşlemler</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in licenses %}
+                <tr>
+                    <!-- Durum -->
+                    <td>
+                        {% if item.remaining_days <= 0 %}
+                        <span class="badge bg-danger">Süresi Dolmuş</span>
+                        {% elif item.remaining_days <= 7 %}
+                        <span class="badge bg-danger">{{ item.remaining_days }} Gün</span>
+                        {% elif item.remaining_days <= 30 %}
+                        <span class="badge bg-warning">{{ item.remaining_days }} Gün</span>
+                        {% else %}
+                        <span class="badge bg-success">Aktif</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Firma -->
+                    <td>
+                        <div>
+                            <strong>{{ item.tenant.unvan }}</strong>
+                            <br>
+                            <small class="text-muted">{{ item.tenant.kod }}</small>
+                        </div>
+                    </td>
+                    
+                    <!-- Lisans Tipi -->
+                    <td>
+                        <span class="badge bg-primary">{{ item.license.license_type|title }}</span>
+                    </td>
+                    
+                    <!-- Başlangıç -->
+                    <td>{{ item.license.valid_from.strftime('%d.%m.%Y') }}</td>
+                    
+                    <!-- Bitiş -->
+                    <td>
+                        {{ item.license.valid_until.strftime('%d.%m.%Y') }}
+                        {% if item.remaining_days <= 7 and item.remaining_days > 0 %}
+                        <i class="bi bi-exclamation-triangle text-danger ms-1"></i>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Kalan Gün -->
+                    <td>
+                        {% if item.remaining_days > 0 %}
+                        <strong class="{% if item.remaining_days <= 30 %}text-warning{% endif %}">
+                            {{ item.remaining_days }} gün
+                        </strong>
+                        {% else %}
+                        <strong class="text-danger">Dolmuş</strong>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Kullanıcı Limiti -->
+                    <td>
+                        <i class="bi bi-people me-1"></i>
+                        {{ item.license.max_users }}
+                    </td>
+                    
+                    <!-- İşlemler -->
+                    <td class="text-end">
+                        <a href="{{ url_for('licenses.detail', license_id=item.license.id) }}" 
+                           class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        <a href="{{ url_for('licenses.edit', license_id=item.license.id) }}" 
+                           class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <nav class="mt-4">
+        <ul class="pagination justify-content-center">
+            <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('licenses.index', page=pagination.prev_num, status=status, type=license_type, search=search) }}">
+                    Önceki
+                </a>
+            </li>
+            
+            {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                {% if page_num %}
+                <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('licenses.index', page=page_num, status=status, type=license_type, search=search) }}">
+                        {{ page_num }}
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">...</span>
+                </li>
+                {% endif %}
+            {% endfor %}
+            
+            <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('licenses.index', page=pagination.next_num, status=status, type=license_type, search=search) }}">
+                    Sonraki
+                </a>
+            </li>
+        </ul>
+    </nav>
+    {% endif %}
+    
+    {% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-inbox display-1 text-muted"></i>
+        <h4 class="mt-3">Lisans bulunamadı</h4>
+        <p class="text-muted">Henüz lisans eklenmemiş veya filtrelere uygun lisans yok.</p>
+        <a href="{{ url_for('licenses.new') }}" class="btn btn-primary mt-3">
+            <i class="bi bi-plus-circle me-2"></i>
+            İlk Lisansı Ekle
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+
+{% endblock %}

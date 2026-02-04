@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}{{ form.title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold text-primary">
+                        <i class="bi bi-receipt-cutoff me-2"></i>{{ form.title }}
+                    </h5>
+                    
+                    <div>
+                        <a href="{{ url_for('fatura.index') }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-arrow-left me-1"></i> Listeye Dön
+                        </a>
+                    </div>
+                </div>
+
+                <div class="card-body p-4">
+                    {{ form.render()|safe }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- 🔥 1.ÖNCE Form Builder Assets -->
+{{ form.render_assets_html()|safe }}
+
+<!-- 🔥 2.SONRA Custom JavaScript -->
+<script>
+$(document).ready(function() {
+    console.log("✅ Fatura scripti başlatıldı.");
+
+    // ========================================
+    // 🆕 YENİ EKLEME:  SAYFA YÜKLENİRKEN MEVCUT SATIRLARI BAŞLAT
+    // ========================================
+    function initializeExistingRows() {
+        console.log("🔄 Mevcut satırlar için Select2 başlatılıyor...");
+        
+        // Tablodaki tüm stok select'lerini bul
+        $('table tbody tr').each(function() {
+            var $row = $(this);
+            var $stokSelect = $row.find('[data-js="stok-select"]');
+            
+            if ($stokSelect.length && ! $stokSelect.hasClass('select2-hidden-accessible')) {
+                console.log("🔹 Satır için Select2 başlatılıyor:", $stokSelect.attr('name'));
+                
+                // Select2 Başlat
+                $stokSelect.select2({
+                    theme: 'bootstrap-5',
+                    //width: '100%',
+                    width: '600px',
+                    placeholder: 'Ürün/Hizmet Seçiniz',
+                    language: 'tr',
+                    ajax: {
+                        url:  '/fatura/api/stok-ara',
+                        dataType: 'json',
+                        delay: 250,
+                        data: function(params) {
+                            return { term: params.term, page: params.page || 1 };
+                        },
+                        processResults: function(data) {
+                            return {
+                                results: data.results,
+                                pagination: { more: data.pagination.more }
+                            };
+                        },
+                        cache:  true
+                    },
+                    minimumInputLength: 0
+                });
+
+                // ✅ DEĞER VARSA GÖSTERİLSİN
+                var currentVal = $stokSelect.val();
+                var currentText = $stokSelect.find('option:selected').text();
+                
+                if (currentVal && currentText && currentText !== '') {
+                    console.log("✅ Mevcut değer korundu:", currentText);
+                    // Select2'ye göster
+                    $stokSelect.trigger('change');
+                }
+            }
+        });
+    }
+
+    // Sayfa yüklenince çalıştır
+    initializeExistingRows();
+
+    // ========================================
+    // MEVCUT KODLARINIZ (Değişiklik Yok)
+    // ========================================
+    
+    // 1.Döviz Türü Değiştiğinde
+    $(document).on('change select2:select', '#doviz_turu', function() {
+        var kod = $(this).val();
+        var $kurInput = $('#doviz_kuru');
+        console.log("Döviz değişti:", kod);
+
+        if (! kod || kod === 'TL') {
+            $kurInput.val('1,0000');
+            tumSatirlariYenidenHesapla();
+            return;
+        }
+
+        $kurInput.prop('disabled', true).val('Yükleniyor...');
+        
+        fetch(`/fatura/api/get-kur/${kod}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.kur) {
+                    var kur = parseFloat(data.kur).toLocaleString('tr-TR', {minimumFractionDigits: 4});
+                    $kurInput.val(kur);
+                    tumSatirlariYenidenHesapla();
+                }
+            })
+            .finally(() => {
+                $kurInput.prop('disabled', false);
+            });
+    });
+
+    // 2.Kur Manuel Değişirse
+    $('#doviz_kuru').on('change blur', function() {
+        console.log("Kur elle değiştirildi.");
+        tumSatirlariYenidenHesapla();
+    });
+
+    // 3.Fiyat Listesi Değişirse
+    $('#fiyat_listesi_id').on('change', function() {
+        console.log("Fiyat listesi değişti.");
+        tumSatirlariYenidenHesapla();
+    });
+
+    // 4.Yeni Ürün Seçildiğinde
+    $(document).on('change select2:select', '[data-js="stok-select"]', function() {
+        var $row = $(this).closest('tr');
+        if ($(this).val()) {
+            getFiyatVeYaz($row);
+        }
+    });
+
+    // ========================================
+    // YARDIMCI FONKSİYONLAR
+    // ========================================
+    
+    function tumSatirlariYenidenHesapla() {
+        $('table tbody tr').each(function() {
+            if ($(this).find('[data-js="stok-select"]').val()) {
+                getFiyatVeYaz($(this));
+            }
+        });
+    }
+
+    function getFiyatVeYaz($row) {
+        var stokId = $row.find('[data-js="stok-select"]').val();
+        if (!stokId) return;
+
+        var listeId = $('#fiyat_listesi_id').val() || 0;
+        var faturaTuru = $('#fatura_turu').val();
+        var dovizTuru = $('#doviz_turu').val();
+        var kurVal = $('#doviz_kuru').val() || "1";
+        var kur = parseFloat(kurVal.replace(/\./g, '').replace(',', '.'));
+
+        var $fiyatInput = $row.find('[data-js="fiyat-input"]');
+        $fiyatInput.css('opacity', '0.5');
+
+        $.ajax({
+            url: '/fatura/api/get-fiyat',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                stok_id: stokId,
+                liste_id: listeId,
+                fatura_turu: faturaTuru,
+                doviz_turu: dovizTuru,
+                doviz_kuru: kur
+            }),
+            success:  function(res) {
+                if (res.success) {
+                    var fiyat = parseFloat(res.fiyat).toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits:  4});
+                    $fiyatInput.val(fiyat);
+                    $row.find('[data-js="iskonto-input"]').val(res.iskonto_orani);
+                    $row.find('[data-js="kdv-input"]').val(res.kdv_orani).trigger('change');
+                    
+                    var $birimEl = $row.find('[data-js="birim-select"]');
+                    if (res.birim && $birimEl.length) {
+                        $birimEl.val(res.birim);
+                    }
+                }
+            },
+            complete: function() {
+                $fiyatInput.css('opacity', '1');
+            }
+        });
+    }
+
+    function parseTrFloat(val) {
+        if (!val) return 0;
+        return parseFloat(val.toString().replace(/\./g, '').replace(',', '.'));
+    }
+
+    function formatTrFloat(val) {
+        return val.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function satirHesapla($row) {
+        var miktar = parseTrFloat($row.find('[data-js="miktar-input"]').val());
+        var fiyat = parseTrFloat($row.find('[data-js="fiyat-input"]').val());
+        var iskOran = parseTrFloat($row.find('[data-js="iskonto-input"]').val());
+        var kdvOran = parseTrFloat($row.find('[data-js="kdv-input"]').val());
+
+        var brutTutar = miktar * fiyat;
+        var iskontoTutar = brutTutar * (iskOran / 100);
+        var netTutar = brutTutar - iskontoTutar;
+        var kdvTutar = netTutar * (kdvOran / 100);
+        var satirToplam = netTutar + kdvTutar;
+
+        $row.find('[data-calc="total"]').val(formatTrFloat(satirToplam));
+    }
+
+    $(document).on('input change blur', '[data-js="miktar-input"], [data-js="fiyat-input"], [data-js="iskonto-input"], [data-js="kdv-input"]', function() {
+        satirHesapla($(this).closest('tr'));
+    });
+});
+</script>
+
+{% endblock %}

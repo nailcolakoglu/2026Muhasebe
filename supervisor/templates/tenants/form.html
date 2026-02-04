@@ -1,0 +1,188 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}{% if tenant %}Firma Düzenle{% else %}Yeni Firma{% endif %}{% endblock %}
+
+{% block content %}
+
+<!-- Page Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            {% if tenant %}
+            Firma Düzenle
+            {% else %}
+            Yeni Firma Ekle
+            {% endif %}
+        </h2>
+        <p class="text-muted mb-0">
+            {% if tenant %}
+            {{ tenant.unvan }} bilgilerini güncelleyin
+            {% else %}
+            Yeni firma kaydı oluşturun
+            {% endif %}
+        </p>
+    </div>
+    <div>
+        <a href="{% if tenant %}{{ url_for('tenants.detail', tenant_id=tenant.id) }}{% else %}{{ url_for('tenants.index') }}{% endif %}" 
+           class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-2"></i>
+            Geri
+        </a>
+    </div>
+</div>
+
+<!-- Form -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="stat-card">
+            <form method="POST" action="{% if tenant %}{{ url_for('tenants.edit', tenant_id=tenant.id) }}{% else %}{{ url_for('tenants.new') }}{% endif %}">
+                <!-- CSRF Token -->
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                
+                <!-- Firma Kodu -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        Firma Kodu <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" 
+                           name="kod" 
+                           class="form-control" 
+                           placeholder="Örn: ABC123"
+                           value="{{ tenant.kod if tenant else '' }}"
+                           {% if tenant %}readonly{% endif %}
+                           required
+                           maxlength="20">
+                    <small class="text-muted">
+                        Büyük harflerle yazın.Değiştirilemez.
+                    </small>
+                </div>
+                
+                <!-- Ünvan -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        Firma Ünvanı <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" 
+                           name="unvan" 
+                           class="form-control" 
+                           placeholder="Örn: ABC Ticaret A.Ş."
+                           value="{{ tenant.unvan if tenant else '' }}"
+                           required
+                           maxlength="200">
+                </div>
+                
+                <!-- Vergi No -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        Vergi Numarası
+                    </label>
+                    <input type="text" 
+                           name="vergi_no" 
+                           class="form-control" 
+                           placeholder="10 haneli vergi numarası"
+                           value="{{ tenant.vergi_no if tenant else '' }}"
+                           maxlength="10"
+                           pattern="[0-9]{10}">
+                    <small class="text-muted">Sadece rakam, 10 hane</small>
+                </div>
+                
+                <!-- Vergi Dairesi -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        Vergi Dairesi
+                    </label>
+                    <input type="text" 
+                           name="vergi_dairesi" 
+                           class="form-control" 
+                           placeholder="Örn: Kadıköy"
+                           value="{{ tenant.vergi_dairesi if tenant else '' }}"
+                           maxlength="100">
+                </div>
+                
+                <div class="mb-4 mt-4">
+    <h5 class="border-bottom pb-2 mb-3 text-primary">
+        <i class="bi bi-database me-2"></i>Veritabanı Yapılandırması
+    </h5>
+    
+    <div class="row">
+        <div class="mb-3">
+    <label class="form-label">Firebird Veritabanı Dosya Adı <span class="text-danger">*</span></label>
+    <input type="text" name="db_name" class="form-control" 
+           value="{{ tenant.db_name if tenant else '' }}" required>
+    <small class="text-muted">Örn: MUHASEBEDB.FDB (Dizin: D:\Firebird\Data\ERP\)</small>
+</div>
+
+<div class="mb-3">
+    <label class="form-label">Veritabanı Şifresi</label>
+    <input type="password" name="db_password" class="form-control" 
+           placeholder="Değiştirmek istemiyorsanız boş bırakın">
+    <small class="text-muted">Girdiğiniz şifre otomatik olarak şifrelenir.</small>
+</div>
+    </div>
+</div>
+                
+                <!-- Butonlar -->
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-2"></i>
+                        {% if tenant %}Güncelle{% else %}Oluştur{% endif %}
+                    </button>
+                    <a href="{% if tenant %}{{ url_for('tenants.detail', tenant_id=tenant.id) }}{% else %}{{ url_for('tenants.index') }}{% endif %}" 
+                       class="btn btn-outline-secondary">
+                        İptal
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Yardım Kartı -->
+    <div class="col-lg-4">
+        <div class="stat-card">
+            <h5 class="mb-3">
+                <i class="bi bi-info-circle text-primary me-2"></i>
+                Bilgilendirme
+            </h5>
+            
+            <div class="alert alert-info">
+                <strong>Firma Kodu:</strong>
+                <p class="small mb-0">
+                    Sistemde benzersiz olmalıdır.Büyük harflerle yazılır ve sonradan değiştirilemez.
+                </p>
+            </div>
+            
+            <div class="alert alert-warning">
+                <strong>Firebird Veritabanı: </strong>
+                <p class="small mb-0">
+                    Veritabanı dosyası Firebird sunucusunda mevcut olmalıdır.
+                    Yol: <code>D:\Firebird\Data\Muhasebe\</code>
+                </p>
+            </div>
+            
+            {% if not tenant %}
+            <div class="alert alert-success">
+                <strong>Lisans:</strong>
+                <p class="small mb-0">
+                    Firma oluşturulduktan sonra "Lisanslar" bölümünden lisans atayabilirsiniz.
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Firma kodu otomatik büyük harf
+document.querySelector('input[name="kod"]').addEventListener('input', function(e) {
+    e.target.value = e.target.value.toUpperCase();
+});
+
+// Vergi no sadece rakam
+document.querySelector('input[name="vergi_no"]').addEventListener('input', function(e) {
+    e.target.value = e.target.value.replace(/[^0-9]/g, '').substring(0, 10);
+});
+</script>
+{% endblock %}
