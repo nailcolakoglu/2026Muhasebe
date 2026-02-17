@@ -1,0 +1,267 @@
+<!-- app/templates/fatura/upload_ocr.html -->
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-gradient-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-camera-fill me-2"></i>
+                        {{ _('Fatura OCR - Görsel Yükleme') }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    
+                    {% if not ocr_active %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>{{ _('OCR Servisi Aktif Değil!') }}</strong><br>
+                        {{ _('GEMINI_API_KEY environment variable tanımlı değil.') }}
+                    </div>
+                    {% else %}
+                    
+                    <!-- Upload Area -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card border-2 border-dashed">
+                                <div class="card-body text-center py-5" id="dropZone">
+                                    <i class="bi bi-cloud-upload" style="font-size: 4rem; color: #6c757d;"></i>
+                                    <h5 class="mt-3">{{ _('Fatura Görselini Sürükleyin') }}</h5>
+                                    <p class="text-muted">{{ _('veya') }}</p>
+                                    <input type="file" id="fileInput" accept="image/*,.pdf" class="d-none">
+                                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                                        <i class="bi bi-file-earmark-image me-2"></i>
+                                        {{ _('Dosya Seç') }}
+                                    </button>
+                                    <p class="text-muted small mt-3">
+                                        {{ _('Desteklenen formatlar: JPG, PNG, PDF, TIFF') }}<br>
+                                        {{ _('Maksimum boyut: 10MB') }}
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <!-- Fatura Türü -->
+                            <div class="mt-3">
+                                <label class="form-label">{{ _('Fatura Türü') }}</label>
+                                <select id="faturaTuru" class="form-select">
+                                    <option value="satis">{{ _('Satış Faturası') }}</option>
+                                    <option value="alis">{{ _('Alış Faturası') }}</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Preview -->
+                            <div id="imagePreview" class="mt-3 d-none">
+                                <img id="previewImg" class="img-fluid rounded" style="max-height: 300px;">
+                            </div>
+                        </div>
+                        
+                        <!-- OCR Sonuç -->
+                        <div class="col-md-6">
+                            <div id="ocrResult" class="d-none">
+                                <div class="card">
+                                    <div class="card-header bg-success text-white">
+                                        <h6 class="mb-0">
+                                            <i class="bi bi-check-circle me-2"></i>
+                                            {{ _('OCR Sonucu') }}
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="ocrData"></div>
+                                        
+                                        <div class="d-grid gap-2 mt-3">
+                                            <button class="btn btn-primary btn-lg" id="saveFaturaBtn">
+                                                <i class="bi bi-save me-2"></i>
+                                                {{ _('Faturayı Kaydet') }}
+                                            </button>
+                                            <button class="btn btn-outline-secondary" onclick="location.reload()">
+                                                <i class="bi bi-arrow-clockwise me-2"></i>
+                                                {{ _('Yeni OCR') }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Loading -->
+                            <div id="loadingSpinner" class="text-center d-none py-5">
+                                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                                    <span class="visually-hidden">{{ _('Yükleniyor...') }}</span>
+                                </div>
+                                <p class="mt-3">{{ _('Fatura okunuyor, lütfen bekleyin...') }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let parsedOcrData = null;
+
+// Drag & Drop
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, preventDefaults, false);
+});
+
+function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+        dropZone.classList.add('border-primary', 'bg-light');
+    }, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+        dropZone.classList.remove('border-primary', 'bg-light');
+    }, false);
+});
+
+dropZone.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        handleFile(files[0]);
+    }
+}, false);
+
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+    }
+});
+
+function handleFile(file) {
+    // Preview göster
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        document.getElementById('previewImg').src = e.target.result;
+        document.getElementById('imagePreview').classList.remove('d-none');
+    };
+    reader.readAsDataURL(file);
+    
+    // OCR başlat
+    processOCR(file);
+}
+
+function processOCR(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('fatura_turu', document.getElementById('faturaTuru').value);
+    
+    // Loading göster
+    document.getElementById('loadingSpinner').classList.remove('d-none');
+    document.getElementById('ocrResult').classList.add('d-none');
+    
+    fetch('/fatura/ocr/parse', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('loadingSpinner').classList.add('d-none');
+        
+        if (data.success) {
+            parsedOcrData = data.data;
+            displayOCRResult(data);
+        } else {
+            alert('{{ _("OCR Hatası") }}: ' + data.error);
+        }
+    })
+    .catch(error => {
+        document.getElementById('loadingSpinner').classList.add('d-none');
+        alert('{{ _("Bağlantı hatası") }}: ' + error);
+    });
+}
+
+function displayOCRResult(data) {
+    const ocrDataDiv = document.getElementById('ocrData');
+    const fatura = data.data;
+    
+    let html = `
+        <table class="table table-sm">
+            <tr><th>{{ _('Belge No') }}</th><td>${fatura.belge_no || '-'}</td></tr>
+            <tr><th>{{ _('Tarih') }}</th><td>${fatura.tarih || '-'}</td></tr>
+            <tr><th>{{ _('Cari') }}</th><td>${fatura.cari_unvan || '-'}</td></tr>
+            <tr><th>{{ _('Ara Toplam') }}</th><td>${fatura.ara_toplam || 0} TL</td></tr>
+            <tr><th>{{ _('KDV') }}</th><td>${fatura.kdv_toplam || 0} TL</td></tr>
+            <tr><th class="text-success">{{ _('Genel Toplam') }}</th><td class="text-success fw-bold">${fatura.genel_toplam || 0} TL</td></tr>
+            <tr><th>{{ _('Güvenilirlik') }}</th><td>
+                <span class="badge bg-${fatura.confidence > 0.8 ? 'success' : 'warning'}">
+                    %${(fatura.confidence * 100).toFixed(0)}
+                </span>
+            </td></tr>
+        </table>
+        
+        <h6 class="mt-3">{{ _('Kalemler') }} (${fatura.kalemler?.length || 0})</h6>
+        <div class="table-responsive" style="max-height: 200px;">
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>{{ _('Açıklama') }}</th>
+                        <th>{{ _('Miktar') }}</th>
+                        <th>{{ _('Birim Fiyat') }}</th>
+                        <th>{{ _('Tutar') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    (fatura.kalemler || []).forEach((k, i) => {
+        html += `
+            <tr>
+                <td>${i+1}</td>
+                <td>${k.aciklama}</td>
+                <td>${k.miktar} ${k.birim}</td>
+                <td>${k.birim_fiyat} TL</td>
+                <td>${k.tutar} TL</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    ocrDataDiv.innerHTML = html;
+    document.getElementById('ocrResult').classList.remove('d-none');
+}
+
+// Fatura Kaydet
+document.getElementById('saveFaturaBtn')?.addEventListener('click', () => {
+    if (!parsedOcrData) {
+        alert('{{ _("Veri bulunamadı") }}');
+        return;
+    }
+    
+    fetch('/fatura/ocr/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(parsedOcrData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.href = data.redirect_url;
+        } else {
+            alert('{{ _("Hata") }}: ' + data.error);
+        }
+    });
+});
+</script>
+{% endblock %}
