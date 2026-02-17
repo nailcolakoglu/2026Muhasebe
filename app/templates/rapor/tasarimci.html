@@ -1,0 +1,1490 @@
+{% extends "base.html" %}
+
+{% block title %}Rapor Tasarımcı{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ===================================== */
+    /* GENEL LAYOUT */
+    /* ===================================== */
+    .designer-container {
+        display: grid;
+        grid-template-columns: 300px 1fr 350px;
+        gap: 20px;
+        height: calc(100vh - 150px);
+        overflow: hidden;
+    }
+    
+    .designer-panel {
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .panel-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px 20px;
+        font-weight: bold;
+        display: flex;
+        justify-content: between;
+        align-items: center;
+    }
+    
+    .panel-body {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+    }
+    
+    /* ===================================== */
+    /* SOL PANEL - MODEL & FIELDS */
+    /* ===================================== */
+    .field-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .field-item {
+        background: #f8f9fa;
+        border: 2px solid #e9ecef;
+        border-radius: 6px;
+        padding: 10px 15px;
+        margin-bottom: 10px;
+        cursor: move;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .field-item:hover {
+        background: #e7f3ff;
+        border-color: #007bff;
+        transform: translateX(5px);
+    }
+    
+    .field-item.dragging {
+        opacity: 0.5;
+        transform: rotate(2deg);
+    }
+    
+    .field-icon {
+        font-size: 1.2rem;
+        color: #667eea;
+    }
+    
+    .field-type-badge {
+        background: #667eea;
+        color: white;
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-left: auto;
+    }
+    
+    /* ===================================== */
+    /* ORTA PANEL - REPORT BUILDER */
+    /* ===================================== */
+    .drop-zone {
+        border: 2px dashed #cbd5e0;
+        border-radius: 8px;
+        padding: 30px;
+        min-height: 150px;
+        background: #f7fafc;
+        transition: all 0.3s;
+        margin-bottom: 20px;
+    }
+    
+    .drop-zone.drag-over {
+        border-color: #667eea;
+        background: #eef2ff;
+        transform: scale(1.02);
+    }
+    
+    .drop-zone-empty {
+        text-align: center;
+        color: #a0aec0;
+        padding: 40px;
+    }
+    
+    .drop-zone-empty i {
+        font-size: 3rem;
+        margin-bottom: 10px;
+        display: block;
+    }
+    
+    .selected-field {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 12px 15px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.2s;
+    }
+    
+    .selected-field:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .selected-field .field-name {
+        flex: 1;
+        font-weight: 500;
+    }
+    
+    .selected-field .field-actions {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .btn-field-action {
+        background: none;
+        border: none;
+        color: #718096;
+        cursor: pointer;
+        padding: 5px;
+        transition: color 0.2s;
+    }
+    
+    .btn-field-action:hover {
+        color: #667eea;
+    }
+    
+    .btn-field-remove:hover {
+        color: #e53e3e;
+    }
+    
+    /* ===================================== */
+    /* FİLTRE BUILDER */
+    /* ===================================== */
+    .filter-item {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .filter-row {
+        display: grid;
+        grid-template-columns: 1fr 120px 1fr 40px;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .filter-connector {
+        text-align: center;
+        font-weight: bold;
+        color: #667eea;
+        padding: 10px 0;
+    }
+    
+    /* ===================================== */
+    /* SAĞ PANEL - ÖNİZLEME */
+    /* ===================================== */
+    .preview-table {
+        width: 100%;
+        font-size: 0.85rem;
+        margin-top: 20px;
+    }
+    
+    .preview-table th {
+        background: #f7fafc;
+        padding: 8px;
+        text-align: left;
+        font-weight: 600;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    
+    .preview-table td {
+        padding: 8px;
+        border-bottom: 1px solid #f1f1f1;
+    }
+    
+    .preview-empty {
+        text-align: center;
+        padding: 40px;
+        color: #a0aec0;
+    }
+    
+    .chart-preview {
+        margin-top: 20px;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+    
+    /* ===================================== */
+    /* TABS */
+    /* ===================================== */
+    .nav-tabs-custom {
+        border-bottom: 2px solid #e2e8f0;
+        margin-bottom: 20px;
+    }
+    
+    .nav-tabs-custom .nav-link {
+        border: none;
+        color: #718096;
+        padding: 10px 20px;
+        transition: all 0.2s;
+    }
+    
+    .nav-tabs-custom .nav-link:hover {
+        color: #667eea;
+    }
+    
+    .nav-tabs-custom .nav-link.active {
+        color: #667eea;
+        border-bottom: 3px solid #667eea;
+        font-weight: 600;
+    }
+    
+    /* ===================================== */
+    /* BUTTONS */
+    /* ===================================== */
+    .btn-gradient {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 600;
+        transition: transform 0.2s;
+    }
+    
+    .btn-gradient:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* ===================================== */
+    /* LOADING */
+    /* ===================================== */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+    
+    .loading-overlay.active {
+        display: flex;
+    }
+    
+    .loading-content {
+        background: white;
+        padding: 40px;
+        border-radius: 10px;
+        text-align: center;
+    }
+    
+    /* ===================================== */
+    /* RESPONSIVE */
+    /* ===================================== */
+    @media (max-width: 1400px) {
+        .designer-container {
+            grid-template-columns: 250px 1fr;
+        }
+        
+        .designer-panel.preview-panel {
+            display: none;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .designer-container {
+            grid-template-columns: 1fr;
+            height: auto;
+        }
+        
+        .designer-panel {
+            height: auto;
+            margin-bottom: 20px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Başlık -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1">
+                <i class="bi bi-magic"></i> Rapor Tasarımcı
+                <span class="badge bg-success">No-Code</span>
+            </h3>
+            <p class="text-muted mb-0">Kendi raporunuzu sürükle-bırak ile oluşturun</p>
+        </div>
+        <div>
+            <button class="btn btn-outline-secondary me-2" onclick="openSavedReports()">
+                <i class="bi bi-folder-open"></i> Kaydedilenler
+            </button>
+            <button class="btn btn-gradient" onclick="saveReport()">
+                <i class="bi bi-save"></i> Raporu Kaydet
+            </button>
+        </div>
+    </div>
+
+    <!-- Designer Grid -->
+    <div class="designer-container">
+        <!-- ===================================== -->
+        <!-- SOL PANEL: MODEL & FIELDS -->
+        <!-- ===================================== -->
+        <div class="designer-panel">
+            <div class="panel-header">
+                <i class="bi bi-database me-2"></i> Veri Kaynağı
+            </div>
+            <div class="panel-body">
+                <!-- Model Seçimi -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Model</label>
+                    <select class="form-select" id="modelSelect" onchange="loadModelFields()">
+                        <option value="Fatura" selected>Faturalar</option>
+                        <option value="CariHesap">Cari Hesaplar</option>
+                        <option value="StokKart">Stok Kartları</option>
+                        <option value="CariHareket">Cari Hareketler</option>
+                    </select>
+                </div>
+
+                <!-- Alanlar -->
+                <div>
+                    <label class="form-label fw-bold">Alanlar</label>
+                    <p class="small text-muted">Sürükle → Rapor alanına bırak</p>
+                    
+                    <ul class="field-list" id="fieldList">
+                        <!-- JavaScript ile doldurulacak -->
+                    </ul>
+                </div>
+
+                <!-- Hızlı Şablonlar -->
+                <div class="mt-4">
+                    <label class="form-label fw-bold">Hızlı Şablonlar</label>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="loadTemplate('aylik_satis')">
+                            <i class="bi bi-graph-up"></i> Aylık Satış
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="loadTemplate('cari_bakiye')">
+                            <i class="bi bi-people"></i> Cari Bakiye
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" onclick="loadTemplate('stok_durum')">
+                            <i class="bi bi-box"></i> Stok Durum
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================== -->
+        <!-- ORTA PANEL: REPORT BUILDER -->
+        <!-- ===================================== -->
+        <div class="designer-panel">
+            <div class="panel-header">
+                <div>
+                    <i class="bi bi-puzzle me-2"></i> Rapor Yapılandırması
+                </div>
+                <div>
+                    <button class="btn btn-light btn-sm me-2" onclick="runReport()">
+                        <i class="bi bi-play-fill"></i> Çalıştır
+                    </button>
+                    <button class="btn btn-light btn-sm" onclick="clearReport()">
+                        <i class="bi bi-trash"></i> Temizle
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <!-- Tabs -->
+                <ul class="nav nav-tabs nav-tabs-custom" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#tabFields">
+                            <i class="bi bi-list-ul"></i> Alanlar
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tabFilters">
+                            <i class="bi bi-funnel"></i> Filtreler
+                            <span class="badge bg-primary" id="filterCount">0</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tabGrouping">
+                            <i class="bi bi-collection"></i> Gruplama
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#tabChart">
+                            <i class="bi bi-bar-chart"></i> Grafik
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Tab İçerikleri -->
+                <div class="tab-content mt-3">
+                    <!-- ===================================== -->
+                    <!-- TAB 1: ALANLAR -->
+                    <!-- ===================================== -->
+                    <div class="tab-pane fade show active" id="tabFields">
+                        <div class="drop-zone" id="fieldsDropZone" 
+                             ondrop="dropField(event)" 
+                             ondragover="allowDrop(event)"
+                             ondragleave="dragLeave(event)">
+                            <div class="drop-zone-empty">
+                                <i class="bi bi-arrow-down-circle"></i>
+                                <p>Soldan alan sürükle ve buraya bırak</p>
+                            </div>
+                        </div>
+
+                        <!-- Seçili Alanlar -->
+                        <div id="selectedFieldsList"></div>
+                    </div>
+
+                    <!-- ===================================== -->
+                    <!-- TAB 2: FİLTRELER -->
+                    <!-- ===================================== -->
+                    <div class="tab-pane fade" id="tabFilters">
+                        <button class="btn btn-sm btn-primary mb-3" onclick="addFilter()">
+                            <i class="bi bi-plus-circle"></i> Filtre Ekle
+                        </button>
+
+                        <div id="filtersList"></div>
+                    </div>
+
+                    <!-- ===================================== -->
+                    <!-- TAB 3: GRUPLAMA -->
+                    <!-- ===================================== -->
+                    <div class="tab-pane fade" id="tabGrouping">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Gruplama Alanı</label>
+                            <select class="form-select" id="groupByField">
+                                <option value="">Gruplanmamış</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Toplama Fonksiyonu</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <select class="form-select form-select-sm" id="aggFunction">
+                                        <option value="sum">TOPLAM (SUM)</option>
+                                        <option value="avg">ORTALAMA (AVG)</option>
+                                        <option value="count">SAYMA (COUNT)</option>
+                                        <option value="min">MİNİMUM (MIN)</option>
+                                        <option value="max">MAKSİMUM (MAX)</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <select class="form-select form-select-sm" id="aggField">
+                                        <option value="">Alan seç...</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info small">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>İpucu:</strong> Gruplama yaparken toplama fonksiyonu kullanmalısınız.
+                        </div>
+                    </div>
+
+                    <!-- ===================================== -->
+                    <!-- TAB 4: GRAFİK -->
+                    <!-- ===================================== -->
+                    <div class="tab-pane fade" id="tabChart">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="chartEnabled">
+                            <label class="form-check-label fw-bold" for="chartEnabled">
+                                Grafik Göster
+                            </label>
+                        </div>
+
+                        <div id="chartConfig" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">Grafik Tipi</label>
+                                <select class="form-select" id="chartType">
+                                    <option value="line">Çizgi Grafik</option>
+                                    <option value="bar">Sütun Grafik</option>
+                                    <option value="pie">Pasta Grafik</option>
+                                    <option value="doughnut">Donut Grafik</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">X Ekseni (Yatay)</label>
+                                <select class="form-select" id="chartXAxis">
+                                    <option value="">Alan seç...</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Y Ekseni (Dikey)</label>
+                                <select class="form-select" id="chartYAxis">
+                                    <option value="">Alan seç...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================================== -->
+        <!-- SAĞ PANEL: ÖNİZLEME -->
+        <!-- ===================================== -->
+        <div class="designer-panel preview-panel">
+            <div class="panel-header">
+                <i class="bi bi-eye me-2"></i> Önizleme
+            </div>
+            <div class="panel-body">
+                <!-- İstatistikler -->
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body p-2 text-center">
+                                <small>Kayıt</small>
+                                <h5 class="mb-0" id="previewRowCount">0</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="card bg-success text-white">
+                            <div class="card-body p-2 text-center">
+                                <small>Alan</small>
+                                <h5 class="mb-0" id="previewFieldCount">0</h5>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grafik Önizleme -->
+                <div id="chartPreview" class="chart-preview" style="display: none;">
+                    <canvas id="previewChart"></canvas>
+                </div>
+
+                <!-- Tablo Önizleme -->
+                <div id="tablePreview">
+                    <div class="preview-empty">
+                        <i class="bi bi-table"></i>
+                        <p>Raporu çalıştırın</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+        <h5>Rapor Oluşturuluyor...</h5>
+        <p class="text-muted">Veriler analiz ediliyor</p>
+    </div>
+</div>
+
+<!-- Kaydetme Modal -->
+<div class="modal fade" id="saveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-save"></i> Raporu Kaydet
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Rapor Adı</label>
+                    <input type="text" class="form-control" id="reportName" placeholder="Örn: Aylık Satış Raporu">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Açıklama</label>
+                    <textarea class="form-control" id="reportDescription" rows="3" placeholder="Rapor hakkında kısa açıklama..."></textarea>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="reportPublic">
+                    <label class="form-check-label" for="reportPublic">
+                        Diğer kullanıcılarla paylaş
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-primary" onclick="confirmSave()">
+                    <i class="bi bi-check-circle"></i> Kaydet
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+// ===================================== 
+// GLOBAL DEĞİŞKENLER
+// =====================================
+let currentModel = 'Fatura';
+let selectedFields = [];
+let filters = [];
+let reportData = [];
+let previewChart = null;
+
+// Model field definitions
+const modelFields = {
+    'Fatura': [
+        {name: 'id', label: 'ID', type: 'number'},
+        {name: 'belge_no', label: 'Belge No', type: 'text'},
+        {name: 'tarih', label: 'Tarih', type: 'date'},
+        {name: 'fatura_turu', label: 'Fatura Türü', type: 'text'},
+        {name: 'genel_toplam', label: 'Genel Toplam', type: 'currency'},
+        {name: 'kdv_toplam', label: 'KDV Toplam', type: 'currency'},
+        {name: 'cari_id', label: 'Cari ID', type: 'number'},
+        {name: 'durum', label: 'Durum', type: 'text'}
+    ],
+    'CariHesap': [
+        {name: 'id', label: 'ID', type: 'number'},
+        {name: 'kod', label: 'Kod', type: 'text'},
+        {name: 'unvan', label: 'Ünvan', type: 'text'},
+        {name: 'vergi_no', label: 'Vergi No', type: 'text'},
+        {name: 'telefon', label: 'Telefon', type: 'text'},
+        {name: 'borc_bakiye', label: 'Borç Bakiye', type: 'currency'},
+        {name: 'alacak_bakiye', label: 'Alacak Bakiye', type: 'currency'},
+        {name: 'aktif', label: 'Aktif', type: 'boolean'}
+    ]
+};
+
+// Operator definitions
+const operators = [
+    {value: 'equals', label: 'Eşittir (=)'},
+    {value: 'not_equals', label: 'Eşit Değil (!=)'},
+    {value: 'greater_than', label: 'Büyüktür (>)'},
+    {value: 'less_than', label: 'Küçüktür (<)'},
+    {value: 'greater_or_equal', label: 'Büyük Eşit (>=)'},
+    {value: 'less_or_equal', label: 'Küçük Eşit (<=)'},
+    {value: 'contains', label: 'İçerir (LIKE)'},
+    {value: 'starts_with', label: 'İle Başlar'},
+    {value: 'ends_with', label: 'İle Biter'},
+    {value: 'between', label: 'Arasında'},
+    {value: 'in', label: 'İçinde (IN)'},
+    {value: 'is_null', label: 'Boş'},
+    {value: 'is_not_null', label: 'Dolu'}
+];
+
+// ===================================== 
+// SAYFA YÜKLEME
+// =====================================
+document.addEventListener('DOMContentLoaded', function() {
+    loadModelFields();
+    
+    // ✅ Eğer loaded_report varsa (URL'den geliyorsa)
+    {% if loaded_report %}
+    console.log('📥 Saved report yükleniyor:', {{ loaded_report|tojson|safe }});
+    loadSavedReport({{ loaded_report|tojson|safe }});
+    {% endif %}
+    
+    // Chart enabled checkbox
+    document.getElementById('chartEnabled').addEventListener('change', function() {
+        document.getElementById('chartConfig').style.display = this.checked ? 'block' : 'none';
+    });
+});
+
+// ===================================== 
+// KAYITLI RAPOR YÜKLEME
+// =====================================
+function loadSavedReport(report) {
+    console.log('📂 Rapor yükleniyor:', report);
+    
+    try {
+        // 1. Model seç
+        if (report.model_name) {
+            document.getElementById('modelSelect').value = report.model_name;
+            currentModel = report.model_name;
+            loadModelFields();
+        }
+        
+        // 2. Config parse
+        const config = report.config;
+        
+        if (!config) {
+            console.error('❌ Config bulunamadı!');
+            return;
+        }
+        
+        console.log('📋 Config:', config);
+        
+        // 3. Alanları ekle
+        if (config.fields && config.fields.length > 0) {
+            selectedFields = config.fields.map(f => ({
+                ...f,
+                visible: f.visible !== false
+            }));
+            renderSelectedFields();
+            console.log(`✅ ${selectedFields.length} alan yüklendi`);
+        }
+        
+        // 4. Filtreleri ekle
+        if (config.filters && config.filters.length > 0) {
+            filters = config.filters;
+            renderFilters();
+            console.log(`✅ ${filters.length} filtre yüklendi`);
+        }
+        
+        // 5. Gruplama
+        if (config.group_by && config.group_by.length > 0) {
+            document.getElementById('groupByField').value = config.group_by[0];
+        }
+        
+        // 6. Agregasyon
+        if (config.aggregations && config.aggregations.length > 0) {
+            const agg = config.aggregations[0];
+            document.getElementById('aggFunction').value = agg.function || 'sum';
+            document.getElementById('aggField').value = agg.field || '';
+        }
+        
+        // 7. Grafik
+        if (config.chart && config.chart.enabled) {
+            document.getElementById('chartEnabled').checked = true;
+            document.getElementById('chartConfig').style.display = 'block';
+            document.getElementById('chartType').value = config.chart.type || 'line';
+            document.getElementById('chartXAxis').value = config.chart.x_axis || '';
+            document.getElementById('chartYAxis').value = config.chart.y_axis || '';
+        }
+        
+        // 8. Rapor adını modal'a yaz
+        if (report.name) {
+            document.getElementById('reportName').value = report.name;
+        }
+        if (report.description) {
+            document.getElementById('reportDescription').value = report.description;
+        }
+        if (report.is_public) {
+            document.getElementById('reportPublic').checked = true;
+        }
+        
+        console.log('✅ Rapor başarıyla yüklendi!');
+        
+        // 9. Otomatik çalıştır (opsiyonel)
+        setTimeout(() => {
+            console.log('🚀 Rapor otomatik çalıştırılıyor...');
+            runReport();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('❌ Rapor yükleme hatası:', error);
+        alert('Rapor yüklenirken hata oluştu: ' + error.message);
+    }
+}
+
+// ===================================== 
+// MODEL FIELD YÜKLEME
+// =====================================
+function loadModelFields() {
+    currentModel = document.getElementById('modelSelect').value;
+    const fields = modelFields[currentModel] || [];
+    
+    const fieldList = document.getElementById('fieldList');
+    fieldList.innerHTML = '';
+    
+    fields.forEach(field => {
+        const li = document.createElement('li');
+        li.className = 'field-item';
+        li.draggable = true;
+        li.dataset.field = JSON.stringify(field);
+        
+        li.innerHTML = `
+            <i class="bi ${getFieldIcon(field.type)} field-icon"></i>
+            <span>${field.label}</span>
+            <span class="field-type-badge">${field.type}</span>
+        `;
+        
+        li.addEventListener('dragstart', dragStart);
+        li.addEventListener('dragend', dragEnd);
+        
+        fieldList.appendChild(li);
+    });
+    
+    // Group by ve chart axis select'lerini güncelle
+    updateGroupByOptions();
+}
+
+function getFieldIcon(type) {
+    const icons = {
+        'text': 'bi-fonts',
+        'number': 'bi-123',
+        'currency': 'bi-currency-dollar',
+        'date': 'bi-calendar',
+        'boolean': 'bi-toggle-on'
+    };
+    return icons[type] || 'bi-question-circle';
+}
+
+// ===================================== 
+// DRAG & DROP
+// =====================================
+function dragStart(e) {
+    e.target.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', e.target.dataset.field);
+}
+
+function dragEnd(e) {
+    e.target.classList.remove('dragging');
+}
+
+function allowDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+
+function dragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+function dropField(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    const fieldData = JSON.parse(e.dataTransfer.getData('text/plain'));
+    
+    // Zaten eklenmişse tekrar ekleme
+    if (selectedFields.find(f => f.name === fieldData.name)) {
+        alert('Bu alan zaten eklenmiş!');
+        return;
+    }
+    
+    selectedFields.push({...fieldData, visible: true});
+    renderSelectedFields();
+    updateGroupByOptions();
+}
+
+// ===================================== 
+// SEÇİLİ ALANLARI RENDER ET
+// =====================================
+function renderSelectedFields() {
+    const container = document.getElementById('selectedFieldsList');
+    const dropZone = document.getElementById('fieldsDropZone');
+    
+    if (selectedFields.length === 0) {
+        dropZone.querySelector('.drop-zone-empty').style.display = 'block';
+        container.innerHTML = '';
+        return;
+    }
+    
+    dropZone.querySelector('.drop-zone-empty').style.display = 'none';
+    
+    container.innerHTML = selectedFields.map((field, index) => `
+        <div class="selected-field">
+            <i class="bi bi-grip-vertical" style="cursor: move;"></i>
+            <span class="field-name">${field.label}</span>
+            <div class="field-actions">
+                <button class="btn-field-action" onclick="toggleFieldVisibility(${index})" title="Görünürlük">
+                    <i class="bi ${field.visible ? 'bi-eye' : 'bi-eye-slash'}"></i>
+                </button>
+                <button class="btn-field-action btn-field-remove" onclick="removeField(${index})" title="Kaldır">
+                    <i class="bi bi-x-circle"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+    
+    document.getElementById('previewFieldCount').textContent = selectedFields.length;
+}
+
+function toggleFieldVisibility(index) {
+    selectedFields[index].visible = !selectedFields[index].visible;
+    renderSelectedFields();
+}
+
+function removeField(index) {
+    selectedFields.splice(index, 1);
+    renderSelectedFields();
+    updateGroupByOptions();
+}
+
+// ===================================== 
+// FİLTRE YÖNETİMİ
+// =====================================
+function addFilter() {
+    const filterId = filters.length;
+    
+    filters.push({
+        id: filterId,
+        field: '',
+        operator: 'equals',
+        value: ''
+    });
+    
+    renderFilters();
+}
+
+function renderFilters() {
+    const container = document.getElementById('filtersList');
+    const fields = modelFields[currentModel] || [];
+    
+    if (filters.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">Henüz filtre eklenmedi</p>';
+        document.getElementById('filterCount').textContent = '0';
+        return;
+    }
+    
+    container.innerHTML = filters.map((filter, index) => `
+        <div class="filter-item">
+            ${index > 0 ? '<div class="filter-connector">VE</div>' : ''}
+            <div class="filter-row">
+                <select class="form-select form-select-sm" onchange="updateFilter(${index}, 'field', this.value)">
+                    <option value="">Alan seç...</option>
+                    ${fields.map(f => `<option value="${f.name}" ${filter.field === f.name ? 'selected' : ''}>${f.label}</option>`).join('')}
+                </select>
+                
+                <select class="form-select form-select-sm" onchange="updateFilter(${index}, 'operator', this.value)">
+                    ${operators.map(op => `<option value="${op.value}" ${filter.operator === op.value ? 'selected' : ''}>${op.label}</option>`).join('')}
+                </select>
+                
+                <input type="text" class="form-control form-control-sm" 
+                       placeholder="Değer" 
+                       value="${filter.value}"
+                       onchange="updateFilter(${index}, 'value', this.value)">
+                
+                <button class="btn btn-sm btn-outline-danger" onclick="removeFilter(${index})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+    
+    document.getElementById('filterCount').textContent = filters.length;
+}
+
+function updateFilter(index, key, value) {
+    filters[index][key] = value;
+}
+
+function removeFilter(index) {
+    filters.splice(index, 1);
+    renderFilters();
+}
+
+// ===================================== 
+// GRUPLAMA & TOPLAMA
+// =====================================
+function updateGroupByOptions() {
+    const groupBySelect = document.getElementById('groupByField');
+    const aggFieldSelect = document.getElementById('aggField');
+    const chartXAxis = document.getElementById('chartXAxis');
+    const chartYAxis = document.getElementById('chartYAxis');
+    
+    const options = selectedFields.map(f => 
+        `<option value="${f.name}">${f.label}</option>`
+    ).join('');
+    
+    [groupBySelect, aggFieldSelect, chartXAxis, chartYAxis].forEach(select => {
+        if (select) {
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">Seç...</option>' + options;
+            select.value = currentValue;
+        }
+    });
+}
+
+// ===================================== 
+// RAPOR ÇALIŞTIRMA
+// =====================================
+function runReport() {
+    if (selectedFields.length === 0) {
+        alert('Lütfen en az bir alan seçin!');
+        return;
+    }
+    
+    const config = buildReportConfig();
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    document.getElementById('loadingOverlay').classList.add('active');
+    
+    fetch('/rapor/api/rapor-calistir', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('loadingOverlay').classList.remove('active');
+        
+        if (data.success) {
+            reportData = data.data;
+            renderPreview(data);
+            
+            // ✅ YENİ: Tam ekran önizleme butonu göster
+            if (data.data.length > 0) {
+                const previewBtn = `
+                    <button class="btn btn-primary mt-3" onclick="openFullPreview('${config.model_name}')">
+                        <i class="bi bi-eye"></i> Tam Ekran Önizleme (A4)
+                    </button>
+                `;
+                document.getElementById('tablePreview').insertAdjacentHTML('afterend', previewBtn);
+            }
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    })
+    .catch(error => {
+        document.getElementById('loadingOverlay').classList.remove('active');
+        alert('Rapor çalıştırılamadı: ' + error.message);
+    });
+}
+
+// ✅ YENİ: Tam ekran önizleme
+function openFullPreview(modelName) {
+    window.open(`/rapor/onizleme/${modelName}`, '_blank');
+}
+
+
+function buildReportConfig() {
+    const config = {
+        name: document.getElementById('reportName')?.value || 'Rapor',
+        model_name: currentModel,  // Global değişken
+        fields: [],
+        filters: [],
+        group_by: [],
+        aggregations: [],
+        order_by: [],
+        limit: null,
+        chart: null
+    };
+    
+    // ===================================
+    // 1. ALANLAR (fields)
+    // ===================================
+    // Sadece görünür alanları ekle
+    config.fields = selectedFields.filter(f => f.visible).map(f => ({
+        name: f.name,
+        label: f.label,
+        type: f.type,
+        visible: true
+    }));
+    
+    console.log('📋 Fields:', config.fields);
+    
+    // ===================================
+    // 2. FİLTRELER (filters)
+    // ===================================
+    // Sadece dolu filtreleri ekle
+    config.filters = filters.filter(f => f.field && f.value).map(f => ({
+        field: f.field,
+        operator: f.operator,
+        value: f.value
+    }));
+    
+    console.log('🔍 Filters:', config.filters);
+    
+    // ===================================
+    // 3. GRUPLAMA (group_by)
+    // ===================================
+    const groupBy = document.getElementById('groupByField')?.value;
+    if (groupBy) {
+        config.group_by.push(groupBy);
+        
+        // Agregasyon varsa ekle
+        const aggFunc = document.getElementById('aggFunction')?.value;
+        const aggField = document.getElementById('aggField')?.value;
+        
+        if (aggField && aggFunc) {
+            config.aggregations.push({
+                function: aggFunc,
+                field: aggField,
+                alias: `${aggFunc}_${aggField}`
+            });
+        }
+    }
+    
+    console.log('📊 Group by:', config.group_by);
+    console.log('🧮 Aggregations:', config.aggregations);
+    
+    // ===================================
+    // 4. SIRALAMA (order_by)
+    // ===================================
+    // İsteğe bağlı: İlk alana göre sırala
+    if (config.fields.length > 0) {
+        config.order_by.push({
+            field: config.fields[0].name,
+            direction: 'ASC'
+        });
+    }
+    
+    console.log('🔢 Order by:', config.order_by);
+    
+    // ===================================
+    // 5. GRAFİK (chart)
+    // ===================================
+    if (document.getElementById('chartEnabled')?.checked) {
+        const chartType = document.getElementById('chartType')?.value;
+        const chartXAxis = document.getElementById('chartXAxis')?.value;
+        const chartYAxis = document.getElementById('chartYAxis')?.value;
+        
+        if (chartType && chartXAxis && chartYAxis) {
+            config.chart = {
+                enabled: true,
+                type: chartType,
+                x_axis: chartXAxis,
+                y_axis: chartYAxis,
+                label: `${chartYAxis} Grafiği`
+            };
+        }
+    }
+    
+    console.log('📈 Chart:', config.chart);
+    
+    // ===================================
+    // 6. EXPORT (opsiyonel)
+    // ===================================
+    config.export = {
+        formats: ['excel', 'pdf', 'csv'],
+        filename: config.name.toLowerCase().replace(/\s+/g, '_')
+    };
+    
+    console.log('💾 Final config:', config);
+    
+    return config;
+}
+
+// ===================================== 
+// ÖNİZLEME RENDER
+// =====================================
+function renderPreview(data) {
+    console.log('🖼️ renderPreview() başlatıldı');
+    console.log('📊 Data:', data);
+    
+    const tableContainer = document.getElementById('tablePreview');
+    
+    if (!tableContainer) {
+        console.error('❌ tablePreview elementi bulunamadı!');
+        return;
+    }
+    
+    // İstatistikleri güncelle
+    document.getElementById('previewRowCount').textContent = data.row_count || 0;
+    document.getElementById('previewFieldCount').textContent = selectedFields.length;
+    
+    if (!data.data || data.data.length === 0) {
+        tableContainer.innerHTML = '<div class="preview-empty"><i class="bi bi-inbox"></i><p>Sonuç bulunamadı</p></div>';
+        return;
+    }
+    
+    console.log('📋 Kayıt sayısı:', data.data.length);
+    console.log('📋 İlk kayıt:', data.data[0]);
+    
+    // Sadece görünür alanları kullan
+    const visibleFields = selectedFields.filter(f => f.visible);
+    console.log('👁️ Görünür alan sayısı:', visibleFields.length);
+    
+    if (visibleFields.length === 0) {
+        tableContainer.innerHTML = '<div class="preview-empty"><i class="bi bi-eye-slash"></i><p>Görünür alan yok</p></div>';
+        return;
+    }
+    
+    // Tablo oluştur
+    let tableHTML = '<table class="preview-table table table-sm table-hover">';
+    
+    // Başlık satırı
+    tableHTML += '<thead><tr>';
+    visibleFields.forEach(field => {
+        tableHTML += `<th>${field.label}</th>`;
+    });
+    tableHTML += '</tr></thead>';
+    
+    // Veri satırları (ilk 10 kayıt)
+    tableHTML += '<tbody>';
+    const displayData = data.data.slice(0, 10);
+    
+    displayData.forEach(row => {
+        tableHTML += '<tr>';
+        visibleFields.forEach(field => {
+            let value = row[field.name];
+            
+            // Null/undefined kontrolü
+            if (value === null || value === undefined || value === '') {
+                value = '-';
+            }
+            
+            // Boolean formatı
+            if (typeof value === 'boolean') {
+                value = value ? '<i class="bi bi-check-circle text-success"></i>' : '<i class="bi bi-x-circle text-danger"></i>';
+            }
+            
+            // Tarih formatı
+            if (field.type === 'date' && value !== '-') {
+                try {
+                    const date = new Date(value);
+                    value = date.toLocaleDateString('tr-TR');
+                } catch (e) {
+                    // Hatalı tarih formatı
+                }
+            }
+            
+            // Para formatı
+            if (field.type === 'currency' && value !== '-') {
+                try {
+                    value = parseFloat(value).toLocaleString('tr-TR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) + ' ₺';
+                } catch (e) {
+                    // Hatalı sayı formatı
+                }
+            }
+            
+            tableHTML += `<td>${value}</td>`;
+        });
+        tableHTML += '</tr>';
+    });
+    
+    tableHTML += '</tbody></table>';
+    
+    // Toplam kayıt bilgisi
+    if (data.row_count > 10) {
+        tableHTML += `<p class="text-muted text-center small mt-2">İlk 10 kayıt gösteriliyor (Toplam: ${data.row_count})</p>`;
+    }
+    
+    // ✅ Tam ekran önizleme butonu
+    if (data.data.length > 0 && data.model_name) {
+        tableHTML += `
+            <div class="text-center mt-3">
+                <button class="btn btn-primary" onclick="openFullPreview('${data.model_name}')">
+                    <i class="bi bi-eye"></i> Tam Ekran Önizleme (A4)
+                </button>
+            </div>
+        `;
+    }
+    
+    tableContainer.innerHTML = tableHTML;
+    
+    console.log('✅ Tablo render edildi');
+    
+    // Grafik render
+    if (data.chart) {
+        renderChart(data.chart);
+    } else {
+        const chartPreview = document.getElementById('chartPreview');
+        if (chartPreview) {
+            chartPreview.style.display = 'none';
+        }
+    }
+}
+
+// ===================================== 
+// TAM EKRAN ÖNİZLEME
+// =====================================
+function openFullPreview(modelName) {
+    console.log('🖼️ Tam ekran önizleme açılıyor:', modelName);
+    window.open(`/rapor/onizleme/${modelName}`, '_blank');
+}
+
+// ===================================== 
+// GRAFİK RENDER
+// =====================================
+function renderChart(chartConfig) {
+    const container = document.getElementById('chartPreview');
+    const canvas = document.getElementById('previewChart');
+    
+    container.style.display = 'block';
+    
+    // Eski grafik varsa temizle
+    if (previewChart) {
+        previewChart.destroy();
+    }
+    
+    const ctx = canvas.getContext('2d');
+    previewChart = new Chart(ctx, chartConfig);
+}
+
+// ===================================== 
+// RAPOR KAYDETME
+// =====================================
+function saveReport() {
+    if (selectedFields.length === 0) {
+        alert('Lütfen en az bir alan seçin!');
+        return;
+    }
+    
+    // Modal aç
+    const modal = new bootstrap.Modal(document.getElementById('saveModal'));
+    modal.show();
+}
+
+function confirmSave() {
+    const name = document.getElementById('reportName').value.trim();
+    
+    if (!name) {
+        alert('❌ Lütfen rapor adı girin!');
+        return;
+    }
+    
+    // ===================================
+    // 1. CONFIG OLUŞTUR
+    // ===================================
+    const reportConfig = buildReportConfig();
+    
+    console.log('📋 Report Config:', reportConfig);
+    
+    // ===================================
+    // 2. VALIDASYON
+    // ===================================
+    if (!reportConfig.model_name) {
+        alert('❌ Model seçilmemiş!');
+        return;
+    }
+    
+    if (!reportConfig.fields || reportConfig.fields.length === 0) {
+        alert('❌ En az bir alan seçmelisiniz!');
+        return;
+    }
+    
+    // ===================================
+    // 3. BACKEND VERİSİNİ HAZIRLA
+    // ===================================
+    // ✅ Config ayrı bir obje olarak gönderilmeli!
+    const saveData = {
+        name: name,  // ✅ Config dışında
+        description: document.getElementById('reportDescription').value || '',  // ✅ Config dışında
+        model_name: reportConfig.model_name,  // ✅ Config'ten al
+        is_public: document.getElementById('reportPublic').checked,  // ✅ Config dışında
+        config: {  // ✅ Config objesi
+            fields: reportConfig.fields,
+            filters: reportConfig.filters,
+            group_by: reportConfig.group_by,
+            aggregations: reportConfig.aggregations,
+            order_by: reportConfig.order_by,
+            limit: reportConfig.limit,
+            chart: reportConfig.chart,
+            export: reportConfig.export
+        }
+    };
+    
+    console.log('📤 Backend\'e gönderilecek:', saveData);
+    console.log('📤 Config var mı?', !!saveData.config);
+    console.log('📤 Config.fields:', saveData.config?.fields?.length || 0);
+    
+    // ===================================
+    // 4. CSRF TOKEN
+    // ===================================
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    
+    if (!csrfToken) {
+        alert('❌ CSRF token bulunamadı! Sayfayı yenileyin.');
+        return;
+    }
+    
+    // ===================================
+    // 5. LOADING
+    // ===================================
+    const saveButton = document.querySelector('#saveModal .btn-primary');
+    const originalText = saveButton.innerHTML;
+    saveButton.disabled = true;
+    saveButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Kaydediliyor...';
+    
+    // ===================================
+    // 6. FETCH
+    // ===================================
+    fetch('/rapor/api/rapor-kaydet', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify(saveData)
+    })
+    .then(response => {
+        console.log('📥 Response status:', response.status);
+        console.log('📥 Content-Type:', response.headers.get('Content-Type'));
+        
+        const contentType = response.headers.get('Content-Type');
+        if (contentType && contentType.includes('text/html')) {
+            throw new Error('Backend HTML döndürdü!');
+        }
+        
+        return response.json().then(data => {
+            if (!response.ok) {
+                throw new Error(data.message || `HTTP ${response.status}`);
+            }
+            return data;
+        });
+    })
+    .then(data => {
+        console.log('✅ Success:', data);
+        
+        saveButton.disabled = false;
+        saveButton.innerHTML = originalText;
+        
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide();
+            alert(`✅ ${data.message}`);
+            window.location.href = '/rapor/kaydedilenler';
+        } else {
+            alert('❌ Hata: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('❌ Error:', error);
+        
+        saveButton.disabled = false;
+        saveButton.innerHTML = originalText;
+        
+        alert('❌ Kaydetme hatası:\n' + error.message);
+    });
+}
+
+// ===================================== 
+// TEMİZLEME
+// =====================================
+function clearReport() {
+    if (!confirm('Tüm yapılandırmayı temizlemek istediğinizden emin misiniz?')) {
+        return;
+    }
+    
+    selectedFields = [];
+    filters = [];
+    reportData = [];
+    
+    renderSelectedFields();
+    renderFilters();
+    
+    document.getElementById('tablePreview').innerHTML = '<div class="preview-empty"><i class="bi bi-table"></i><p>Raporu çalıştırın</p></div>';
+    document.getElementById('chartPreview').style.display = 'none';
+    
+    if (previewChart) {
+        previewChart.destroy();
+        previewChart = null;
+    }
+}
+
+// ===================================== 
+// ŞABLON YÜKLEME
+// =====================================
+function loadTemplate(templateName) {
+    // Burada hazır şablonlar yüklenebilir
+    alert('Şablon yükleme özelliği yakında eklenecek!');
+}
+
+function openSavedReports() {
+    window.location.href = '/rapor/kaydedilenler';
+}
+</script>
+{% endblock %}

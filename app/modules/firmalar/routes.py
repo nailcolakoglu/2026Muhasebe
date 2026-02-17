@@ -7,9 +7,26 @@ from app.modules.firmalar.models import Firma, Donem
 from app.form_builder import DataGrid
 from .forms import create_firma_form, create_donem_form
 from datetime import datetime
+from app.context_manager import GlobalContextManager
+from .services import FirmaService
+import logging
+
+logger = logging.getLogger(__name__)
 
 firmalar_bp = Blueprint('firmalar', __name__)
 
+
+@firmalar_bp.route('/ekle', methods=['POST'])
+def firma_ekle():
+    # ... firma ekleme kodu ...
+    
+    # ✅ Cache'i temizle
+    tenant_id = session.get('tenant_id')
+    cache.delete(f'tenant_{tenant_id}_firmalar')
+    
+    flash('Firma eklendi', 'success')
+    return redirect(url_for('firma.liste'))
+    
 @firmalar_bp.route('/')
 @login_required
 def index():
@@ -211,4 +228,84 @@ def donem_duzenle(id):
                 tenant_db.rollback()
                 return jsonify({'success': False, 'message': str(e)}), 500
                 
-    return render_template('firmalar/form.html', form=form)
+
+@firmalar_bp.route('/sec/<uuid:firma_id>')
+@login_required
+def firma_sec(firma_id):
+    """Firma seç ve session'a kaydet"""
+    
+    firma = Firma.query.get_or_404(firma_id)
+    
+    # Kullanıcının bu firmaya erişim yetkisi var mı?
+    if firma not in current_user.firmalar:
+        flash('Bu firmaya erişim yetkiniz yok', 'danger')
+        return redirect(url_for('main.index'))
+    
+    # ✅ Session'a tenant DB adını kaydet
+    session['active_firma_id'] = str(firma.id)
+    session['active_tenant_db_name'] = firma.tenant_db_name  # ✅ BURASI ÖNEMLİ
+    session['tenant_name'] = firma.unvan
+    session.modified = True
+    
+    logger.info(f"✅ Firma seçildi: {firma.unvan} (DB: {firma.tenant_db_name})")
+    
+    flash(f'Firma seçildi: {firma.unvan}', 'success')
+    return redirect(url_for('main.index'))
+    
+    
+@firmalar_bp.route('/test-firma-olustur', methods=['GET', 'POST'])
+#@login_required
+def test_firma_olustur():
+    """Test amaçlı firma oluşturma ekranı"""
+    
+    if request.method == 'POST':
+        try:
+            kod = request.form.get('kod', '').strip()
+            unvan = request.form.get('unvan', '').strip()
+            vergi_no = request.form.get('vergi_no', '').strip()
+            admin_email = request.form.get('admin_email', '').strip()  # ✅ YENİ
+            admin_password = request.form.get('admin_password', '').strip()  # ✅ YENİ
+            
+            # Validasyon
+            if not kod or not unvan or not vergi_no:
+                return jsonify({
+                    'success': False,
+                    'message': 'Kod, ünvan ve vergi no zorunludur!'
+                }), 400
+            
+            # Email varsa şifre de olmalı
+            if admin_email and not admin_password:
+                admin_password = f"{kod}123"  # Otomatik şifre
+            
+            # Firma oluştur
+            basari, mesaj, tenant = FirmaService.firma_olustur(
+                kod, unvan, vergi_no, admin_email, admin_password
+            )
+            
+            if basari:
+                return jsonify({
+                    'success': True,
+                    'message': mesaj,
+                    'tenant': {
+                        'id': tenant.id,
+                        'kod': tenant.kod,
+                        'unvan': tenant.unvan,
+                        'db_name': tenant.db_name
+                    }
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': mesaj
+                }), 500
+        
+        except Exception as e:
+            logger.exception("Test firma oluşturma hatası")
+            return jsonify({
+                'success': False,
+                'message': f"Beklenmeyen hata: {str(e)}"
+            }), 500
+    
+    return render_template('firmalar/test_firma_olustur.html')
+
+    

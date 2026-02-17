@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}{{ rapor_adi }} - Rapor Önizleme{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ===================================== */
+    /* PRINT STYLE (A4 SAYFALAMA) */
+    /* ===================================== */
+    @media print {
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        
+        .no-print {
+            display: none !important;
+        }
+        
+        .page-break {
+            page-break-after: always;
+        }
+        
+        table {
+            page-break-inside: auto;
+        }
+        
+        tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+        }
+        
+        thead {
+            display: table-header-group;
+        }
+        
+        tfoot {
+            display: table-footer-group;
+        }
+    }
+    
+    /* ===================================== */
+    /* SCREEN STYLE (ÖNIZLEME) */
+    /* ===================================== */
+    @media screen {
+        .print-container {
+            max-width: 210mm;
+            margin: 20px auto;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .page {
+            min-height: 297mm;
+            padding: 20mm;
+            margin-bottom: 20px;
+            background: white;
+            position: relative;
+        }
+    }
+    
+    .page {
+        position: relative;
+    }
+    
+    .report-header {
+        border-bottom: 3px solid #667eea;
+        padding-bottom: 15px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .report-logo img {
+        max-height: 60px;
+    }
+    
+    .report-title {
+        text-align: right;
+    }
+    
+    .report-title h1 {
+        font-size: 24px;
+        margin: 0;
+        color: #2d3748;
+    }
+    
+    .report-title .date {
+        color: #718096;
+        font-size: 14px;
+    }
+    
+    .report-summary {
+        background: #f7fafc;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+    
+    .summary-item {
+        text-align: center;
+    }
+    
+    .summary-item .label {
+        font-size: 12px;
+        color: #718096;
+        text-transform: uppercase;
+    }
+    
+    .summary-item .value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #2d3748;
+    }
+    
+    .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    
+    .report-table thead {
+        background: #667eea;
+        color: white;
+    }
+    
+    .report-table th {
+        padding: 12px 8px;
+        text-align: left;
+        font-weight: 600;
+    }
+    
+    .report-table td {
+        padding: 10px 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .report-table tbody tr:hover {
+        background: #f7fafc;
+    }
+    
+    .report-footer {
+        position: absolute;
+        bottom: 20mm;
+        left: 20mm;
+        right: 20mm;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 10px;
+        font-size: 10px;
+        color: #718096;
+        display: flex;
+        justify-content: space-between;
+    }
+    
+    .page-number {
+        text-align: center;
+        color: #a0aec0;
+        font-size: 10px;
+        margin-top: 10px;
+    }
+    
+    .report-toolbar {
+        background: white;
+        padding: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- TOOLBAR (SADECE EKRANDA) -->
+<div class="report-toolbar no-print">
+    <button class="btn btn-primary" onclick="window.print()">
+        <i class="bi bi-printer"></i> Yazdır
+    </button>
+    <a href="{{ url_for('rapor.tasarimci') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Tasarımcıya Dön
+    </a>
+    <button class="btn btn-secondary" onclick="window.close()">
+        <i class="bi bi-x-circle"></i> Kapat
+    </button>
+</div>
+
+<!-- RAPOR İÇERİĞİ -->
+<div class="print-container">
+    {% for page_data in pages %}
+    <div class="page">
+        <!-- BAŞLIK (HER SAYFADA) -->
+        <div class="report-header">
+            <div class="report-logo">
+                {% if firma_logo %}
+                <img src="{{ firma_logo }}" alt="Logo">
+                {% else %}
+                <h3>{{ firma_adi }}</h3>
+                {% endif %}
+            </div>
+            <div class="report-title">
+                <h1>{{ rapor_adi }}</h1>
+                <div class="date">{{ rapor_tarihi }}</div>
+            </div>
+        </div>
+        
+        <!-- ÖZET (SADECE İLK SAYFA) -->
+        {% if loop.first and summary %}
+        <div class="report-summary">
+            <div class="summary-item">
+                <div class="label">Toplam Kayıt</div>
+                <div class="value">{{ summary.total_rows }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">Filtre Sayısı</div>
+                <div class="value">{{ summary.filter_count }}</div>
+            </div>
+            <div class="summary-item">
+                <div class="label">Alan Sayısı</div>
+                <div class="value">{{ summary.field_count }}</div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- TABLO -->
+        <table class="report-table">
+            <thead>
+                <tr>
+                    {% for col in columns %}
+                    <th>{{ col.label }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in page_data %}
+                <tr>
+                    {% for col in columns %}
+                    <td>{{ row[col.name]|default('-', true) }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <!-- ALT BİLGİ -->
+        <div class="report-footer">
+            <div>
+                Oluşturan: {{ current_user.ad_soyad }}<br>
+                Oluşturma Tarihi: {{ rapor_tarihi }}
+            </div>
+            <div class="page-number">
+                Sayfa {{ loop.index }} / {{ pages|length }}
+            </div>
+        </div>
+    </div>
+    
+    {% if not loop.last %}
+    <div class="page-break"></div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endblock %}

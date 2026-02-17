@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Kayıtlı Raporlar{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-card {
+        transition: all 0.3s;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .report-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+    
+    .report-card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px 20px;
+    }
+    
+    .report-card-body {
+        padding: 20px;
+    }
+    
+    .report-meta {
+        display: flex;
+        gap: 15px;
+        font-size: 0.85rem;
+        color: #718096;
+        margin-top: 10px;
+    }
+    
+    .report-meta-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .report-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+    
+    .badge-model {
+        background: #eef2ff;
+        color: #667eea;
+        padding: 5px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: #a0aec0;
+    }
+    
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        display: block;
+    }
+    
+    .section-header {
+        border-left: 4px solid #667eea;
+        padding-left: 15px;
+        margin-bottom: 20px;
+        margin-top: 40px;
+    }
+    
+    .section-header:first-child {
+        margin-top: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Başlık -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1">
+                <i class="bi bi-folder-open"></i> Kayıtlı Raporlar
+            </h3>
+            <p class="text-muted mb-0">Daha önce oluşturduğunuz raporları yönetin</p>
+        </div>
+        <div>
+            <a href="{{ url_for('rapor.tasarimci') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Yeni Rapor Oluştur
+            </a>
+        </div>
+    </div>
+
+    <!-- ===================================== -->
+    <!-- BENİM RAPORLARIM -->
+    <!-- ===================================== -->
+    <div class="section-header">
+        <h5 class="mb-0 text-dark fw-bold">
+            <i class="bi bi-person-badge me-2"></i>Benim Raporlarım
+        </h5>
+        <small class="text-muted">{{ user_reports|length }} rapor</small>
+    </div>
+
+    {% if user_reports %}
+    <div class="row g-4 mb-5">
+        {% for report in user_reports %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card report-card h-100">
+                <div class="report-card-header">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h6 class="mb-0">{{ report.name }}</h6>
+                        {% if report.is_public %}
+                        <span class="badge bg-success bg-opacity-25 text-success">
+                            <i class="bi bi-globe"></i> Paylaşımlı
+                        </span>
+                        {% else %}
+                        <span class="badge bg-secondary bg-opacity-25 text-secondary">
+                            <i class="bi bi-lock"></i> Özel
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="report-card-body">
+                    <span class="badge-model">{{ report.model_name }}</span>
+                    
+                    {% if report.description %}
+                    <p class="text-muted small mt-3 mb-0">{{ report.description[:100] }}{% if report.description|length > 100 %}...{% endif %}</p>
+                    {% else %}
+                    <p class="text-muted small mt-3 mb-0 fst-italic">Açıklama eklenmemiş</p>
+                    {% endif %}
+                    
+                    <div class="report-meta">
+                        <div class="report-meta-item">
+                            <i class="bi bi-calendar"></i>
+                            <span>{{ report.created_at.strftime('%d.%m.%Y') }}</span>
+                        </div>
+                        <div class="report-meta-item">
+                            <i class="bi bi-play-circle"></i>
+                            <span>{{ report.run_count }} kez çalıştırıldı</span>
+                        </div>
+                    </div>
+                    
+                    {% if report.last_run_at %}
+                    <div class="text-muted small mt-2">
+                        <i class="bi bi-clock-history"></i>
+                        Son çalıştırma: {{ report.last_run_at.strftime('%d.%m.%Y %H:%M') }}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="report-actions">
+                        <a href="{{ url_for('rapor.rapor_yukle', report_id=report.id) }}" 
+                           class="btn btn-sm btn-primary flex-fill">
+                            <i class="bi bi-play-fill"></i> Çalıştır
+                        </a>
+                        <button class="btn btn-sm btn-outline-secondary" 
+                                onclick="editReport({{ report.id }})" 
+                                title="Düzenle">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" 
+                                onclick="deleteReport({{ report.id }}, '{{ report.name }}')" 
+                                title="Sil">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state card">
+        <div class="card-body">
+            <i class="bi bi-inbox"></i>
+            <h5>Henüz rapor oluşturmadınız</h5>
+            <p class="text-muted">Hemen bir rapor oluşturarak işe başlayın!</p>
+            <a href="{{ url_for('rapor.tasarimci') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> İlk Raporunuzu Oluşturun
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ===================================== -->
+    <!-- PAYLAŞILAN RAPORLAR -->
+    <!-- ===================================== -->
+    {% if public_reports %}
+    <div class="section-header">
+        <h5 class="mb-0 text-dark fw-bold">
+            <i class="bi bi-globe me-2"></i>Paylaşılan Raporlar
+        </h5>
+        <small class="text-muted">Diğer kullanıcılar tarafından paylaşılan</small>
+    </div>
+
+    <div class="row g-4">
+        {% for report in public_reports %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card report-card h-100">
+                <div class="report-card-header bg-success">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h6 class="mb-0">{{ report.name }}</h6>
+                        <span class="badge bg-white text-success">
+                            <i class="bi bi-globe"></i>
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="report-card-body">
+                    <span class="badge-model">{{ report.model_name }}</span>
+                    
+                    <p class="text-muted small mt-3 mb-0">
+                        {{ report.description[:100] if report.description else 'Açıklama yok' }}
+                    </p>
+                    
+                    <div class="report-meta">
+                        <div class="report-meta-item">
+                            <i class="bi bi-person"></i>
+                            <span>{{ report.user.ad_soyad if report.user else 'Anonim' }}</span>
+                        </div>
+                        <div class="report-meta-item">
+                            <i class="bi bi-play-circle"></i>
+                            <span>{{ report.run_count }} kullanım</span>
+                        </div>
+                    </div>
+                    
+                    <div class="report-actions">
+                        <a href="{{ url_for('rapor.rapor_yukle', report_id=report.id) }}" 
+                           class="btn btn-sm btn-success flex-fill">
+                            <i class="bi bi-eye"></i> Görüntüle
+                        </a>
+                        <button class="btn btn-sm btn-outline-success" 
+                                onclick="copyReport({{ report.id }}, '{{ report.name }}')" 
+                                title="Kopyala">
+                            <i class="bi bi-files"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function editReport(reportId) {
+    window.location.href = `/rapor/rapor-yukle/${reportId}`;
+}
+
+function deleteReport(reportId, reportName) {
+    if (!confirm(`"${reportName}" raporunu silmek istediğinizden emin misiniz?`)) {
+        return;
+    }
+    
+    fetch(`/rapor/rapor-sil/${reportId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ ' + data.message);
+            location.reload();
+        } else {
+            alert('❌ Hata: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('❌ Silme işlemi başarısız: ' + error.message);
+    });
+}
+
+function copyReport(reportId, reportName) {
+    if (!confirm(`"${reportName}" raporunu kendi hesabınıza kopyalamak istiyor musunuz?`)) {
+        return;
+    }
+    
+    fetch(`/rapor/rapor-kopyala/${reportId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ ' + data.message);
+            window.location.href = `/rapor/rapor-yukle/${data.report_id}`;
+        } else {
+            alert('❌ Hata: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('❌ Kopyalama başarısız: ' + error.message);
+    });
+}
+</script>
+{% endblock %}

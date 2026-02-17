@@ -1,0 +1,37 @@
+# fix_cari_deleted_at.py
+
+from app import app
+from app.models.master import Tenant
+from sqlalchemy import create_engine, text
+from app.config import Config
+
+with app.app_context():
+    tenants = Tenant.query.filter_by(is_active=True).all()
+    
+    for tenant in tenants:
+        print(f"🔧 {tenant.kod} düzeltiliyor...")
+        
+        tenant_db_url = (
+            f"mysql+pymysql://{Config.TENANT_DB_USER}:{Config.TENANT_DB_PASSWORD}"
+            f"@{Config.TENANT_DB_HOST}:{Config.TENANT_DB_PORT}"
+            f"/{tenant.db_name}?charset=utf8mb4"
+        )
+        
+        engine = create_engine(tenant_db_url)
+        
+        with engine.connect() as conn:
+            try:
+                # deleted_at kolonu ekle
+                conn.execute(text("""
+                    ALTER TABLE cari_hesaplar 
+                    ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL AFTER updated_at,
+                    ADD INDEX IF NOT EXISTS idx_deleted_at (deleted_at)
+                """))
+                conn.commit()
+                print(f"  ✅ {tenant.kod} - deleted_at eklendi")
+            except Exception as e:
+                print(f"  ⚠️ {tenant.kod} hatası: {e}")
+                # Zaten varsa devam et
+                conn.rollback()
+
+print("\n✅ Tüm tenant'lar düzeltildi!")

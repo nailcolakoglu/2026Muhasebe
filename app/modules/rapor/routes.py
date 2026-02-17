@@ -1,8 +1,17 @@
-from flask import Blueprint, render_template, request, jsonify, Response, g, flash, send_file, make_response, session
+# app/modules/rapor/routes.py
+
+import logging
+import datetime
+from flask import Blueprint, render_template, request, jsonify, Response, g, flash, send_file, make_response, session, url_for, redirect
 from flask_login import login_required, current_user
 
-from app.extensions import db
-from app.modules.stok.models import StokKart, StokDepo, StokHareketi
+from app.extensions import db, get_tenant_db, csrf
+from app.modules.stok.models import StokKart, StokDepoDurumu, StokHareketi
+from app.modules.depo.models import Depo
+from app.modules.cari.models import CariHesap
+
+from .rapor_builder import RaporBuilder, rapor_aylik_satis_ozeti
+from .export_engine import ExportEngine
  
 #from models import (, , , CariHesap, Fatura, KasaHareket, BankaHareket, CekSenet, Kullanici, FaturaTuru,
 #                FaturaKalemi, , HareketTuru, AIRaporAyarlari, AIRaporGecmisi, Siparis, YazdirmaSablonu, Firma)
@@ -27,12 +36,83 @@ from app.form_builder import DataGrid
 from .engine.standard import YevmiyeDefteriRaporu, BuyukDefterRaporu, GelirTablosuRaporu
 from .registry import get_rapor_class, RAPOR_KATALOGU
 
+# ✅ Logger tanımla
+logger = logging.getLogger(__name__)
+
 rapor_bp = Blueprint('rapor', __name__)
+
+# ✅ Tüm /api/* route'larını CSRF'den muaf tut
+@rapor_bp.before_request
+def check_csrf():
+    """API route'larında CSRF kontrolü yapma"""
+    if request.path.startswith('/rapor/api/'):
+        csrf.exempt(lambda: None)()
 
 @rapor_bp.route('/')
 @login_required
 def index():
     return render_template('rapor/index.html')
+
+
+@rapor_bp.route('/export/<format>')
+@login_required
+def export_rapor(format):
+    """Rapor export (excel/pdf/csv)"""
+    tenant_db = get_tenant_db()
+    
+    # Rapor tipi (query param)
+    rapor_tipi = request.args.get('tip', 'aylik_satis')
+    
+    # Rapor oluştur
+    if rapor_tipi == 'aylik_satis':
+        bitis = datetime.now()
+        baslangic = bitis - timedelta(days=365)
+        df = rapor_aylik_satis_ozeti(tenant_db, baslangic, bitis)
+        title = "Aylık Satış Raporu"
+    else:
+        return jsonify({'error': 'Geçersiz rapor tipi'}), 400
+    
+    # Export
+    if format == 'excel':
+        return ExportEngine.to_excel(df, f"{rapor_tipi}.xlsx")
+    elif format == 'pdf':
+        return ExportEngine.to_pdf(df, title, f"{rapor_tipi}.pdf")
+    elif format == 'csv':
+        return ExportEngine.to_csv(df, f"{rapor_tipi}.csv")
+    else:
+        return jsonify({'error': 'Geçersiz format'}), 400
+        
+        
+@rapor_bp.route('/aylik-satis')
+@login_required
+def aylik_satis():
+    """Aylık satış raporu"""
+    tenant_db = get_tenant_db()
+    
+    # Tarih filtresi (query params veya varsayılan)
+    bitis_str = request.args.get('bitis')
+    baslangic_str = request.args.get('baslangic')
+    
+    if bitis_str:
+        bitis = datetime.strptime(bitis_str, '%Y-%m-%d')
+    else:
+        bitis = datetime.now()
+    
+    if baslangic_str:
+        baslangic = datetime.strptime(baslangic_str, '%Y-%m-%d')
+    else:
+        baslangic = bitis - timedelta(days=365)
+    
+    # Rapor oluştur
+    df = rapor_aylik_satis_ozeti(tenant_db, baslangic, bitis)
+    
+    # JSON'a çevir
+    data = df.to_dict(orient='records')
+    
+    return render_template('rapor/aylik_satis.html', 
+                         data=data,
+                         baslangic_tarih=baslangic.strftime('%Y-%m-%d'),
+                         bitis_tarih=bitis.strftime('%Y-%m-%d'))
 
 @rapor_bp.route('/stok-durum', methods=['GET'])
 @login_required
@@ -749,3 +829,470 @@ def rapor_calistir(tur):
         traceback.print_exc()
         flash(f"Rapor oluşturulurken hata: {str(e)}", "danger")
         return redirect(url_for('rapor.muhasebe_raporlari'))
+        
+        
+@rapor_bp.route('/api/rapor-calistir', methods=['POST'])
+@login_required
+@csrf.exempt
+def api_rapor_calistir():
+    """Raporu çalıştır (AJAX)"""
+    
+    from app.form_builder.report_designer import ReportDesigner
+    from app.modules.fatura.models import Fatura
+    
+    config = request.get_json()
+    
+    # Model map
+    model_map = {
+        'Fatura': Fatura,
+        'CariHesap': CariHesap
+    }
+    
+    model_name = config.get('model_name', 'CariHesap')
+    model = model_map.get(model_name)
+    
+    if not model:
+        return jsonify({'success': False, 'message': 'Geçersiz model'}), 400
+    
+    tenant_db = get_tenant_db()
+    
+    if not tenant_db:
+        return jsonify({'success': False, 'message': 'Firebird bağlantısı yok'}), 400
+    
+    try:
+        # ✅ Session'a kaydet (önizleme için)
+        session['last_report_config'] = config
+        session.modified = True
+        logger.info(f"💾 Config session'a kaydedildi: {model_name}, {len(config.get('fields', []))} alan")
+        
+        designer = ReportDesigner(model, config, session=tenant_db)
+        
+        valid, message = designer.validate_config()
+        if not valid:
+            return jsonify({'success': False, 'message': message}), 400
+        
+        data = designer.execute()
+        chart_config = designer.get_chart_config()
+        
+        logger.info(f"✅ Rapor çalıştırıldı: {len(data)} kayıt")
+        
+        return jsonify({
+            'success': True,
+            'data': data,
+            'chart': chart_config,
+            'row_count': len(data),
+            'model_name': model_name
+        })
+    
+    except Exception as e:
+        logger.error(f"❌ Rapor çalıştırma hatası: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@rapor_bp.route('/onizleme/<model_name>')
+@login_required
+def onizleme(model_name):
+    """Rapor önizleme (A4 formatında)"""
+    
+    # Session'dan son çalıştırılan rapor config'ini al
+    config = session.get('last_report_config')
+    
+    if not config:
+        flash('Önizlenecek rapor yok. Lütfen önce raporu çalıştırın.', 'warning')
+        return redirect(url_for('rapor.tasarimci'))
+    
+    logger.info(f"📄 Önizleme açılıyor: {model_name}")
+    logger.debug(f"📋 Config: {config}")
+    
+    # Model class map
+    model_class_map = {
+        'CariHesap': CariHesap,
+        'Fatura': None,  # Eklenecek
+        'StokKart': None,  # Eklenecek
+    }
+    
+    model_class = model_class_map.get(model_name)
+    
+    if not model_class:
+        flash(f'Model "{model_name}" desteklenmiyor.', 'danger')
+        return redirect(url_for('rapor.tasarimci'))
+    
+    # Firebird session
+    tenant_db = get_tenant_db()
+    
+    if not tenant_db:
+        flash('Firebird bağlantısı yok.', 'danger')
+        return redirect(url_for('rapor.tasarimci'))
+    
+    try:
+        # Raporu tekrar çalıştır
+        from app.form_builder.report_designer import ReportDesigner
+        
+        designer = ReportDesigner(model_class, config, session=tenant_db)
+        data = designer.execute()
+        
+        logger.info(f"✅ Rapor çalıştırıldı: {len(data)} kayıt")
+        
+        # Sayfalama (A4 için ~30 satır/sayfa)
+        rows_per_page = 30
+        pages = [data[i:i+rows_per_page] for i in range(0, len(data), rows_per_page)]
+        
+        # Kolonlar
+        columns = config.get('fields', [])
+        
+        # Özet
+        summary = {
+            'total_rows': len(data),
+            'filter_count': len(config.get('filters', [])),
+            'field_count': len(columns)
+        }
+        
+        # Model adı Türkçe
+        model_names = {
+            'CariHesap': 'Cari Hesaplar',
+            'Fatura': 'Faturalar',
+            'StokKart': 'Stok Kartları'
+        }
+        
+        return render_template('rapor/onizleme_full.html',
+                             rapor_adi=config.get('name', model_names.get(model_name, 'Rapor')),
+                             rapor_tarihi=datetime.now().strftime('%d.%m.%Y %H:%M'),
+                             firma_adi=current_user.firma.unvan if hasattr(current_user, 'firma') else 'Firma',
+                             firma_logo=None,
+                             pages=pages,
+                             columns=columns,
+                             summary=summary,
+                             report_id=None)
+    
+    except Exception as e:
+        logger.error(f"❌ Önizleme hatası: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        flash(f'Önizleme oluşturulamadı: {str(e)}', 'danger')
+        return redirect(url_for('rapor.tasarimci'))
+            
+@rapor_bp.route('/rapor-yukle/<int:report_id>')
+@login_required
+def rapor_yukle(report_id):
+    """Kayıtlı raporu yükle"""
+    
+    from app.modules.rapor.models import SavedReport
+    
+    # ✅ DEBUG: Session key'leri kontrol et
+    logger.info("🔍 Session içeriği:")
+    logger.info(f"  - active_db_yolu: {session.get('active_db_yolu')}")
+    logger.info(f"  - active_db_sifre: {'***' if session.get('active_db_sifre') else None}")
+    logger.info(f"  - tenant_id: {session.get('tenant_id')}")
+    logger.info(f"  - aktif_firma_id: {session.get('aktif_firma_id')}")
+    logger.info(f"  - Tüm key'ler: {list(session.keys())}")
+    
+    # ✅ Firebird session al
+    tenant_db = get_tenant_db()
+    
+    # ✅ KONTROL
+    if tenant_db is None:
+        logger.error("❌ get_tenant_db() None döndü!")
+        logger.error("   Olası sebep: session['active_db_yolu'] veya session['active_db_sifre'] eksik")
+        flash('Firebird bağlantısı kurulamadı. Lütfen firma seçin.', 'danger')
+        return redirect(url_for('rapor.kaydedilenler'))
+    
+    try:
+        logger.info(f"🔍 Rapor sorgulanıyor: ID={report_id}")
+        report = tenant_db.query(SavedReport).filter_by(id=report_id).first()
+        
+        if not report:
+            logger.warning(f"❌ Rapor bulunamadı: ID={report_id}")
+            flash('Rapor bulunamadı', 'danger')
+            return redirect(url_for('rapor.kaydedilenler'))
+        
+        logger.info(f"✅ Rapor bulundu: {report.name}")
+        
+        # Yetki kontrolü
+        if report.user_id != str(current_user.id) and not report.is_public_bool:
+            flash('Bu raporu görüntüleme yetkiniz yok.', 'danger')
+            return redirect(url_for('rapor.kaydedilenler'))
+        
+        # to_dict()
+        report_dict = report.to_dict()
+        
+        logger.info(f"📂 Rapor yüklendi: {report.name}")
+        
+        return render_template('rapor/tasarimci.html', 
+                             loaded_report=report_dict)
+    
+    except Exception as e:
+        logger.error(f"❌ Rapor yükleme hatası: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        flash(f'Rapor yüklenirken hata oluştu: {str(e)}', 'danger')
+        return redirect(url_for('rapor.kaydedilenler'))
+        
+        
+@rapor_bp.route('/rapor-sil/<int:report_id>', methods=['POST'])
+@login_required
+@csrf.exempt
+def rapor_sil(report_id):
+    """Kayıtlı raporu sil"""
+    
+    from app.modules.rapor.models import SavedReport
+    
+    # ✅ Firebird session
+    tenant_db = get_tenant_db()
+    
+    if not tenant_db:
+        return jsonify({'success': False, 'message': 'Firebird bağlantısı yok'}), 400
+    
+    # ✅ Firebird'den rapor çek
+    report = tenant_db.query(SavedReport).filter_by(id=report_id).first()
+    
+    if not report:
+        return jsonify({'success': False, 'message': 'Rapor bulunamadı'}), 404
+    
+    # Sadece sahibi silebilir
+    if report.user_id != str(current_user.id):
+        return jsonify({'success': False, 'message': 'Bu raporu silme yetkiniz yok'}), 403
+    
+    try:
+        tenant_db.delete(report)
+        tenant_db.commit()
+        return jsonify({'success': True, 'message': 'Rapor silindi'})
+    except Exception as e:
+        tenant_db.rollback()
+        logger.error(f"Rapor silme hatası: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@rapor_bp.route('/rapor-kopyala/<int:report_id>', methods=['POST'])
+@login_required
+@csrf.exempt 
+def rapor_kopyala(report_id):
+    """Başkasının raporunu kendi hesabına kopyala"""
+    
+    from app.modules.rapor.models import SavedReport
+    
+    # ✅ Firebird session
+    tenant_db = get_tenant_db()
+    
+    if not tenant_db:
+        return jsonify({'success': False, 'message': 'Firebird bağlantısı yok'}), 400
+    
+    # ✅ Firebird'den rapor çek
+    original_report = tenant_db.query(SavedReport).filter_by(id=report_id).first()
+    
+    if not original_report:
+        return jsonify({'success': False, 'message': 'Rapor bulunamadı'}), 404
+    
+    # Sadece public raporlar kopyalanabilir
+    if not original_report.is_public and original_report.user_id != str(current_user.id):
+        return jsonify({'success': False, 'message': 'Bu rapor kopyalanamaz'}), 403
+    
+    try:
+        # Yeni rapor oluştur
+        new_report = SavedReport()
+        new_report.name = f"{original_report.name} (Kopya)"
+        new_report.description = original_report.description
+        new_report.model_name = original_report.model_name
+        new_report.config = original_report.config  # Property kullan
+        new_report.user_id = str(current_user.id)
+        new_report.is_public = False
+        
+        tenant_db.add(new_report)
+        tenant_db.commit()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Rapor kopyalandı',
+            'report_id': new_report.id
+        })
+    except Exception as e:
+        tenant_db.rollback()
+        logger.error(f"Rapor kopyalama hatası: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+        
+@rapor_bp.route('/tasarimci')
+@login_required
+def tasarimci():
+    """Rapor tasarım arayüzü"""
+    
+    saved_reports = []
+    
+    try:
+        from app.modules.rapor.models import SavedReport
+        
+        # ✅ Firebird session kullan
+        saved_reports = SavedReport.query_fb().filter_by(
+            user_id=str(current_user.id)
+        ).order_by(SavedReport.updated_at.desc()).all()
+    
+    except Exception as e:
+        logger.warning(f"SavedReport sorgulanamadı: {e}")
+        import traceback
+        logger.warning(traceback.format_exc())
+    
+    return render_template('rapor/tasarimci.html', saved_reports=saved_reports)
+    
+    
+@rapor_bp.route('/kaydedilenler')
+@login_required
+def kaydedilenler():
+    """Kullanıcının kaydettiği raporları listele"""
+    
+    user_reports = []
+    public_reports = []
+    
+    try:
+        from app.modules.rapor.models import SavedReport
+        
+        # ✅ Kullanıcının raporları
+        user_reports = SavedReport.query_fb().filter_by(
+            user_id=str(current_user.id)
+        ).order_by(SavedReport.updated_at.desc()).all()
+        
+        # ✅ Paylaşılan raporlar (DÜZELTİLDİ)
+        # Firebird boolean'ı 1/0 olarak saklar
+        public_reports = SavedReport.query_fb().filter(
+            SavedReport.is_public == 1,  # ✅ True yerine 1
+            SavedReport.user_id != str(current_user.id)
+        ).order_by(SavedReport.created_at.desc()).limit(10).all()
+    
+    except Exception as e:
+        logger.error(f"Raporlar yüklenemedi: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        flash('Raporlar yüklenemedi.', 'danger')
+    
+    return render_template('rapor/kaydedilenler.html', 
+                         user_reports=user_reports,
+                         public_reports=public_reports)
+
+
+@rapor_bp.route('/api/rapor-kaydet', methods=['POST'])
+@login_required
+@csrf.exempt  # ✅ Artık çalışacak
+def api_rapor_kaydet():
+    """Raporu Firebird'e kaydet"""
+    
+    import traceback
+    
+    try:
+        tenant_db = get_tenant_db()
+        
+        if not tenant_db:
+            logger.error("❌ Firebird bağlantısı yok")
+            return jsonify({
+                'success': False, 
+                'message': 'Firebird bağlantısı yok'
+            }), 400
+        
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'message': 'Veri gönderilmedi'
+            }), 400
+        
+        logger.info(f"📥 Request data keys: {list(data.keys())}")
+        
+        if not data.get('name'):
+            return jsonify({'success': False, 'message': 'Rapor adı zorunludur'}), 400
+        
+        if not data.get('model_name'):
+            return jsonify({'success': False, 'message': 'Model adı zorunludur'}), 400
+        
+        if not data.get('config'):
+            return jsonify({'success': False, 'message': 'Config zorunludur'}), 400
+        
+        from app.modules.rapor.models import SavedReport
+        
+        logger.info(f"📝 Rapor oluşturuluyor: {data.get('name')}")
+        
+        report = SavedReport()
+        report.name = data['name']
+        report.description = data.get('description', '')
+        report.model_name = data['model_name']
+        report.user_id = str(current_user.id)
+        report.is_public = data.get('is_public', False)
+        
+        logger.info(f"💾 Config set ediliyor...")
+        report.config = data['config']
+        logger.info(f"✅ Config set edildi: {len(report.config_json)} karakter")
+        
+        logger.info("💾 Firebird'e kaydediliyor...")
+        
+        tenant_db.add(report)
+        tenant_db.commit()
+        
+        logger.info(f"✅ Rapor kaydedildi: ID={report.id}, Name={report.name}")
+        
+        return jsonify({
+            'success': True, 
+            'report_id': report.id,
+            'message': f'"{report.name}" başarıyla kaydedildi'
+        })
+    
+    except Exception as e:
+        if tenant_db:
+            tenant_db.rollback()
+        
+        error_trace = traceback.format_exc()
+        logger.error(f"❌ Kaydetme hatası:\n{error_trace}")
+        
+        return jsonify({
+            'success': False, 
+            'message': f'Hata: {str(e)}'
+        }), 500
+        
+@rapor_bp.route('/export-pdf')
+@login_required
+def export_rapor_pdf():
+    """PDF export (WeasyPrint ile)"""
+    
+    # Session'dan config al
+    config = session.get('last_report_config')
+    
+    if not config:
+        flash('Önce raporu çalıştırın', 'warning')
+        return redirect(url_for('rapor.tasarimci'))
+    
+    try:
+        # HTML render et
+        from flask import render_template_string
+        
+        # ... (HTML oluştur, WeasyPrint ile PDF'e çevir)
+        
+        flash('PDF export özelliği yakında eklenecek', 'info')
+        return redirect(url_for('rapor.tasarimci'))
+    
+    except Exception as e:
+        logger.error(f"PDF export hatası: {e}")
+        flash('PDF oluşturulamadı', 'danger')
+        return redirect(url_for('rapor.tasarimci'))
+
+
+@rapor_bp.route('/export-excel')
+@login_required
+def export_rapor_excel():
+    """Excel export (openpyxl ile)"""
+    
+    # Session'dan config al
+    config = session.get('last_report_config')
+    
+    if not config:
+        flash('Önce raporu çalıştırın', 'warning')
+        return redirect(url_for('rapor.tasarimci'))
+    
+    try:
+        # ... (Excel oluştur)
+        
+        flash('Excel export özelliği yakında eklenecek', 'info')
+        return redirect(url_for('rapor.tasarimci'))
+    
+    except Exception as e:
+        logger.error(f"Excel export hatası: {e}")
+        flash('Excel oluşturulamadı', 'danger')
+        return redirect(url_for('rapor.tasarimci'))
+                
+    return render_template('firmalar/form.html', form=form)      

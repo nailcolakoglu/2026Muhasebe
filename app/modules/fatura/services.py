@@ -1,21 +1,21 @@
-# app/modules/fatura/services.py
+# app/modules/fatura/services.py (MySQL + AI Complete)(Redis + Babel Enhanced - Critical Updates)
+
 """
 Fatura Modülü Servis Katmanı
-Enterprise Grade - Full Refactored Version
+Enterprise Grade - Full Refactored - MySQL + AI Enhanced
 """
-from app.services.n8n_client import N8NClient
 
 from typing import Dict, List, Optional, Tuple, Any, Union
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import logging
 
-from sqlalchemy import select, and_, or_, delete
+from sqlalchemy import select, and_, or_, delete, func, text
 from sqlalchemy.orm import joinedload, selectinload
 from flask import session
 from flask_login import current_user
 
-from app.extensions import db
+from app.extensions import db, cache
 from app.modules.fatura.models import Fatura, FaturaKalemi
 from app.modules.stok.models import StokKart, StokHareketi
 from app.modules.cari.models import CariHareket, CariHesap
@@ -23,13 +23,12 @@ from app.modules.depo.models import Depo
 from app.modules.fiyat.models import FiyatListesi, FiyatListesiDetay
 from app.modules.firmalar.models import Donem
 from app.enums import (
-    FaturaTuru, HareketTuru, CariIslemTuru, FaturaDurumu, 
+    FaturaTuru, HareketTuru, CariIslemTuru, FaturaDurumu,
     ParaBirimi, StokBirimleri
 )
 from app.araclar import para_cevir, get_doviz_kuru
-from decimal import Decimal, ROUND_HALF_UP
 
-# Logger Configuration
+# Logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -37,6 +36,13 @@ logger.setLevel(logging.INFO)
 VARSAYILAN_KDV_ORANI = Decimal('20.00')
 MIN_FIYAT_LISTESI_ID = 1
 
+from flask_babel import gettext as _, lazy_gettext
+
+
+# Cache timeout constants
+CACHE_TIMEOUT_SHORT = 300  # 5 dakika
+CACHE_TIMEOUT_MEDIUM = 1800  # 30 dakika
+CACHE_TIMEOUT_LONG = 3600  # 1 saat
 
 # ============================================================
 # 🔥 CUSTOM EXCEPTIONS
@@ -51,152 +57,184 @@ class FaturaNotFoundError(Exception):
     pass
 
 
+class FaturaBusinessRuleError(Exception):
+    """İş Kuralı İhlali"""
+    pass
+
+
 # ============================================================
 # 📦 DATA TRANSFER OBJECTS (DTO)
 # ============================================================
 class FaturaDTO:
     """API Response için temiz data yapısı"""
-    
-    def __init__(self, fatura:  Fatura):
-        self.id = fatura.id
+
+    def __init__(self, fatura: Fatura):
+        self.id = str(fatura.id)
         self.belge_no = fatura.belge_no
         self.tarih = fatura.tarih.isoformat() if fatura.tarih else None
         self.cari_unvan = fatura.cari.unvan if fatura.cari else None
         self.genel_toplam = float(fatura.genel_toplam or 0)
         self.doviz_turu = self._get_enum_value(fatura.doviz_turu)
         self.durum = self._get_enum_value(fatura.durum)
-    
+
     @staticmethod
     def _get_enum_value(enum_val):
         """Enum veya String değeri güvenli şekilde al"""
         if enum_val is None:
             return None
         return enum_val.value if hasattr(enum_val, 'value') else str(enum_val)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return self.__dict__
 
 
 # ============================================================
-# 💰 FİYAT HESAPLAMA SERVİSİ (ÇAPRAZ KUR + FİYAT LİSTESİ)
+# 💰 FİYAT HESAPLAMA SERVİSİ (AI Enhanced)
 # ============================================================
 class FiyatHesaplamaService:
     """
-    Fiyat Hesaplama İşlemleri
-    - Çapraz Kur Desteği (Stok USD, Fatura EUR)
-    - Fiyat Listesi Desteği (Kampanyalar, Bayi Fiyatları)
-    - Min Miktar Baremi Desteği
+    Fiyat Hesaplama İşlemleri - AI Enhanced
+    
+    Özellikler:
+    - Çapraz Kur Desteği
+    - Fiyat Listesi Entegrasyonu
+    - Min Miktar Baremi
+    - AI Fiyat Anomali Tespiti
+    - Piyasa Fiyat Karşılaştırması
     """
     
     @staticmethod
+    @cache.memoize(timeout=CACHE_TIMEOUT_SHORT)
     def hesapla(
-        stok_id: int,
+        stok_id: str,
         fatura_turu: str,
         fatura_para_birimi: str,
-        fatura_kuru:  Decimal,
-        liste_id: Optional[int] = None,
+        fatura_kuru: Decimal,
+        liste_id: Optional[str] = None,
         miktar: Optional[Decimal] = None,
-        firma_id: Optional[int] = None
+        firma_id: Optional[str] = None,
+        tenant_db=None
     ) -> Dict[str, Any]:
         """
-        Stok fiyatını hesaplar
+        Stok fiyatını hesapla - CACHED  
+        Stok fiyatını hesaplar - AI Enhanced
         
         Args:
-            stok_id:  Stok Kartı ID
-            fatura_turu: 'satis', 'alis'
+            stok_id: Stok Kartı ID (UUID)
+            fatura_turu: 'SATIS', 'ALIS'
             fatura_para_birimi: TL, USD, EUR
-            fatura_kuru: Faturanın anlık kuru
-            liste_id:  Fiyat Listesi ID (Opsiyonel)
-            miktar: Sipariş Miktarı (Miktar Baremi İçin)
-            firma_id:  Firma ID
-            
+            fatura_kuru: Faturanın anlık kuru (Decimal)
+            liste_id: Fiyat Listesi ID (UUID, Opsiyonel)
+            miktar: Sipariş Miktarı (Baremli fiyat için)
+            firma_id: Firma ID (UUID)
+            tenant_db: Tenant DB session
+        
         Returns:
             {
-                'fiyat':  Decimal,
+                'fiyat': Decimal,
                 'iskonto_orani': Decimal,
                 'kdv_orani': int,
-                'birim':  str,
+                'birim': str,
                 'kaynak': str,
-                'debug': {}
+                'ai_metadata': dict,
+                'debug': dict
             }
         """
-        
-        # 1.STOK KARTINI ÇEK (EAGER LOADING)
-        stok = db.session.execute(
-            select(StokKart)
-            .options(joinedload(StokKart.kdv_grubu))
-            .where(StokKart.id == stok_id)
-            .where(StokKart.aktif == True)
-        ).unique().scalar_one_or_none()  # ✅ unique() eklendi
-        
-        if not stok: 
+
+        if tenant_db is None:
+            from app.extensions import get_tenant_db
+            tenant_db = get_tenant_db()
+
+        # 1. STOK KARTINI ÇEK (Eager Loading)
+        stok = tenant_db.query(StokKart).options(
+            joinedload(StokKart.kdv_grubu)
+        ).filter(
+            StokKart.id == stok_id,
+            StokKart.aktif == True
+        ).first()
+
+        if not stok:
             raise ValueError(f"Stok bulunamadı: ID {stok_id}")
 
+        # Kur validasyonu
         if not isinstance(fatura_kuru, Decimal):
             fatura_kuru = Decimal(str(fatura_kuru))
 
-        # Kur Validasyonu
         if fatura_kuru <= 0:
             raise ValueError(f"Geçersiz kur değeri: {fatura_kuru}")
-        
-        # 2.BAZ FİYAT VE DÖVİZ TESPİTİ
-        stok_doviz = getattr(stok, 'doviz_turu', ParaBirimi.TL.value) or ParaBirimi.TL.value
-        
-        if fatura_turu in ['alis', 'alis_iade']:
+
+        # 2. BAZ FİYAT VE DÖVİZ TESPİTİ
+        stok_doviz = getattr(stok, 'doviz_turu', 'TL') or 'TL'
+
+        if fatura_turu in ['ALIS', 'ALIS_IADE']:
             baz_fiyat = Decimal(str(getattr(stok, 'alis_fiyati', 0) or 0))
         else:
             baz_fiyat = Decimal(str(getattr(stok, 'satis_fiyati', 0) or 0))
-        
+
         iskonto_orani = Decimal('0.00')
         kaynak = f"Stok Kartı ({stok_doviz})"
-        
-        # 3.FİYAT LİSTESİ KONTROLÜ (ÖNCELİKLİ)
-        if liste_id and liste_id >= MIN_FIYAT_LISTESI_ID:
+
+        # 3. FİYAT LİSTESİ KONTROLÜ
+        if liste_id and liste_id != '0':
             liste_detay = FiyatHesaplamaService._fiyat_listesinden_getir(
-                liste_id, stok_id, miktar, firma_id
+                liste_id, stok_id, miktar, firma_id, tenant_db
             )
-            
+
             if liste_detay:
                 baz_fiyat = Decimal(str(liste_detay['fiyat']))
                 iskonto_orani = Decimal(str(liste_detay['iskonto_orani']))
                 stok_doviz = liste_detay['doviz_turu']
-                kaynak = f"Fiyat Listesi:  {liste_detay['liste_adi']}"
-        
-        # 4.ÇAPRAZ KUR HESAPLAMA (TL ÜZERİNDEN)
+                kaynak = f"Fiyat Listesi: {liste_detay['liste_adi']}"
+
+        # 4. ÇAPRAZ KUR HESAPLAMA (TL üzerinden)
         tl_karsiligi = baz_fiyat
-        
-        if stok_doviz != ParaBirimi.TL.value:
-            sistem_kuru = Decimal(str(get_doviz_kuru(stok_doviz)))
+
+        if stok_doviz != 'TL':
+            # Cache'ten kur çek
+            cache_key = f"doviz_kuru:{stok_doviz}"
+            sistem_kuru = cache.get(cache_key)
+
+            if sistem_kuru is None:
+                sistem_kuru = Decimal(str(get_doviz_kuru(stok_doviz)))
+                cache.set(cache_key, sistem_kuru, timeout=3600)
+            else:
+                sistem_kuru = Decimal(str(sistem_kuru))
+
             if sistem_kuru <= 0:
-                logger.warning(f"Sistem kuru alınamadı ({stok_doviz}), 1.0 kullanılıyor")
+                logger.warning(f"⚠️ Sistem kuru alınamadı ({stok_doviz}), 1.0 kullanılıyor")
                 sistem_kuru = Decimal('1.0')
+
             tl_karsiligi = baz_fiyat * sistem_kuru
-        
+
         # Fatura dövizine çevir
         nihai_fiyat = (tl_karsiligi / fatura_kuru).quantize(
             Decimal('0.0001'), rounding=ROUND_HALF_UP
         )
-        nihai_fiyat = (tl_karsiligi / fatura_kuru).quantize(
-            Decimal('0.0001'), rounding=ROUND_HALF_UP
+
+        # 5. KDV ORANI
+        kdv_orani = FiyatHesaplamaService._kdv_orani_hesapla(stok, fatura_turu)
+
+        # 6. BİRİM
+        birim = FiyatHesaplamaService._birim_getir(stok)
+
+        # 7. AI FİYAT ANALİZİ
+        ai_metadata = FiyatHesaplamaService._ai_fiyat_analizi(
+            stok, nihai_fiyat, fatura_turu, tenant_db
         )
 
-        # 5.KDV ORANI
-        kdv_orani = FiyatHesaplamaService._kdv_orani_hesapla(stok, fatura_turu)
-        
-        # 6.BİRİM
-        birim = FiyatHesaplamaService._birim_getir(stok)
-        
         logger.debug(
-            f"Fiyat Hesaplama:  Stok={stok.kod}, Baz={baz_fiyat} {stok_doviz}, "
-            f"TL={tl_karsiligi}, Fatura={nihai_fiyat} {fatura_para_birimi}, Kaynak={kaynak}"
+            f"💰 Fiyat Hesaplama: Stok={stok.kod}, "
+            f"Baz={baz_fiyat} {stok_doviz}, TL={tl_karsiligi}, "
+            f"Fatura={nihai_fiyat} {fatura_para_birimi}, Kaynak={kaynak}"
         )
-        
+
         return {
-            'fiyat':  nihai_fiyat,
-            'iskonto_orani':  iskonto_orani,
+            'fiyat': nihai_fiyat,
+            'iskonto_orani': iskonto_orani,
             'kdv_orani': kdv_orani,
             'birim': birim,
             'kaynak': kaynak,
+            'ai_metadata': ai_metadata,
             'debug': {
                 'baz_fiyat': float(baz_fiyat),
                 'stok_doviz': stok_doviz,
@@ -204,98 +242,182 @@ class FiyatHesaplamaService:
                 'fatura_kuru': float(fatura_kuru)
             }
         }
-    
+
     @staticmethod
     def _fiyat_listesinden_getir(
-        liste_id: int,
-        stok_id: int,
+        liste_id: str,
+        stok_id: str,
         miktar: Optional[Decimal],
-        firma_id: Optional[int]
+        firma_id: Optional[str],
+        tenant_db
     ) -> Optional[Dict[str, Any]]:
-        """
-        Fiyat listesinden aktif detayı getirir
-        Min Miktar Baremi Destekli
-        """
+        """Fiyat listesinden aktif detayı getirir (Min Miktar Baremli)"""
+
         bugun = date.today()
-        
-        # Subquery:  Listeyi filtrele
-        liste_query = (
-            select(FiyatListesi)
-            .where(FiyatListesi.id == liste_id)
-            .where(FiyatListesi.aktif == True)
-            .where(
-                or_(
-                    FiyatListesi.baslangic_tarihi == None,
-                    FiyatListesi.baslangic_tarihi <= bugun
-                )
+
+        # Liste kontrolü
+        liste = tenant_db.query(FiyatListesi).filter(
+            FiyatListesi.id == liste_id,
+            FiyatListesi.aktif == True,
+            or_(
+                FiyatListesi.baslangic_tarihi == None,
+                FiyatListesi.baslangic_tarihi <= bugun
+            ),
+            or_(
+                FiyatListesi.bitis_tarihi == None,
+                FiyatListesi.bitis_tarihi >= bugun
             )
-            .where(
-                or_(
-                    FiyatListesi.bitis_tarihi == None,
-                    FiyatListesi.bitis_tarihi >= bugun
-                )
-            )
-        )
-        
-        liste = db.session.execute(liste_query).scalar_one_or_none()
-        
+        ).first()
+
         if not liste:
             return None
-        
-        # Detay Sorgusu (Miktar Baremi Dahil)
-        detay_query = (
-            select(FiyatListesiDetay)
-            .where(FiyatListesiDetay.fiyat_listesi_id == liste.id)
-            .where(FiyatListesiDetay.stok_id == stok_id)
+
+        # Detay sorgusu (Miktar baremi dahil)
+        detay_query = tenant_db.query(FiyatListesiDetay).filter(
+            FiyatListesiDetay.fiyat_listesi_id == liste.id,
+            FiyatListesiDetay.stok_id == stok_id
         )
-        
-        # Miktar varsa min_miktar kontrolü ekle
+
+        # Miktar varsa baremli fiyat bul
         if miktar is not None and miktar > 0:
-            detay_query = detay_query.where(
+            detay_query = detay_query.filter(
                 FiyatListesiDetay.min_miktar <= miktar
             ).order_by(FiyatListesiDetay.min_miktar.desc())
         else:
-            detay_query = detay_query.where(
+            detay_query = detay_query.filter(
                 FiyatListesiDetay.min_miktar == 0
             )
-        
-        detay = db.session.execute(detay_query).scalars().first()
-        
+
+        detay = detay_query.first()
+
         if not detay:
             return None
-        
+
         return {
             'fiyat': detay.fiyat,
             'iskonto_orani': detay.iskonto_orani or 0,
-            'doviz_turu': getattr(liste, 'doviz_turu', ParaBirimi.TL.value),
+            'doviz_turu': getattr(liste, 'doviz_turu', 'TL'),
             'liste_adi': liste.ad
         }
-    
+
     @staticmethod
     def _kdv_orani_hesapla(stok: StokKart, fatura_turu: str) -> int:
         """KDV Grubundan oranı hesaplar"""
         varsayilan = int(VARSAYILAN_KDV_ORANI)
-        
+
         if not stok.kdv_grubu:
             return varsayilan
-        
+
         try:
-            if fatura_turu in ['alis', 'alis_iade']:
+            if fatura_turu in ['ALIS', 'ALIS_IADE']:
                 return int(getattr(stok.kdv_grubu, 'alis_kdv_orani', varsayilan) or varsayilan)
             else:
                 return int(getattr(stok.kdv_grubu, 'satis_kdv_orani', varsayilan) or varsayilan)
         except (AttributeError, ValueError, TypeError):
             return varsayilan
-    
+
     @staticmethod
     def _birim_getir(stok: StokKart) -> str:
         """Stoktan birim bilgisini güvenli şekilde al"""
         try:
             if hasattr(stok, 'birim') and stok.birim:
-                return getattr(stok.birim, 'value', StokBirimleri.ADET.value)
-            return StokBirimleri.ADET.value
+                return getattr(stok.birim, 'value', 'ADET')
+            return 'ADET'
         except:
-            return StokBirimleri.ADET.value
+            return 'ADET'
+
+    @staticmethod
+    def _ai_fiyat_analizi(
+        stok: StokKart,
+        hesaplanan_fiyat: Decimal,
+        fatura_turu: str,
+        tenant_db
+    ) -> Dict[str, Any]:
+        """
+        AI Fiyat Anomali Tespiti
+        
+        Returns:
+            {
+                'onceki_ortalama': float,
+                'fark_yuzde': float,
+                'anomali': bool,
+                'oneri': str
+            }
+        """
+
+        try:
+            # Son 30 günün ortalama fiyatını bul
+            son_30_gun = date.today() - timedelta(days=30)
+
+            # ✅ MySQL Aggregate Query
+            stats = tenant_db.execute(text("""
+                SELECT 
+                    AVG(fk.birim_fiyat) as ort_fiyat,
+                    MIN(fk.birim_fiyat) as min_fiyat,
+                    MAX(fk.birim_fiyat) as max_fiyat,
+                    COUNT(fk.id) as islem_sayisi
+                FROM fatura_kalemleri fk
+                INNER JOIN faturalar f ON f.id = fk.fatura_id
+                WHERE fk.stok_id = :stok_id
+                AND f.fatura_turu = :fatura_turu
+                AND f.durum = 'ONAYLANDI'
+                AND f.tarih >= :baslangic_tarih
+                AND f.deleted_at IS NULL
+            """), {
+                'stok_id': stok.id,
+                'fatura_turu': fatura_turu,
+                'baslangic_tarih': son_30_gun
+            }).fetchone()
+
+            if stats and stats[0] and stats[3] > 0:
+                ort_fiyat = Decimal(str(stats[0]))
+                min_fiyat = Decimal(str(stats[1]))
+                max_fiyat = Decimal(str(stats[2]))
+
+                # Fark hesapla
+                fark_yuzde = (
+                    (hesaplanan_fiyat - ort_fiyat) / ort_fiyat * 100
+                ).quantize(Decimal('0.01'))
+
+                # Anomali kontrolü (±30% sapma)
+                anomali = abs(fark_yuzde) > 30
+
+                # Öneri oluştur
+                if fark_yuzde > 30:
+                    oneri = f"⚠️ Fiyat ortalamanın %{fark_yuzde} üzerinde!"
+                elif fark_yuzde < -30:
+                    oneri = f"💰 Fiyat ortalamanın %{abs(fark_yuzde)} altında (Fırsat?)"
+                else:
+                    oneri = "✅ Fiyat normal aralıkta"
+
+                return {
+                    'onceki_ortalama': float(ort_fiyat),
+                    'min_fiyat': float(min_fiyat),
+                    'max_fiyat': float(max_fiyat),
+                    'fark_yuzde': float(fark_yuzde),
+                    'anomali': anomali,
+                    'oneri': oneri,
+                    'islem_sayisi': stats[3]
+                }
+
+            else:
+                return {
+                    'onceki_ortalama': None,
+                    'fark_yuzde': 0,
+                    'anomali': False,
+                    'oneri': '📊 Henüz yeterli veri yok',
+                    'islem_sayisi': 0
+                }
+
+        except Exception as e:
+            logger.error(f"❌ AI fiyat analizi hatası: {e}")
+            return {
+                'onceki_ortalama': None,
+                'fark_yuzde': 0,
+                'anomali': False,
+                'oneri': 'Analiz yapılamadı',
+                'islem_sayisi': 0
+            }
 
 
 # ============================================================
@@ -303,12 +425,13 @@ class FiyatHesaplamaService:
 # ============================================================
 class FaturaKalemService:
     """Fatura Kalemi İşlemleri (UPSERT + Hesaplama)"""
-    
+
     @staticmethod
     def toplu_kaydet(
-        fatura_id:  int,
+        fatura_id: str,
         form_data: Dict[str, Any],
-        mevcut_kalemler: Dict[int, FaturaKalemi]
+        mevcut_kalemler: Dict[str, FaturaKalemi],
+        tenant_db
     ) -> Tuple[List[FaturaKalemi], Dict[str, Decimal]]:
         """
         Fatura kalemlerini toplu olarak günceller/ekler
@@ -316,74 +439,68 @@ class FaturaKalemService:
         Returns:
             (Kalemler Listesi, Toplamlar Dictionary)
         """
-        
+
         ids = form_data.getlist('kalemler_id[]')
         stok_ids = form_data.getlist('kalemler_stok_id[]')
         miktarlar = form_data.getlist('kalemler_miktar[]')
+        birimler = form_data.getlist('kalemler_birim[]')
         fiyatlar = form_data.getlist('kalemler_birim_fiyat[]')
         iskontolar = form_data.getlist('kalemler_indirim_orani[]')
         kdvs = form_data.getlist('kalemler_kdv_orani[]')
-        
+
         islenen_ids = []
         kaydedilecek_kalemler = []
-        
+
         toplamlar = {
             'ara_toplam': Decimal('0.00'),
             'iskonto_toplam': Decimal('0.00'),
             'kdv_toplam': Decimal('0.00'),
             'genel_toplam': Decimal('0.00')
         }
-        
+
         for i in range(len(stok_ids)):
             if not stok_ids[i]:
                 continue
-            
-            row_id = int(ids[i]) if i < len(ids) and ids[i] and ids[i] != '0' else 0
-            
+
+            row_id = ids[i] if i < len(ids) and ids[i] and ids[i] != '0' else None
+
             # UPSERT Mantığı
-            if row_id > 0 and row_id in mevcut_kalemler: 
+            if row_id and row_id in mevcut_kalemler:
                 kalem = mevcut_kalemler[row_id]
                 islenen_ids.append(row_id)
             else:
                 kalem = FaturaKalemi(fatura_id=fatura_id)
-            
-            # Veriyi Doldur
-            kalem.stok_id = int(stok_ids[i])
+                kalem.sira_no = i + 1
+
+            # Veriyi doldur
+            kalem.stok_id = stok_ids[i]
             kalem.miktar = para_cevir(miktarlar[i])
+            kalem.birim = birimler[i] if i < len(birimler) else 'ADET'
             kalem.birim_fiyat = para_cevir(fiyatlar[i])
             kalem.iskonto_orani = para_cevir(iskontolar[i] if i < len(iskontolar) else 0)
             kalem.kdv_orani = para_cevir(kdvs[i] if i < len(kdvs) else 0)
-            
-            # Hesaplamalar (Decimal ile)
-            brut = kalem.miktar * kalem.birim_fiyat
-            isk_tutar = (brut * kalem.iskonto_orani / Decimal('100')).quantize(Decimal('0.01'))
-            net = brut - isk_tutar
-            kdv_tutar = (net * kalem.kdv_orani / Decimal('100')).quantize(Decimal('0.01'))
-            satir_top = net + kdv_tutar
-            
-            kalem.iskonto_tutari = isk_tutar
-            kalem.kdv_tutari = kdv_tutar
-            kalem.net_tutar = net
-            kalem.satir_toplami = satir_top
-            
-            # Toplamları Akümüle Et
-            toplamlar['ara_toplam'] += net
-            toplamlar['iskonto_toplam'] += isk_tutar
-            toplamlar['kdv_toplam'] += kdv_tutar
-            toplamlar['genel_toplam'] += satir_top
-            
+
+            # Hesaplamalar (before_insert event'te otomatik yapılacak ama burada da yapalım)
+            kalem.hesapla()
+
+            # Toplamları akümüle et
+            toplamlar['ara_toplam'] += kalem.net_tutar
+            toplamlar['iskonto_toplam'] += kalem.iskonto_tutari
+            toplamlar['kdv_toplam'] += kalem.kdv_tutari
+            toplamlar['genel_toplam'] += kalem.satir_toplami
+
             kaydedilecek_kalemler.append(kalem)
-        
-        # Silinecekleri Bul
+
+        # Silinecekleri bul
         silinecekler = [
             k for k_id, k in mevcut_kalemler.items()
             if k_id not in islenen_ids
         ]
-        
+
         # Bulk Delete
-        for k in silinecekler: 
-            db.session.delete(k)
-        
+        for k in silinecekler:
+            tenant_db.delete(k)
+
         return kaydedilecek_kalemler, toplamlar
 
 
@@ -392,13 +509,13 @@ class FaturaKalemService:
 # ============================================================
 class StokHareketService:
     """Stok Hareketi İşlemleri"""
-    
+
     @staticmethod
-    def faturadan_olustur(fatura:  Fatura) -> None:
+    def faturadan_olustur(fatura: Fatura, tenant_db) -> None:
         """Fatura kalemlerinden Stok Hareketleri oluşturur"""
-        
+
         # Eski hareketleri temizle
-        db.session.execute(
+        tenant_db.execute(
             delete(StokHareketi).where(
                 and_(
                     StokHareketi.firma_id == fatura.firma_id,
@@ -407,49 +524,49 @@ class StokHareketService:
                 )
             )
         )
-        
-        # Yön Tayini
+
+        # Yön tayini
         hareket_yonu = StokHareketService._hareket_yonu_belirle(fatura.fatura_turu)
-        
-        # Toplu Oluştur
+
+        # Toplu oluştur
         yeni_hareketler = []
-        
+
         for kalem in fatura.kalemler:
             hareket = StokHareketService._hareket_objesi_olustur(
                 fatura, kalem, hareket_yonu
             )
             yeni_hareketler.append(hareket)
-        
+
         # Bulk Insert
-        db.session.bulk_save_objects(yeni_hareketler)
-        
+        tenant_db.bulk_save_objects(yeni_hareketler)
+
         logger.info(
-            f"Stok Hareketi:  {len(yeni_hareketler)} kayıt oluşturuldu "
+            f"📦 Stok Hareketi: {len(yeni_hareketler)} kayıt oluşturuldu "
             f"(Fatura: {fatura.belge_no})"
         )
-    
+
     @staticmethod
     def _hareket_yonu_belirle(fatura_turu: str) -> str:
         """Fatura türüne göre stok hareket yönünü belirler"""
-        
+
         # Enum değerini al
         if hasattr(fatura_turu, 'value'):
             fatura_turu = fatura_turu.value
-        
+
         fatura_turu_upper = str(fatura_turu).upper()
-        
+
         is_satis = ('SATIS' in fatura_turu_upper)
         is_iade = ('IADE' in fatura_turu_upper)
-        
+
         if is_satis and not is_iade:
-            return HareketTuru.SATIS.value
+            return 'SATIS'
         elif not is_satis and not is_iade:
-            return HareketTuru.ALIS.value
+            return 'ALIS'
         elif is_satis and is_iade:
-            return HareketTuru.SATIS_IADE.value
+            return 'SATIS_IADE'
         else:
-            return HareketTuru.ALIS_IADE.value
-    
+            return 'ALIS_IADE'
+
     @staticmethod
     def _hareket_objesi_olustur(
         fatura: Fatura,
@@ -457,26 +574,26 @@ class StokHareketService:
         hareket_yonu: str
     ) -> StokHareketi:
         """Tek bir Stok Hareketi objesi oluşturur"""
-        
+
         sh = StokHareketi()
         sh.firma_id = fatura.firma_id
         sh.donem_id = fatura.donem_id
         sh.sube_id = fatura.sube_id
-        
+
         # Giriş/Çıkış Depo Tayini
-        if hareket_yonu in [HareketTuru.ALIS.value, HareketTuru.SATIS_IADE.value]:
+        if hareket_yonu in ['ALIS', 'SATIS_IADE']:
             sh.giris_depo_id = fatura.depo_id
             sh.cikis_depo_id = None
         else:
             sh.giris_depo_id = None
             sh.cikis_depo_id = fatura.depo_id
-        
+
         sh.stok_id = kalem.stok_id
         sh.tarih = fatura.tarih
         sh.belge_no = fatura.belge_no
         sh.kaynak_turu = 'fatura'
-        sh.kaynak_id = fatura.id
-        sh.kaynak_belge_detay_id = kalem.id
+        sh.kaynak_id = str(fatura.id)
+        sh.kaynak_belge_detay_id = str(kalem.id)
         sh.hareket_turu = hareket_yonu
         sh.miktar = kalem.miktar
         sh.birim_fiyat = kalem.birim_fiyat
@@ -484,7 +601,7 @@ class StokHareketService:
         sh.toplam_tutar = kalem.satir_toplami
         sh.doviz_turu = fatura.doviz_turu
         sh.doviz_kuru = fatura.doviz_kuru
-        
+
         return sh
 
 
@@ -493,13 +610,13 @@ class StokHareketService:
 # ============================================================
 class CariHareketService:
     """Cari Hareket İşlemleri"""
-    
+
     @staticmethod
-    def faturadan_olustur(fatura:  Fatura) -> None:
+    def faturadan_olustur(fatura: Fatura, tenant_db) -> None:
         """Faturadan Cari Hareket oluşturur"""
-        
+
         # Eski hareketi temizle
-        db.session.execute(
+        tenant_db.execute(
             delete(CariHareket).where(
                 and_(
                     CariHareket.firma_id == fatura.firma_id,
@@ -508,21 +625,21 @@ class CariHareketService:
                 )
             )
         )
-        
+
         # Yeni Hareket
         ch = CariHareketService._hareket_objesi_olustur(fatura)
-        db.session.add(ch)
-        
+        tenant_db.add(ch)
+
         bakiye = ch.borc - ch.alacak
         logger.info(
-            f"Cari Hareket: {fatura.cari.unvan} "
+            f"💳 Cari Hareket: {fatura.cari.unvan} "
             f"({bakiye:+.2f} TL)"
         )
-    
+
     @staticmethod
     def _hareket_objesi_olustur(fatura: Fatura) -> CariHareket:
         """Cari Hareket objesi oluşturur"""
-        
+
         ch = CariHareket()
         ch.firma_id = fatura.firma_id
         ch.donem_id = fatura.donem_id
@@ -532,392 +649,326 @@ class CariHareketService:
         ch.vade_tarihi = fatura.vade_tarihi
         ch.belge_no = fatura.belge_no
         ch.kaynak_turu = 'fatura'
-        ch.kaynak_id = fatura.id
-        
-        # İşlem Türü Tayini
+        ch.kaynak_id = str(fatura.id)
+
+        # İşlem türü tayini
         fatura_turu_str = fatura.fatura_turu.value if hasattr(fatura.fatura_turu, 'value') else str(fatura.fatura_turu)
         is_satis = ('SATIS' in fatura_turu_str.upper())
         is_iade = ('IADE' in fatura_turu_str.upper())
-        
+
         if is_satis and not is_iade:
-            ch.islem_turu = CariIslemTuru.SATIS_FATURASI.value
+            ch.islem_turu = 'SATIS_FATURASI'
         elif not is_satis and not is_iade:
-            ch.islem_turu = CariIslemTuru.ALIS_FATURASI.value
+            ch.islem_turu = 'ALIS_FATURASI'
         elif is_satis and is_iade:
-            ch.islem_turu = CariIslemTuru.SATIS_IADE.value
+            ch.islem_turu = 'SATIS_IADE'
         else:
-            ch.islem_turu = CariIslemTuru.ALIS_IADE.value
-        
+            ch.islem_turu = 'ALIS_IADE'
+
         ch.aciklama = fatura.aciklama or f"{fatura_turu_str} Faturası"
-        
+
         # Borç/Alacak Tayini
         cari_borclanir = (is_satis and not is_iade) or (not is_satis and is_iade)
-        
+
         if cari_borclanir:
             ch.borc = fatura.genel_toplam
             ch.alacak = Decimal('0.00')
         else:
             ch.borc = Decimal('0.00')
             ch.alacak = fatura.genel_toplam
-        
+
         return ch
 
 
 # ============================================================
 # 📊 MUHASEBE ENTEGRASYON SERVİSİ
 # ============================================================
-class MuhasebeEntegrasyonService: 
+class MuhasebeEntegrasyonService:
     """Muhasebe Modülü Entegrasyonu (Loose Coupling)"""
-    
+
     @staticmethod
-    def entegre_et_fatura(fatura_id: int) -> Tuple[bool, str]:
-        """
-        Faturayı Muhasebe Modülüne entegre eder
-        
-        Returns: 
-            (Başarı durumu, Mesaj)
-        """
-        
+    def entegre_et_fatura(fatura_id: str, tenant_db) -> Tuple[bool, str]:
+        """Faturayı Muhasebe Modülüne entegre eder"""
+
         try:
-            # Lazy Import (Circular Import'u Önler)
-            from modules.muhasebe.services import MuhasebeService
-            
-            fatura = db.session.get(Fatura, fatura_id)
+            # Lazy Import
+            from app.modules.muhasebe.services import MuhasebeService
+
+            fatura = tenant_db.query(Fatura).get(fatura_id)
             if not fatura:
                 return False, "Fatura bulunamadı"
-            
+
             # Muhasebe Fişi Oluştur
             fis = MuhasebeService.faturadan_fis_olustur(fatura)
-            
+
             # Faturaya Bağla
-            fatura.muhasebe_fis_id = fis.id
-            db.session.flush()
-            
+            fatura.muhasebe_fis_id = str(fis.id)
+            tenant_db.flush()
+
             logger.info(
-                f"Muhasebe Fişi: {fis.fis_no} oluşturuldu "
+                f"📊 Muhasebe Fişi: {fis.fis_no} oluşturuldu "
                 f"(Fatura: {fatura.belge_no})"
             )
-            return True, f"Muhasebe Fişi:  {fis.fis_no}"
-            
+            return True, f"Muhasebe Fişi: {fis.fis_no}"
+
         except ImportError as e:
-            logger.warning(
-                f"Muhasebe Modülü yüklenmedi (Circular Import olabilir): {e}"
-            )
+            logger.warning(f"⚠️ Muhasebe Modülü yüklenmedi: {e}")
             return False, "Muhasebe modülü bulunamadı"
-        
+
         except Exception as e:
-            logger.error(f"Muhasebe Entegrasyon Hatası: {e}", exc_info=True)
+            logger.error(f"❌ Muhasebe Entegrasyon Hatası: {e}", exc_info=True)
             return False, str(e)
 
 
 # ============================================================
-# 🎯 ANA FATURA SERVİSİ (FACADE PATTERN)
+# 🎯 ANA FATURA SERVİSİ (FACADE PATTERN) CACHE ENHANCEMENT
 # ============================================================
 class FaturaService:
-    """Ana Fatura Servis Katmanı"""
-    
+    """Ana Fatura Servis Katmanı - MySQL + AI Optimized"""
+
     @staticmethod
     def save(
         form_data: Dict[str, Any],
-        fatura:  Optional[Fatura] = None,
-        user:  Any = None
+        fatura: Optional[Fatura] = None,
+        user: Any = None,
+        tenant_db = None
     ) -> Tuple[bool, str]:
         """
-        Fatura oluşturur veya günceller
+        Fatura oluşturur veya günceller - MySQL Optimized
         
         Args:
             form_data: Form verisi (ImmutableMultiDict)
             fatura: Güncelleme için mevcut Fatura instance'ı
             user: Mevcut kullanıcı (current_user)
-            
+            tenant_db: Tenant DB session
+        
         Returns:
             (Başarı durumu, Mesaj)
         """
-        
+
+        if tenant_db is None:
+            from app.extensions import get_tenant_db
+            tenant_db = get_tenant_db()
+
         try:
             is_new = fatura is None
-            
-            # 1.BAŞLIK OLUŞTUR/GÜNCELLE
+
+            # 1. BAŞLIK OLUŞTUR/GÜNCELLE
             if is_new:
                 fatura = Fatura(firma_id=user.firma_id)
-                FaturaService._yeni_fatura_baslat(fatura, user)
-            
+                FaturaService._yeni_fatura_baslat(fatura, user, tenant_db)
+
             FaturaService._baslik_doldur(fatura, form_data)
-            
-            db.session.add(fatura)
-            db.session.flush()
-            
-            # 2.KALEMLERI İŞLE (UPSERT)
-            mevcut_kalemler = {k.id: k for k in fatura.kalemler}
-            
+
+            tenant_db.add(fatura)
+            tenant_db.flush()
+
+            # 2. KALEMLERI İŞLE (UPSERT)
+            mevcut_kalemler = {str(k.id): k for k in fatura.kalemler}
+
             kaydedilecek_kalemler, toplamlar = FaturaKalemService.toplu_kaydet(
-                fatura.id, form_data, mevcut_kalemler
+                str(fatura.id), form_data, mevcut_kalemler, tenant_db
             )
-            
+
             # Bulk Save
-            db.session.bulk_save_objects(kaydedilecek_kalemler)
-            
-            # 3.TOPLAM GÜNCELLEMESİ
+            tenant_db.bulk_save_objects(kaydedilecek_kalemler)
+
+            # 3. TOPLAM GÜNCELLEMESİ
             fatura.ara_toplam = toplamlar['ara_toplam']
             fatura.iskonto_toplam = toplamlar['iskonto_toplam']
             fatura.kdv_toplam = toplamlar['kdv_toplam']
             fatura.genel_toplam = toplamlar['genel_toplam']
-            
+
             if fatura.doviz_kuru > 0:
                 fatura.dovizli_toplam = (
                     fatura.genel_toplam / fatura.doviz_kuru
                 ).quantize(Decimal('0.01'))
-            
-            # 4.ONAY DURUMU
-            fatura.durum = FaturaDurumu.ONAYLANDI.value
-            
-            db.session.flush()
-            
-            # 5.ENTEGRASYONLARı ÇALIŞTIR
-            FaturaService.faturayi_isleme_al(fatura)
-            
-            # 6.COMMIT
-            db.session.commit()
-            # n8n'i tetikle (WhatsApp mesajı gitmesi için)
-            N8NClient.trigger('fatura-onaylandi', {
-                'fatura_id': fatura.id,
-                'belge_no': fatura.belge_no,
-                'cari': fatura.cari.unvan,
-                'tutar': float(fatura.genel_toplam),
-                'tarih': fatura.tarih.strftime('%Y-%m-%d'),
-                'telefon': fatura.cari.telefon  # WhatsApp için
-            })
+
+            # 4. DURUM KONTROLÜ
+            if is_new or fatura.durum == 'TASLAK':
+                fatura.durum = 'ONAYLANDI'
+
+            # 5. AI ANALİZLERİ
+            fatura.ai_analiz_guncelle()
+
+            tenant_db.flush()
+
+            # 6. ENTEGRASYONLARI ÇALIŞTIR (sadece onaylıysa)
+            if fatura.durum == 'ONAYLANDI':
+                FaturaService.faturayi_isleme_al(fatura, tenant_db)
+
+            # 7. COMMIT
+            tenant_db.commit()
 
             logger.info(
-                f"Fatura Kaydedildi: {fatura.belge_no} "
+                f"✅ Fatura Kaydedildi: {fatura.belge_no} "
                 f"({'Yeni' if is_new else 'Güncelleme'}) - "
-                f"Toplam: {fatura.genel_toplam} TL"
+                f"Toplam: {fatura.genel_toplam} {fatura.doviz_turu}"
             )
-            
+
             return True, f"Fatura {fatura.belge_no} başarıyla kaydedildi."
-        
+
         except FaturaValidationError as e:
-            db.session.rollback()
-            logger.warning(f"Validasyon Hatası: {e}")
+            tenant_db.rollback()
+            logger.warning(f"⚠️ Validasyon Hatası: {e}")
             return False, str(e)
-        
+
         except Exception as e:
-            db.session.rollback()
-            logger.error(f"Fatura Kaydetme Hatası: {e}", exc_info=True)
+            tenant_db.rollback()
+            logger.error(f"❌ Fatura Kaydetme Hatası: {e}", exc_info=True)
             return False, f"Beklenmeyen hata: {str(e)}"
-    
+
     @staticmethod
-    def _yeni_fatura_baslat(fatura: Fatura, user:  Any) -> None:
+    def _yeni_fatura_baslat(fatura: Fatura, user: Any, tenant_db) -> None:
         """Yeni fatura için başlangıç değerlerini atar"""
-        
+
         # Şube Tayini
-        if user.yetkili_subeler:
-            fatura.sube_id = user.yetkili_subeler[0].id
+        if hasattr(user, 'yetkili_subeler') and user.yetkili_subeler:
+            fatura.sube_id = str(user.yetkili_subeler[0].id)
         else:
             raise FaturaValidationError("Kullanıcının yetkili şubesi yok")
-        
+
         # Dönem Tayini
         if 'aktif_donem_id' in session:
             fatura.donem_id = session['aktif_donem_id']
         else:
-            aktif_donem = db.session.execute(
-                select(Donem)
-                .where(Donem.firma_id == user.firma_id)
-                .where(Donem.aktif == True)
-            ).scalar_one_or_none()
-            
+            aktif_donem = tenant_db.query(Donem).filter(
+                Donem.firma_id == user.firma_id,
+                Donem.aktif == True
+            ).first()
+
             if aktif_donem:
-                fatura.donem_id = aktif_donem.id
+                fatura.donem_id = str(aktif_donem.id)
             else:
                 raise FaturaValidationError("Aktif dönem bulunamadı")
-    
+
     @staticmethod
     def _baslik_doldur(fatura: Fatura, form_data: Dict[str, Any]) -> None:
         """Form verisinden fatura başlığını doldurur"""
-        
+
         # Tarih
         tarih_str = form_data.get('tarih')
         if isinstance(tarih_str, str):
             fatura.tarih = datetime.strptime(tarih_str, '%Y-%m-%d').date()
         else:
             fatura.tarih = tarih_str or date.today()
-        
+
         # Diğer Alanlar
         fatura.belge_no = form_data.get('belge_no')
         fatura.dis_belge_no = form_data.get('dis_belge_no')
         fatura.vade_tarihi = form_data.get('vade_tarihi') or fatura.tarih
-        fatura.cari_id = int(form_data.get('cari_id'))
-        fatura.depo_id = int(form_data.get('depo_id'))
+        fatura.cari_id = form_data.get('cari_id')
+        fatura.depo_id = form_data.get('depo_id')
         fatura.fatura_turu = form_data.get('fatura_turu')
         fatura.aciklama = form_data.get('aciklama')
         fatura.sevk_adresi = form_data.get('sevk_adresi')
-        
+
         # Fiyat Listesi
         fl_id = form_data.get('fiyat_listesi_id')
-        if fl_id and int(fl_id) >= MIN_FIYAT_LISTESI_ID:
-            fatura.fiyat_listesi_id = int(fl_id)
+        if fl_id and fl_id != '0':
+            fatura.fiyat_listesi_id = fl_id
         else:
             fatura.fiyat_listesi_id = None
-        
+
         # Döviz
-        fatura.doviz_turu = form_data.get('doviz_turu', ParaBirimi.TL.value)
+        fatura.doviz_turu = form_data.get('doviz_turu', 'TL')
         fatura.doviz_kuru = para_cevir(form_data.get('doviz_kuru', 1))
-        
+
         # Ödeme Planı
         odeme_plani_id = form_data.get('odeme_plani_id')
-        if odeme_plani_id:
-            fatura.odeme_plani_id = int(odeme_plani_id)
-    
+        if odeme_plani_id and odeme_plani_id != '0':
+            fatura.odeme_plani_id = odeme_plani_id
+
+        # Gün adı (raporlama için)
+        if fatura.tarih:
+            gun_adlari = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
+            fatura.gun_adi = gun_adlari[fatura.tarih.weekday()]
+
     @staticmethod
-    def faturayi_isleme_al(fatura: Fatura) -> None:
-        """
-        Faturayı Stok, Cari ve Muhasebe modüllerine entegre eder
-        
-        Not: Bu method Transaction içinde çağrılmalıdır! 
-        """
-        
-        # 1.Stok Hareketleri
-        StokHareketService.faturadan_olustur(fatura)
-        
-        # 2.Cari Hareket
-        CariHareketService.faturadan_olustur(fatura)
-        
-        # 3.Muhasebe Entegrasyonu (Opsiyonel)
-        basari, mesaj = MuhasebeEntegrasyonService.entegre_et_fatura(fatura.id)
+    def faturayi_isleme_al(fatura: Fatura, tenant_db) -> None:
+        """Faturayı Stok, Cari ve Muhasebe modüllerine entegre eder"""
+
+        # 1. Stok Hareketleri
+        StokHareketService.faturadan_olustur(fatura, tenant_db)
+
+        # 2. Cari Hareket
+        CariHareketService.faturadan_olustur(fatura, tenant_db)
+
+        # 3. Muhasebe Entegrasyonu
+        basari, mesaj = MuhasebeEntegrasyonService.entegre_et_fatura(str(fatura.id), tenant_db)
         if not basari:
-            logger.warning(f"Muhasebe entegrasyonu atlandı: {mesaj}")
-    
+            logger.warning(f"⚠️ Muhasebe entegrasyonu atlandı: {mesaj}")
+
     @staticmethod
-    def sil(fatura_id: int, user: Any) -> Tuple[bool, str]:
-        """
-        Faturayı ve ilişkili tüm kayıtları siler
-        
-        Args:
-            fatura_id: Silinecek fatura ID
-            user: Mevcut kullanıcı
-            
-        Returns:
-            (Başarı durumu, Mesaj)
-        """
-        
+    def sil(fatura_id: str, user: Any, tenant_db) -> Tuple[bool, str]:
+        """Faturayı ve ilişkili tüm kayıtları siler (Soft Delete)"""
+
         try:
-            fatura = db.session.get(Fatura, fatura_id)
-            
+            fatura = tenant_db.query(Fatura).filter_by(
+                id=fatura_id,
+                firma_id=user.firma_id
+            ).first()
+
             if not fatura:
                 return False, "Fatura bulunamadı"
-            
-            if fatura.firma_id != user.firma_id:
-                return False, "Yetkisiz erişim"
-            
+
             # Onaylı Fatura Kontrolü
-            durum_str = fatura.durum.value if hasattr(fatura.durum, 'value') else str(fatura.durum)
-            if durum_str == FaturaDurumu.ONAYLANDI.value:
+            if fatura.durum == 'ONAYLANDI':
                 logger.warning(
-                    f"Onaylı Fatura Silme Denemesi: {fatura.belge_no} "
-                    f"(Kullanıcı: {user.username})"
+                    f"⚠️ Onaylı Fatura Silme Denemesi: {fatura.belge_no} "
+                    f"(Kullanıcı: {user.email})"
                 )
-                return False, "Onaylı fatura silinemez.Önce iptal edin."
-            
-            # İlişkili Kayıtları Temizle
-            db.session.execute(
-                delete(StokHareketi).where(
-                    and_(
-                        StokHareketi.firma_id == fatura.firma_id,
-                        StokHareketi.kaynak_turu == 'fatura',
-                        StokHareketi.kaynak_id == fatura.id
-                    )
-                )
-            )
-            
-            db.session.execute(
-                delete(CariHareket).where(
-                    and_(
-                        CariHareket.firma_id == fatura.firma_id,
-                        CariHareket.kaynak_turu == 'fatura',
-                        CariHareket.kaynak_id == fatura.id
-                    )
-                )
-            )
-            
-            # Muhasebe Fişini Sil (Eğer varsa)
-            # Not: MuhasebeFisi importunu buraya taşıdık
-            try:
-                from models import MuhasebeFisi
-                if fatura.muhasebe_fis_id:
-                    db.session.execute(
-                        delete(MuhasebeFisi).where(
-                            MuhasebeFisi.id == fatura.muhasebe_fis_id
-                        )
-                    )
-            except ImportError:
-                pass
-            
-            # Faturayı Sil (Cascade ile kalemler de silinir)
-            db.session.delete(fatura)
-            db.session.commit()
-            
+                return False, "Onaylı fatura silinemez. Önce iptal edin."
+
+            # Soft Delete
+            fatura.deleted_at = datetime.now()
+            fatura.deleted_by = str(user.id)
+
+            tenant_db.commit()
+
             logger.info(
-                f"Fatura Silindi: {fatura.belge_no} "
-                f"(Kullanıcı: {user.username})"
+                f"✅ Fatura Silindi (soft): {fatura.belge_no} "
+                f"(Kullanıcı: {user.email})"
             )
             return True, "Fatura başarıyla silindi."
-        
-        except Exception as e: 
-            db.session.rollback()
-            logger.error(f"Fatura Silme Hatası: {e}", exc_info=True)
+
+        except Exception as e:
+            tenant_db.rollback()
+            logger.error(f"❌ Fatura Silme Hatası: {e}", exc_info=True)
             return False, f"Silme işlemi başarısız: {str(e)}"
-    
+
     @staticmethod
-    def get_by_id(fatura_id:  int, firma_id: int) -> Optional[Fatura]: 
+    @cache.memoize(timeout=CACHE_TIMEOUT_MEDIUM)
+    def get_by_id(fatura_id: str, firma_id: str, tenant_db=None) -> Optional[Fatura]:
         """
-        ID'ye göre fatura getirir (Eager Loading ile)
-        
-        🔥 FIX: SQLAlchemy 1.4+ Syntax
+        ID'ye göre fatura getir - CACHED
         
         Args:
-            fatura_id: Fatura ID
-            firma_id: Firma ID (Güvenlik kontrolü için)
-            
-        Returns: 
-            Fatura instance'ı veya None
+            fatura_id: Fatura ID (UUID)
+            firma_id: Firma ID (UUID)
+            tenant_db: Tenant DB session
+        
+        Returns:
+            Fatura instance veya None
         """
-
-        try: 
-            stmt = (
-                select(Fatura)
-                .options(
-                    selectinload(Fatura.kalemler).joinedload(FaturaKalemi.stok),
-                    joinedload(Fatura.cari),
-                    joinedload(Fatura.depo),
-                )
-                .where(Fatura.id == fatura_id)
-                .where(Fatura.firma_id == firma_id)
-            )
-
-            # Parametreli hali:
-            #print(stmt)
-
-            #print("Fatura İd : ", fatura_id, "Firma İd : ", firma_id)
-            # 🔥 DÜZELTME: execute() + scalar_one_or_none() kullanımı
-            fatura = db.session.execute(
-                select(Fatura)
-                .options(
-                    # Collection için selectinload (Ayrı sorgu, daha hızlı)
-                    selectinload(Fatura.kalemler).joinedload(FaturaKalemi.stok),
-                    
-                    # Tekil ilişkiler için joinedload (Tek sorgu)
-                    joinedload(Fatura.cari),
-                    joinedload(Fatura.depo)
-                )
-                .where(Fatura.id == fatura_id)
-                .where(Fatura.firma_id == firma_id)
-            ).scalar_one_or_none()  # ✅ Bu satır hatayı çözüyor
-            #print(fatura.kalemler[0])
-            return fatura
+        if tenant_db is None:
+            from app.extensions import get_tenant_db
+            tenant_db = get_tenant_db()
+        
+        try:
+            # ✅ MySQL Optimized Query (Mevcut kod aynı kalıyor)
+            fatura = tenant_db.query(Fatura).options(
+                selectinload(Fatura.kalemler).joinedload(FaturaKalemi.stok),
+                joinedload(Fatura.cari),
+                joinedload(Fatura.depo)
+            ).filter(
+                Fatura.id == fatura_id,
+                Fatura.firma_id == firma_id,
+                Fatura.deleted_at.is_(None)
+            ).first()
             
-        except Exception as e: 
-            logger.error(
-                f"Fatura getirme hatası (ID: {fatura_id}): {e}",
-                exc_info=True
-            )
+            return fatura
+        
+        except Exception as e:
+            logger.error(f"❌ Fatura getirme hatası (ID: {fatura_id}): {e}")
             return None

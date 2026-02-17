@@ -1,50 +1,83 @@
-# app/modules/cari/forms.py
+# app/modules/cari/forms.py (Minimal Fix - Critical Lines Only)
 
 from app.form_builder import Form, FormField, FieldType, FormLayout
-from flask_babel import gettext as _
+from flask import url_for
+from flask_babel import gettext as _, lazy_gettext
 from flask_login import current_user
-from app.extensions import get_tenant_db # 👈 Firebird Bağlantısı
+from app.extensions import get_tenant_db, cache # 👈 Firebird Bağlantısı
 # Modelleri Firebird sorgusu için import ediyoruz
 from app.modules.lokasyon.models import Sehir, Ilce
 from app.modules.muhasebe.models import HesapPlani
 
-def create_cari_form(cari=None):
-    is_edit = cari is not None
-    action_url = f"/cari/duzenle/{cari.id}" if is_edit else "/cari/ekle"
-    title = _("Cari Kart Düzenle") if is_edit else _("Yeni Cari Kart")
-    
-    form = Form(name="cari_form", title=title, action=action_url, method="POST", submit_text=_("Kaydet"), ajax=True)
-    layout = FormLayout()
+# Cache timeout
+CACHE_TIMEOUT = 300
 
+def create_cari_form(cari=None):
+    
     # --- VERİ HAZIRLIĞI (FIREBIRD BAĞLANTISI İLE) ---
     tenant_db = get_tenant_db()
+    if not tenant_db:
+        flash(_('Firebird bağlantısı yok. Lütfen firma seçin.'), 'danger')
+        return redirect(url_for('main.index'))
     
-    sehir_opts = []
+    is_edit = cari is not None
+    action_url = url_for('cari.duzenle', id=cari.id) if is_edit else url_for('cari.ekle')
+    title = _("Cari Kart Düzenle") if is_edit else _("Yeni Cari Kart")
+
+    
+    form = Form(name="cari_form", title=title, action=action_url, method="POST", submit_text=_("Kaydet"), ajax=True)
+
+    layout = FormLayout()
+
+    # ========================================
+    # VERİ HAZIRLIĞI (CACHED)
+    # ========================================
+
+    # 1. Şehirler (Cached)
+    cache_key_sehir = f"cari_form_sehirler:{current_user.firma_id}"
+    sehir_opts = cache.get(cache_key_sehir)
+    
+    if sehir_opts is None:
+        sehirler = tenant_db.query(Sehir).order_by(Sehir.kod).all()
+        sehir_opts = [(str(s.id), f"{s.kod} - {s.ad}") for s in sehirler]
+        cache.set(cache_key_sehir, sehir_opts, timeout=CACHE_TIMEOUT)
+    
+    # 2. İlçeler (edit modunda)
     ilce_opts = []
-    muhasebe_opts = []
+    if cari and cari.sehir_id:
+        cache_key_ilce = f"ilceler:{cari.sehir_id}"
+        ilce_opts = cache.get(cache_key_ilce)
+        
+        if ilce_opts is None:
+            ilceler = tenant_db.query(Ilce).filter_by(
+                sehir_id=cari.sehir_id
+            ).order_by(Ilce.ad).all()
+            ilce_opts = [(str(i.id), i.ad) for i in ilceler]
+            cache.set(cache_key_ilce, ilce_opts, timeout=CACHE_TIMEOUT)
     
-    if tenant_db:
-        try:
-            # 1. Şehirleri Getir
-            sehirler = tenant_db.query(Sehir).order_by(Sehir.kod).all()
-            sehir_opts = [(s.id, f"{s.kod} - {s.ad}") for s in sehirler]
-            
-            # 2. İlçeleri Getir (Eğer düzenleme modundaysa ve şehir seçiliyse)
-            if cari and cari.sehir_id:
-                ilceler = tenant_db.query(Ilce).filter_by(sehir_id=cari.sehir_id).order_by(Ilce.ad).all()
-                ilce_opts = [(i.id, i.ad) for i in ilceler]
-                
-            # 3. Muhasebe Hesaplarını Getir (Sadece Muavin/Alt Hesaplar)
-            hesaplar = tenant_db.query(HesapPlani).filter_by(firma_id=1, aktif=True).order_by(HesapPlani.kod).all()
-            for h in hesaplar:
-                # Hesap tipi kontrolü (model yapısına göre esnek)
-                is_muavin = getattr(h, 'hesap_tipi', 'muavin') == 'muavin' or getattr(h, 'tur', 'ALT') == 'ALT'
-                if is_muavin:
-                    muhasebe_opts.append((h.id, f"{h.kod} - {h.ad}"))
-                    
-        except Exception as e:
-            print(f"Cari Form Veri Hatası: {e}")
-            # Hata durumunda boş listelerle devam et, form patlamasın
+    # 3. Muhasebe Hesapları (Cached)
+    cache_key_hesap = f"cari_form_hesaplar:{current_user.firma_id}"
+    muhasebe_opts = cache.get(cache_key_hesap)
+    
+    if muhasebe_opts is None:
+        hesaplar = tenant_db.query(HesapPlani).filter_by(
+            firma_id=current_user.firma_id,
+            aktif=True
+        ).order_by(HesapPlani.kod).all()
+        
+        muhasebe_opts = []
+        for h in hesaplar:
+            is_muavin = (
+                getattr(h, 'hesap_tipi', 'muavin') == 'muavin' or
+                getattr(h, 'tur', 'ALT') == 'ALT'
+            )
+            if is_muavin:
+                muhasebe_opts.append((str(h.id), f"{h.kod} - {h.ad}"))
+        
+        cache.set(cache_key_hesap, muhasebe_opts, timeout=CACHE_TIMEOUT)
+    
+
+ 
 
     # --- 1. KİMLİK BİLGİLERİ ---
     kod = FormField('kod', FieldType.AUTO_NUMBER, _('Cari Kodu'), required=True, value=cari.kod if cari else '', endpoint='/cari/api/siradaki-kod', icon='bi bi-person-badge')

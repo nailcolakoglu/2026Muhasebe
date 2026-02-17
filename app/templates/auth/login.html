@@ -22,4 +22,17 @@
         </div>
     </div>
 </div>
+<!-- ✅ CSRF Token Auto-Refresh Script -->
+<script>
+    // 50 dakika sonra uyarı göster
+    setTimeout(() => {
+        document.getElementById('tokenExpireWarning').classList.remove('d-none');
+    }, 50 * 60 * 1000);
+    
+    // 55 dakika sonra sayfayı yenile (token expire olmadan)
+    setTimeout(() => {
+        console.log('CSRF token yenileniyor...');
+        window.location.reload();
+    }, 55 * 60 * 1000);
+</script>
 {% endblock %}

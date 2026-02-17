@@ -321,16 +321,17 @@ class TimestampMixin:
 
 class SoftDeleteMixin:
     """Soft delete (mantıksal silme)"""
-    silinmis = db.Column(db.Boolean, default=False, nullable=False, index=True)
-    silinme_tarihi = db.Column(db.DateTime, nullable=True)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+    
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
     
     def soft_delete(self):
-        self.silinmis = True
-        self.silinme_tarihi = datetime.now()
+        self.deleted_at = datetime.now()
     
     def restore(self):
-        self.silinmis = False
-        self.silinme_tarihi = None
+        self.deleted_at = None
 
 
 class FirmaOwnedMixin: 

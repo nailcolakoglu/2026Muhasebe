@@ -1,0 +1,110 @@
+[
+  {
+    "title": "Panel",
+    "icon": "bi bi-speedometer2",
+    "endpoint": "main.index",
+    "order": 1,
+    "roles": null
+  },
+  {
+    "title": "Satış",
+    "icon": "bi bi-cart3",
+    "order": 2,
+    "children": [
+      { "title": "Sipariş Listesi", "icon": "bi bi-basket", "endpoint": "siparis.index", "order": 1 },
+      { "title": "Yeni Sipariş Al", "icon": "bi bi-plus-lg", "endpoint": "siparis.ekle", "order": 2 },
+      { "title": "Satış Faturaları", "icon": "bi bi-receipt", "endpoint": "fatura.index", "order": 3 },
+      { "title": "Yeni Fatura Kes", "icon": "bi bi-receipt-cutoff", "endpoint": "fatura.ekle", "order": 4 }
+    ]
+  },
+  {
+    "title": "Finans",
+    "icon": "bi bi-wallet2",
+    "order": 3,
+    "roles": "admin,muhasebe,finans_muduru",
+    "children": [
+      { "title": "Virman / Transfer", "icon": "bi bi-arrow-left-right", "endpoint": "finans.virman", "order": 1 },
+      { "title": "Gider Fişi", "icon": "bi bi-dash-circle", "endpoint": "finans.gider_ekle", "order": 2 },
+      { "title": "Kasa Tanımları", "icon": "bi bi-safe", "endpoint": "kasa.index", "order": 3 },
+      { "title": "Kasa Hareketleri", "icon": "bi bi-cash-stack", "endpoint": "kasa_hareket.index", "order": 4 },
+      { "title": "Çek / Senet Portföyü", "icon": "bi bi-ticket-perforated", "endpoint": "cek.index", "order": 5 },
+      { "title": "Banka Hesapları", "icon": "bi bi-credit-card", "endpoint": "banka.index", "order": 6 },
+      { "title": "Banka Hareketleri", "icon": "bi bi-credit-card", "endpoint": "banka_hareket.index", "order": 7 },
+      { "title": "CFO Nakit Simülasyonu", "icon": "bi bi-currency-exchange", "endpoint": "finans.nakit_akis_analizi", "order": 8 },
+      { "title": "Döviz Kurları", "icon": "bi bi-currency-exchange", "endpoint": "doviz.kur_listesi", "order": 9 }
+    ]
+  },
+  {
+    "title": "Muhasebe",
+    "icon": "bi bi-journal-bookmark-fill",
+    "order": 4,
+    "roles": "admin,muhasebe_muduru",
+    "children": [
+      { "title": "Muhasebe Fişleri", "icon": "bi bi-journal-text", "endpoint": "muhasebe.index", "order": 1 },
+      { "title": "Yeni Mahsup Fişi", "icon": "bi bi-plus-circle", "endpoint": "muhasebe.ekle", "order": 2 },
+      { "title": "Hesap Planı (TDHP)", "icon": "bi bi-list-nested", "endpoint": "muhasebe.hesap_plani_index", "order": 3 },
+      { "title": "Genel Mizan", "icon": "bi bi-calculator", "endpoint": "muhasebe.mizan", "order": 4 },
+      { "title": "Resmi Defterler & e-Defter", "icon": "bi bi-file-earmark-lock", "endpoint": "rapor.resmi_defter_index", "order": 5 }
+    ]
+  },
+  {
+    "title": "Stok",
+    "icon": "bi bi-box-seam",
+    "order": 5,
+    "roles": "admin,muhasebe,depo,sube_yoneticisi",
+    "children": [
+      { "title": "Stok Kartları", "icon": "bi bi-boxes", "endpoint": "stok.index", "order": 1 },
+      { "title": "Kategoriler", "icon": "bi bi-tags", "endpoint": "kategori.index", "order": 2 },
+      { "title": "Stok Fişleri", "icon": "bi bi-arrow-left-right", "endpoint": "stok_fisi.index", "order": 3 },
+      { "title": "Depo Tanımları", "icon": "bi bi-building-gear", "endpoint": "depo.index", "order": 4 },
+      { "title": "Fiyat Listeleri", "icon": "bi bi-tags-fill", "endpoint": "fiyat.index", "order": 5 },
+      { "title": "AI Stok Analizi", "icon": "bi bi-robot", "endpoint": "stok.yapay_zeka_analiz", "order": 6 },
+      { "title": "Ölü Stok Analizi", "icon": "bi bi-exclamation-octagon", "endpoint": "stok.olu_stok_analiz", "order": 7 },
+      { "title": "AI Çapraz Satış", "icon": "bi bi-cart-plus", "endpoint": "stok.capraz_satis_analizi", "order": 8 }
+    ]
+  },
+  {
+    "title": "Cari",
+    "icon": "bi bi-people",
+    "order": 6,
+    "children": [
+      { "title": "Cari Listesi", "icon": "bi bi-person-lines-fill", "endpoint": "cari.index", "order": 1 },
+      { "title": "Yeni Cari Kart", "icon": "bi bi-person-plus", "endpoint": "cari.ekle", "order": 2 },
+      { "title": "AI Risk Analizi", "icon": "bi bi-activity", "endpoint": "cari.risk_analizi", "order": 3 }
+    ]
+  },
+  {
+    "title": "Rapor",
+    "icon": "bi bi-tags-fill",
+    "endpoint": "rapor.index",
+    "order": 7
+  },
+  {
+    "title": "Tanımlar",
+    "icon": "bi bi-gear",
+    "order": 8,
+    "roles": "admin,muhasebe",
+    "children": [
+      { "title": "Muhasebe Grupları", "icon": "bi bi-journals", "endpoint": "stok.muhasebe_gruplari", "order": 1 },
+      { "title": "KDV Grupları", "icon": "bi bi-percent", "endpoint": "stok.kdv_gruplari", "order": 2 },
+      { "title": "Şehirler (İller)", "icon": "bi bi-geo-alt", "endpoint": "lokasyon.sehir_listesi", "order": 3 },
+      { "title": "İlçeler", "icon": "bi bi-map", "endpoint": "lokasyon.ilce_listesi", "order": 4 }
+    ]
+  },
+  {
+    "title": "Sistem",
+    "icon": "bi bi-gear-fill",
+    "order": 9,
+    "roles": "admin",
+    "children": [
+      { "title": "Firma Bilgileri", "icon": "bi bi-building", "endpoint": "firmalar.index", "order": 1 },
+      { "title": "Dönem Yönetimi", "icon": "bi bi-calendar-range", "endpoint": "firmalar.donemler", "order": 2 },
+      { "title": "Bölge Yönetimi", "icon": "bi bi-shop", "endpoint": "bolge.index", "order": 3 },
+      { "title": "Şube Yönetimi", "icon": "bi bi-shop", "endpoint": "sube.index", "order": 4 },
+      { "title": "Kullanıcılar", "icon": "bi bi-person-badge", "endpoint": "kullanici.index", "order": 5 },
+      { "title": "Mobil Satış", "icon": "bi bi-phone", "endpoint": "mobile.dashboard", "order": 6 },
+      { "title": "AI Anomali Dedektifi", "icon": "bi bi-incognito", "endpoint": "rapor.anomali_dedektifi", "order": 7 },
+      { "title": "Menü Yönetimi", "icon": "bi bi-list", "endpoint": "sistem.menu_index", "order": 8 }
+    ]
+  }
+]

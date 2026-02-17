@@ -96,7 +96,7 @@ from app.modules.kategori.models import StokKategori
 # Stok
 from app.modules.stok.models import (
     StokKart, StokHareketi, StokPaketIcerigi,
-    StokMuhasebeGrubu, StokKDVGrubu, StokDepoDurumu, StokFisiDetay
+    StokMuhasebeGrubu, StokKDVGrubu, StokDepoDurumu
 )
 
 # Fiyat
@@ -112,7 +112,7 @@ from app.modules.fatura.models import Fatura, FaturaKalemi
 from app.modules.efatura.models import EntegratorAyarlari
 
 # Stok Fişi
-from app.modules.stok_fisi.models import StokFisi
+from app.modules.stok_fisi.models import StokFisi, StokFisiDetay
 
 # Kasa Hareket
 from app.modules.kasa_hareket.models import KasaHareket

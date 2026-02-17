@@ -8,7 +8,6 @@ from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import FirmaFilteredQuery, TimestampMixin, SoftDeleteMixin, JSONText
 
-
 # UUID oluşturucu fonksiyon
 import uuid # 👈 EKLENDİ
 
@@ -24,6 +23,8 @@ class Firma(db.Model, TimestampMixin, SoftDeleteMixin):
     
     kod = db.Column(db.String(20), nullable=False, unique=True, default='01')    
     unvan = db.Column(db.String(100), nullable=False)
+    
+    tenant_db_name = db.Column(db.String(64), unique=True)  # erp_firma_001
     
     # İletişim & Vergi
     vergi_dairesi = db.Column(db.String(50))
@@ -59,7 +60,6 @@ class Firma(db.Model, TimestampMixin, SoftDeleteMixin):
 
     def __repr__(self):
         return f"<Firma {self.kod} - {self.unvan}>"
-
 
 # --- 2. DONEM SINIFI ---
 class Donem(db.Model, TimestampMixin):

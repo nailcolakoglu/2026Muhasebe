@@ -1,8 +1,8 @@
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required, current_user
 from app.extensions import db
-from app.modules.stok_fisi.models import StokFisi
-from app.modules.stok.models import StokFisiDetay, StokHareketi, StokDepo
+from app.modules.stok_fisi.models import StokFisi, StokFisiDetay
+from app.modules.stok.models import StokHareketi, StokDepoDurumu
 from app.modules.depo.models import Depo
 from app.form_builder import DataGrid
 from app.enums import StokFisTuru

@@ -32,3 +32,8 @@ click==8.1.7
 
 # Şifreleme
 cryptography==41.0.7
+
+
+# requirements.txt (EKLENECEKLER)
+redis==5.0.1
+hiredis==2.3.2  # Redis performans artışı

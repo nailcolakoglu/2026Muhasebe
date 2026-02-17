@@ -1,7 +1,7 @@
 # app/modules/fatura/forms.py
 
 from app.form_builder import Form, FormField, FieldType, FormLayout
-from flask_babel import gettext as _
+from flask_babel import gettext as _, lazy_gettext
 from flask_login import current_user
 from flask import url_for, session
 from app.modules.depo.models import Depo
@@ -14,6 +14,10 @@ from app.enums import ParaBirimi, StokBirimleri, FaturaTuru
 from app.araclar import para_cevir
 from datetime import datetime
 from markupsafe import Markup
+from app.extensions import cache
+
+# Cache timeout
+CACHE_TIMEOUT = 300
 
 def create_fatura_form(fatura=None):
     is_edit = fatura is not None
@@ -69,7 +73,8 @@ def create_fatura_form(fatura=None):
     else:
         stoklar = stok_query.limit(50).all()
 
-    stok_opts = [(s.id, f"{s.kod} - {s.ad} ({s.birim or 'Adet'})") for s in stoklar]
+    #stok_opts = [(s.id, f"{s.kod} - {s.ad} ({s.birim or 'Adet'})") for s in stoklar]
+    stok_opts = []  # Boş başlat, AJAX ile dolacak
 
     # 3.Fiyat Listeleri
     listeler = FiyatListesi.query.filter_by(firma_id=current_user.firma_id, aktif=True).all()
@@ -137,7 +142,15 @@ def create_fatura_form(fatura=None):
         FormField('stok_id', FieldType.SELECT, 'Ürün / Hizmet', 
                   options=stok_opts,  # ← BOŞTURUN
                   required=True, 
-                  select2_config={'placeholder': 'Ürün Seçiniz...', 'allowClear': False},
+                  select2_config={
+                        'placeholder': 'Ürün Seçiniz...',
+                        'allowClear': False,
+                        'ajax': {
+                            'url': '/fatura/api/stok-ara',  # routes.py'deki endpoint
+                            'dataType': 'json',
+                            'delay': 250
+                        }
+                    },
                   html_attributes={
                       'style': 'width: 600px ; min-width: 600px; max-width: 600px;', 
                       'data-ajax-url': '/fatura/api/stok-ara',  # ← AJAX URL

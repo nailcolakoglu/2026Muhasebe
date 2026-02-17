@@ -404,14 +404,12 @@ class DataGrid:
             if type_str in ['currency', 'number'] and 'text-' not in cell_class:
                 cell_class += ' text-end'
             if type_str == 'currency':
-                cell_class += ' font-monospace' # Para birimi için monospaced font
+                cell_class += ' font-monospace'
             
             class_attr = f' class="{cell_class.strip()}"' if cell_class.strip() else ''
-            # ---------------------------------------
 
             # Değer Formatlama
             if type_str == 'badge':
-                # Badge Enum veya String değeri
                 val_str = str(raw_val.value) if hasattr(raw_val, 'value') else str(raw_val)
                 colors = col.get('badge_colors', {})
                 color = colors.get(val_str, 'secondary') 
@@ -422,9 +420,15 @@ class DataGrid:
             
             html.append(f'<td{class_attr} data-field="{col["name"]}">{val}</td>')
             
-        # Aksiyonlar
+        # ========================================
+        # ✅ DÜZELTİLMİŞ: Aksiyonlar (UUID Desteği)
+        # ========================================
         if self.actions:
             html.append('<td class="text-center text-nowrap">')
+            
+            # ✅ item.id'yi string'e çevir (UUID ise string olacak)
+            item_id = str(item.id) if hasattr(item, 'id') else None
+            
             for action in self.actions:
                 attrs = []
                 if action.get('html_attributes'):
@@ -435,25 +439,40 @@ class DataGrid:
                 if action['action_type'] == 'route':
                     try:
                         endpoint = action['route_name']
+                        
+                        # Blueprint prefix ekle (gerekiyorsa)
                         if '.' not in endpoint and '.' in base_url_name:
                             prefix = base_url_name.split('.')[0]
                             endpoint = f"{prefix}.{endpoint}"
-                        act_url = url_for(endpoint, id=item.id)
-                    except: act_url = '#'
+                        
+                        # ✅ UUID'yi string olarak gönder
+                        if item_id:
+                            act_url = url_for(endpoint, id=item_id)
+                        else:
+                            act_url = '#'
+                            
+                    except Exception as e:
+                        # Debug için log
+                        print(f"❌ DataGrid URL oluşturma hatası: {e}, endpoint: {endpoint}, id: {item_id}")
+                        act_url = '#'
+                        
                     html.append(f'<a href="{act_url}" class="btn btn-sm {action["class"]} me-1" title="{action["label"]}"{attrs_str}><i class="{action["icon"]}"></i></a>')
                 
                 elif action['action_type'] == 'url':
                     try:
                         act_url = action['route_name'](item)
-                    except: act_url = '#'
+                    except:
+                        act_url = '#'
                     html.append(f'<a href="{act_url}" class="btn btn-sm {action["class"]} me-1" title="{action["label"]}"{attrs_str}><i class="{action["icon"]}"></i></a>')
 
-                else: # AJAX Button
-                    html.append(f'<button class="btn btn-sm {action["class"]} me-1" data-id="{item.id}" data-action="{action["name"]}"{attrs_str}><i class="{action["icon"]}"></i></button>')
+                else:  # AJAX Button
+                    # ✅ AJAX için de string ID kullan
+                    html.append(f'<button class="btn btn-sm {action["class"]} me-1" data-id="{item_id}" data-action="{action["name"]}"{attrs_str}><i class="{action["icon"]}"></i></button>')
+                    
             html.append('</td>')
         html.append('</tr>')
         return ''.join(html)
-
+        
     def _get_nested_value(self, obj, field_path):
         """'cari.unvan' gibi noktalı alanları bulur."""
         try:

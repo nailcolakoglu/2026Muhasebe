@@ -19,7 +19,7 @@ class Kullanici(db.Model, TimestampMixin, SoftDeleteMixin):
     sube_id = db.Column(db.String(36), db.ForeignKey('subeler.id'), nullable=True)
     
     aktif = db.Column(db.Boolean, default=True)
-    
+    rol = db.Column(db.String(20))
     # 2. Relationship (Nesne İlişkisi - ŞART)
     # Firma modelinden bu modele erişilirken hata almamak için bunu geri ekliyoruz.
     # 'overlaps' parametresi, eğer Firma modelinde de benzer bir tanım varsa çakışmayı önler.
