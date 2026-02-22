@@ -145,6 +145,7 @@
     </style>
     {% block extra_css %}
     {% endblock %}
+	
 </head>
 <body>
     <nav class="navbar navbar-expand-xl navbar-custom sticky-top">
@@ -341,10 +342,14 @@
     <script src="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/nouislider/distribute/nouislider.min.js"></script>
 
+    <!-- ✅ CSRF TOKEN SETUP - DOM HAZIR OLDUĞUNDA -->
     <script>
         $(document).ready(function() {
+            // CSRF Token Setup
             var csrf_token = $('meta[name="csrf-token"]').attr('content');
+            
             if (csrf_token) {
+                // jQuery AJAX için global setup
                 $.ajaxSetup({
                     beforeSend: function(xhr, settings) {
                         if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
@@ -352,17 +357,38 @@
                         }
                     }
                 });
+                
+                // Fetch API için wrapper
+                const originalFetch = window.fetch;
+                window.fetch = function(url, options = {}) {
+                    if (options.method && options.method !== 'GET') {
+                        options.headers = options.headers || {};
+                        if (typeof options.headers.append === 'function') {
+                            options.headers.append('X-CSRFToken', csrf_token);
+                        } else {
+                            options.headers['X-CSRFToken'] = csrf_token;
+                        }
+                    }
+                    return originalFetch(url, options);
+                };
             }
-            $.fn.select2.defaults.set( "theme", "bootstrap-5" );
-            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            
+            // Select2 init
+            $.fn.select2.defaults.set("theme", "bootstrap-5");
+            
+            // Tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
             var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-                return new bootstrap.Tooltip(tooltipTriggerEl)
-            })
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+            
+            // Form Builder Validation
             if (typeof FormBuilderValidation !== 'undefined' && typeof FormBuilderValidation.init === 'function') {
                 FormBuilderValidation.init();
             }
         });
     </script>
+	
     <script src="{{ url_for('static', filename='js/form-builder-validation.js') }}"></script>
     <script src="{{ url_for('static', filename='js/data-grid.js') }}"></script>
 

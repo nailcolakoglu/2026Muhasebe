@@ -198,67 +198,54 @@ def close_tenant_db(exception=None):
 
 def get_tenant_info():
     """
-    Aktif tenant bilgilerini döner (Cached)
+    Aktif tenant bilgilerini döndürür (cache'li)
     
     Returns:
         dict: {
-            'connected': bool,
-            'tenant_id': str,
-            'firma_id': str,
-            'tenant_name': str,
-            'db_name': str
+            'id': str (UUID),
+            'kod': str,
+            'name': str,
+            'db_name': str (erp_tenant_XXX),
+            'firma_id': str (UUID),
+            'status': str
         }
-    
-    Kullanım:
-        info = get_tenant_info()
-        if info['connected']:
-            print(f"Firma: {info['tenant_name']}")
     """
+    if 'tenant_id' not in session:
+        logger.debug("❌ Session'da tenant_id yok")
+        return None
     
-    # 1. Tenant ID kontrolü
-    tenant_id = session.get('tenant_id')
+    tenant_id = session['tenant_id']
     
-    if not tenant_id:
-        return {
-            'connected': False,
-            'tenant_id': None,
-            'firma_id': None,
-            'tenant_name': None,
-            'db_name': None
-        }
-    
-    # 2. Cache'den çekmeyi dene
+    # Cache'den kontrol et
     cache_key = f"tenant_info:{tenant_id}"
-    cached_info = cache.get(cache_key)
+    cached = cache.get(cache_key)
+    if cached:
+        logger.debug(f"📦 Tenant info cache hit: {tenant_id}")
+        return cached
     
-    if cached_info:
-        info = cached_info
-    else:
-        # 3. Master DB'den sorgula
-        from app.models.master import Tenant
-        tenant = db.session.get(Tenant, tenant_id)
-        
-        if not tenant:
-            return {
-                'connected': False,
-                'tenant_id': tenant_id,
-                'firma_id': None,
-                'tenant_name': None,
-                'db_name': None
-            }
-        
-        info = {
-            'tenant_id': tenant_id,
-            'firma_id': tenant_id,  # Aynı (uyumluluk için)
-            'tenant_name': tenant.unvan,
-            'db_name': f"{current_app.config['TENANT_DB_PREFIX']}{tenant.code}"
-        }
-        
-        # 1 saatlik cache
-        cache.set(cache_key, info, timeout=3600)
+    # DB'den çek
+    from app.models.master.tenant import Tenant
+    tenant = Tenant.query.get(tenant_id)
     
-    # 4. Bağlantı durumunu ekle (real-time)
-    info['connected'] = is_tenant_connected()
+    if not tenant:
+        logger.warning(f"⚠️ Tenant bulunamadı: {tenant_id}")
+        return None
+    
+    # ✅ Tenant modelinden direkt oku
+    info = {
+        'id': tenant.id,
+        'kod': tenant.kod,
+        'name': tenant.unvan,
+        'db_name': tenant.db_name,  # ✅ Zaten tam database adı (erp_tenant_XXX)
+        'firma_id': tenant.id,  # Tenant ID = Firma ID
+        'status': 'active' if tenant.is_active else 'inactive',
+        'vergi_no': tenant.vergi_no,
+        'vergi_dairesi': tenant.vergi_dairesi
+    }
+    
+    # Cache'e kaydet (5 dakika)
+    cache.set(cache_key, info, timeout=300)
+    logger.debug(f"💾 Tenant info cache'lendi: {tenant.kod} -> {tenant.db_name}")
     
     return info
 

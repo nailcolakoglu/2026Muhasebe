@@ -1,23 +1,131 @@
+# ===========================================
+# 2026 MUHASEBE - GIT IGNORE
+# ===========================================
+
 # Python
+.pytest_cache/
 __pycache__/
 *.py[cod]
-*.egg-info/
+*$py.class
+*.so
+.Python
+env/
 venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Flask
+instance/
+.webassets-cache
+.pytest_cache/
+
+# ========================================
+# ⚠️ HASSAS DOSYALAR (Asla commit edilmemeli!)
+# ========================================
 .env
+.env.local
+.env.production
+.env.*.local
+*.env
+
+# Eski config yedekleri (eğer varsa)
+config_old.py
+config.backup.py
+
+# License dosyaları
+*.lic
+*.license
 
 # Database
-*.fdb
 *.db
-backups/
-
-# IDE
-.vscode/
-.idea/
+*.sqlite
+*.sqlite3
+*.sql
 
 # Logs
 *.log
 logs/
+*.log.*
 
-# Sensitive
-instance/
-config_local.py
+# Cache
+app/cache_data/*
+!app/cache_data/.gitkeep
+*.cache
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+
+# Backups
+backups/
+*.backup
+*.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Migrations (Bazen ignore edilir, projeye göre değişir)
+# migrations/versions/*.py
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# Compiled translations
+*.mo
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# ========================================
+# ÖZEL DOSYALAR (Projenize özgü)
+# ========================================
+# ngrok
+ngrok.exe
+ngrok
+
+# Firebird backup
+*.fbk
+
+# Excel temporary files
+~$*.xlsx
+~$*.xls

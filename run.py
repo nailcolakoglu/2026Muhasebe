@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from app.extensions import db, cache, login_manager, babel, init_extensions
 from app.context_manager import GlobalContextManager
+from config import get_config
 
 #from app.patches import apply_firebird_patches
 
@@ -52,21 +53,14 @@ def create_app(config_name=None):
     # Config yükleme
     if config_name is None:
         config_name = os.getenv('FLASK_ENV', 'development')
-    
-    config_class = f'config.{config_name.capitalize()}Config'
-    app.config.from_object(config_class)
-    
-    # ✅ FIREBIRD YAMALARI (DB INIT'TEN ÖNCE!)
-    # apply_firebird_patches()
+
+    app.config.from_object(get_config(config_name))
     
     logger.info(f"🚀 Uygulama başlatılıyor: {config_name} modu")
 
     # ✅ Extension'ları başlat
     init_extensions(app)
-    
-    # Extensions
-    # initialize_extensions(app) # REMOVED - duplicate!
-    
+        
     # Middleware
     register_middleware(app)
     
@@ -268,7 +262,6 @@ def register_blueprints(app):
     from app.modules.stok_fisi.routes import stok_fisi_bp
     app.register_blueprint(stok_fisi_bp, url_prefix='/stok-fisi')
     
-    
     # Cari modülü
     from app.modules.cari.routes import cari_bp
     app.register_blueprint(cari_bp, url_prefix='/cari')
@@ -281,7 +274,6 @@ def register_blueprints(app):
     from app.modules.kullanici.routes import kullanici_bp
     app.register_blueprint(kullanici_bp, url_prefix='/kullanici')
     
-    
     # ============================================================================
     # OPERASYONEL MODÜLLER
     # ============================================================================
@@ -293,6 +285,10 @@ def register_blueprints(app):
     # Fatura modülü
     from app.modules.fatura.routes import fatura_bp
     app.register_blueprint(fatura_bp, url_prefix='/fatura')
+    
+    from app.modules.fatura.ocr_routes import fatura_ocr_bp
+    app.register_blueprint(fatura_ocr_bp)
+
     
     # Efatura modülü
     from app.modules.efatura.routes import efatura_bp
@@ -820,9 +816,21 @@ csrf.exempt(debug_sql)
 
 
 if __name__ == '__main__':
-    # Development server
+    """
+    Development modda doğrudan çalıştırma:
+    python app.py
+    """
+    print("=" * 60)
+    print("🚀 Development Server Başlatılıyor...")
+    print("=" * 60)
+    print(f"📍 URL: http://localhost:5000")
+    print(f"🔧 Debug Mode: {app.debug}")
+    print(f"🌍 Environment: {app.config.get('ENV', 'development')}")
+    print("=" * 60)
+    
     app.run(
-        host=app.config.get('HOST', '0.0.0.0'),
-        port=app.config.get('PORT', 5000),
-        debug=app.config.get('DEBUG', True)
+        host='0.0.0.0',
+        port=5000,
+        debug=True,
+        use_reloader=True
     )

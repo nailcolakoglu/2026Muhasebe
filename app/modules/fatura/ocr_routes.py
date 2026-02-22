@@ -15,6 +15,8 @@ from app.modules.ai_destek.ocr_service import ocr_service
 from app.decorators import tenant_route, permission_required
 from app.extensions import db
 
+from app.utils.file_validator import FileValidator
+
 logger = logging.getLogger(__name__)
 
 # Blueprint
@@ -62,6 +64,17 @@ def parse_fatura():
     Response:
         JSON: Parse edilmiş fatura verisi
     """
+    file = request.files.get('file')
+    
+    # ✅ Güvenli validasyon
+    validation = FileValidator.validate_file(
+        file,
+        allowed_extensions={'.jpg', '.jpeg', '.png', '.pdf', '.tiff', '.tif'},
+        max_size=10 * 1024 * 1024
+    )
+    
+    if not validation['valid']:
+        return jsonify({'success': False, 'error': validation['error']}), 400
     if not ocr_service.is_active:
         return jsonify({
             'success': False,

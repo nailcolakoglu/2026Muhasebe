@@ -1,18 +1,22 @@
-# modules/bolge/models.py
+# app/modules/bolge/models.py
 
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import (Numeric, func, ForeignKey, cast, case, Text, UniqueConstraint, event, Index,  
-                    select, Integer, Enum as PgEnum)
+from sqlalchemy import (Numeric, func, ForeignKey, cast, case, Text, 
+                       UniqueConstraint, event, Index, select, Integer, 
+                       Enum as PgEnum)
 from app.extensions import db
 from app.models.base import FirmaFilteredQuery, TimestampMixin, SoftDeleteMixin
-# UUID oluşturucu fonksiyon
-import uuid # 👈 EKLENDİ
+import uuid
+
 
 def generate_uuid():
+    """UUID string üretir"""
     return str(uuid.uuid4())
 
+
 class Bolge(db.Model, TimestampMixin, SoftDeleteMixin):
+    """Bölge modeli - MySQL"""
     __tablename__ = 'bolgeler'
     query_class = FirmaFilteredQuery 
 
@@ -21,26 +25,30 @@ class Bolge(db.Model, TimestampMixin, SoftDeleteMixin):
     
     kod = db.Column(db.String(20), nullable=False)
     ad = db.Column(db.String(100), nullable=False)
-    
-    # 🚨 DÜZELTME: Yönetici ID artık String(36) UUID formatındadır.
     yonetici_id = db.Column(db.String(36), db.ForeignKey('kullanicilar.id'), nullable=True)
-    
     aciklama = db.Column(db.String(255))
     aktif = db.Column(db.Boolean, default=True)
 
     # İLİŞKİLER
     firma = db.relationship('Firma', backref='bolgeler')
-    
-    # Yönetici İlişkisi
     yonetici = db.relationship('Kullanici', foreign_keys=[yonetici_id])
-    
-    # Şubeler
     subeler = db.relationship('Sube', backref='bolge', lazy='dynamic')
 
     def __repr__(self):
         return f"<Bolge {self.ad}>"
-
-
+    
+    def to_dict(self):
+        """JSON serialization"""
+        return {
+            'id': self.id,
+            'kod': self.kod,
+            'ad': self.ad,
+            'yonetici_id': self.yonetici_id,
+            'yonetici_ad': self.yonetici.ad_soyad if self.yonetici else None,
+            'aciklama': self.aciklama,
+            'aktif': self.aktif,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 # =============================================================================
 # 4.BAŞLANGIÇ VERİLERİ (INIT DATA)
