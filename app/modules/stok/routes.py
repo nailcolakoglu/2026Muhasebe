@@ -8,6 +8,7 @@ Enterprise Grade - Thin Controller Pattern - Redis Cached - i18n Ready
 import os
 import re
 from decimal import Decimal
+from sqlalchemy.orm import joinedload
 from flask import (
     Blueprint, render_template, request, jsonify, current_app,
     url_for, redirect, flash, session, abort, send_file
@@ -19,7 +20,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import func, extract, literal, text, or_
 from sqlalchemy.orm import joinedload
 
-from app.extensions import db, cache, get_tenant_db
+from app.extensions import db, cache, get_tenant_db, get_tenant_info
 from app.modules.stok.models import (
     StokKart, StokPaketIcerigi, StokDepoDurumu,
     StokMuhasebeGrubu, StokKDVGrubu, StokHareketi
@@ -58,6 +59,31 @@ stok_bp = Blueprint('stok', __name__)
 # Constants
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
+def get_aktif_firma_id():
+    """
+    Güvenli Firma ID Çözümleyici (UUID Destekli)
+    Artık int() çevrimi yapmıyoruz, doğrudan string/UUID dönüyoruz.
+    Aktif firma ID'sini döndürür
+    
+    Returns:
+        str: Firma ID (UUID)
+    """
+    # Öncelik 1: Session'dan
+    if 'firma_id' in session:
+        return session['firma_id']
+    
+    # Öncelik 2: Tenant info'dan
+    tenant_info = get_tenant_info()
+    if tenant_info and 'firma_id' in tenant_info:
+        return tenant_info['firma_id']
+    
+    # Öncelik 3: Tenant ID = Firma ID (senin mimarinde)
+    if 'tenant_id' in session:
+        return session['tenant_id']
+    
+    logger.warning("⚠️ Firma ID bulunamadı!")
+    return None
+
 
 # ========================================
 # YARDIMCI FONKSİYONLAR
@@ -77,47 +103,59 @@ def parse_uuid(id_str):
         return None
 
 
+def get_aktif_firma_id():
+    """
+    Güvenli Firma ID Çözümleyici (UUID Destekli)
+    Artık int() çevrimi yapmıyoruz, doğrudan string/UUID dönüyoruz.
+    Aktif firma ID'sini döndürür
+    
+    Returns:
+        str: Firma ID (UUID)
+    """
+    # Öncelik 1: Session'dan
+    if 'firma_id' in session:
+        return session['firma_id']
+    
+    # Öncelik 2: Tenant info'dan
+    tenant_info = get_tenant_info()
+    if tenant_info and 'firma_id' in tenant_info:
+        return tenant_info['firma_id']
+    
+    # Öncelik 3: Tenant ID = Firma ID (senin mimarinde)
+    if 'tenant_id' in session:
+        return session['tenant_id']
+    
+    logger.warning("⚠️ Firma ID bulunamadı!")
+    return None
+
+
 # ========================================
 # ANA LİSTELEME EKRANI - MySQL + Redis Optimized
 # ========================================
 @stok_bp.route('/')
 @tenant_route
-@login_required
 def index():
-    """
-    Stok Kartları Listesi - Redis Cached
-    
-    Permissions: stok.view
-    """
+    """Stok listesi (Optimized)"""
     tenant_db = get_tenant_db()
-    
     if not tenant_db:
-        flash(_('Veritabanı bağlantısı yok'), 'danger')
-        return redirect(url_for('main.index'))
+        flash("Veritabanı bağlantısı yok.", "danger")
+        return redirect('/')
+
+    grid = DataGrid("stok_list", StokKart, "Stok Kartları")
     
-    # DataGrid Konfigürasyonu
-    grid = DataGrid("stok_list", StokKart, _("Stok Kartları"))
+    # Kolonlar
+    grid.add_column('kod', 'Stok Kodu', width='120px')
+    grid.add_column('ad', 'Stok Adı')
+    grid.add_column('kategori.ad', 'Kategori')  # ← N+1!
+    grid.add_column('birim', 'Birim', width='80px')
+    grid.add_column('satis_fiyati', 'Satış Fiyatı', type='currency')
     
-    grid.add_column('kod', _('Stok Kodu'), sortable=True, width='150px')
-    grid.add_column('ad', _('Stok Adı'), sortable=True, width='300px')
-    grid.add_column('kategori.ad', _('Kategori'), sortable=True, width='200px')
-    grid.add_column('satis_fiyati', _('Satış Fiyatı'), sortable=True, width='120px', type=FieldType.CURRENCY)
-    grid.add_column('alis_fiyati', _('Alış Fiyatı'), sortable=True, width='120px', type=FieldType.CURRENCY)
-    grid.add_column('doviz_turu', _('Döviz'), width='80px')
-    
-    # Aksiyonlar
-    grid.add_action('detay', _('Hareketler'), 'bi bi-clock-history', 'btn-info btn-sm', 'route', 'stok.detay')
-    grid.add_action('edit', _('Düzenle'), 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'stok.duzenle')
-    grid.add_action('delete', _('Sil'), 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'stok.sil')
-    
-    # ✅ MySQL Optimized Query (Index: idx_stok_firma_kod)
+    # ✅ EAGER LOADING
+    firma_id = get_aktif_firma_id()
     query = tenant_db.query(StokKart).options(
-        joinedload(StokKart.kategori)
-    ).filter(
-        StokKart.firma_id == current_user.firma_id,
-        StokKart.deleted_at.is_(None)
-    ).order_by(StokKart.kod)
-    
+        joinedload(StokKart.kategori)  # ✅ Kategori ilişkisi
+    ).filter_by(firma_id=firma_id, aktif=True)
+
     # Gizlenecek kolonlar
     hidden_cols = [
         'id', 'firma_id', 'barkod', 'uretici_kodu', 'kategori_id',
@@ -133,17 +171,19 @@ def index():
     
     for col in hidden_cols:
         grid.hide_column(col)
+
     
     grid.process_query(query)
     
     return render_template('stok/index.html', grid=grid)
-
+    
 
 # ========================================
 # YENİ KAYIT (CREATE) - Redis Cache Invalidation
 # ========================================
 @stok_bp.route('/ekle', methods=['GET', 'POST'])
-@protected_route('stok.create')
+@protected_route
+@permission_required('stok.create')  # Yetki ayrı decorator
 @audit_log('stok', 'create')
 @login_required
 def ekle():
@@ -223,7 +263,7 @@ def ekle():
 # DÜZENLEME (UPDATE) - Redis Cache Invalidation
 # ========================================
 @stok_bp.route('/duzenle/<uuid:id>', methods=['GET', 'POST'])
-@protected_route('stok.update')
+@protected_route
 @audit_log('stok', 'update')
 @login_required
 def duzenle(id):
@@ -322,7 +362,7 @@ def duzenle(id):
 # SİLME (DELETE) - Redis Cache Invalidation
 # ========================================
 @stok_bp.route('/sil/<uuid:id>', methods=['POST'])
-@protected_route('stok.delete')
+@protected_route
 @audit_log('stok', 'delete')
 @login_required
 def sil(id):
@@ -372,7 +412,7 @@ def sil(id):
 # DETAY EKRANI - Redis Cached
 # ========================================
 @stok_bp.route('/detay/<uuid:id>')
-@protected_route('stok.view')
+@protected_route
 @login_required
 def detay(id):
     """
@@ -660,7 +700,7 @@ def belge_git(hareket_id):
 # YAPAY ZEKA ANALİZ EKRANI
 # ========================================
 @stok_bp.route('/yapay-zeka-analiz')
-@protected_route('stok.ai_analiz')
+@protected_route
 @login_required
 def yapay_zeka_analiz():
     """AI Analiz Dashboard"""
@@ -671,7 +711,7 @@ def yapay_zeka_analiz():
 # API: ÖLÜ STOK ANALİZİ - Redis Cached
 # ========================================
 @stok_bp.route('/api/olu-stok-hesapla', methods=['POST'])
-@protected_route('stok.ai_analiz')
+@protected_route
 @login_required
 def api_olu_stok_hesapla():
     """
@@ -756,7 +796,7 @@ def api_olu_stok_hesapla():
 # PAKET ÜRÜN İÇERİK EKRANI
 # ========================================
 @stok_bp.route('/paket-icerik/<uuid:id>', methods=['GET', 'POST'])
-@protected_route('stok.update')
+@protected_route
 @login_required
 def paket_icerik(id):
     """
@@ -847,7 +887,7 @@ def paket_icerik(id):
 # MUHASEBE GRUBU YÖNETİMİ
 # ========================================
 @stok_bp.route('/tanimlar/muhasebe-gruplari')
-@protected_route('stok.tanimlar')
+@protected_route
 @login_required
 def muhasebe_gruplari():
     """Muhasebe Grupları Listesi"""
@@ -883,7 +923,7 @@ def muhasebe_gruplari():
 # KDV GRUBU YÖNETİMİ
 # ========================================
 @stok_bp.route('/tanimlar/kdv-gruplari')
-@protected_route('stok.tanimlar')
+@protected_route
 @login_required
 def kdv_gruplari():
     """KDV Grupları Listesi"""
@@ -919,7 +959,7 @@ def kdv_gruplari():
 # STOK BAKİYE DÜZELTME (Acil Durum Butonu)
 # ========================================
 @stok_bp.route('/yonetim/bakiyeleri-duzelt')
-@protected_route('admin')
+@protected_route
 @login_required
 def bakiyeleri_duzelt():
     """

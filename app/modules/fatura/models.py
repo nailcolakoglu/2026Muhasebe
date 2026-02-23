@@ -423,6 +423,8 @@ class Fatura(db.Model, TimestampMixin, SoftDeleteMixin):
     
     cari = relationship('CariHesap', back_populates='faturalar', lazy='joined')
     depo = relationship('Depo', lazy='select')
+    # ✅ ŞUBE İLİŞKİSİ (Opsiyonel)
+    sube = relationship('Sube', foreign_keys=[sube_id], backref='faturalar')
     
     plasiyer = relationship(
         'Kullanici',
@@ -653,12 +655,26 @@ class Fatura(db.Model, TimestampMixin, SoftDeleteMixin):
             
         except Exception as e:
             logger.error(f"AI analiz hatası ({self.belge_no}): {e}")
-    
+ 
+    def to_dict(self):
+        """JSON serialization"""
+        return {
+            'id': self.id,
+            'belge_no': self.belge_no,
+            'tarih': self.tarih.isoformat() if self.tarih else None,
+            'cari_unvan': self.cari.unvan if self.cari else None,
+            'sube_ad': self.sube.ad if self.sube else None,
+            'genel_toplam': float(self.genel_toplam),
+            'doviz_turu': self.doviz_turu,
+            'durum': self.durum
+        }
+
     def __repr__(self):
         return f"<Fatura {self.belge_no} - {self.genel_toplam} {self.doviz_turu}>"
 
 
-# app/modules/fatura/models.py (DEVAM)
+
+
 
 # ========================================
 # FATURA KALEMİ MODELİ (Line Items - AI Enhanced)

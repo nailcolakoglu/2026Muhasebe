@@ -184,15 +184,19 @@ def donem_ekle():
                 
     return render_template('firmalar/form.html', form=form)
 
-@firmalar_bp.route('/donem/duzenle/<int:id>', methods=['GET', 'POST'])
+
+@firmalar_bp.route('/donem/duzenle/<string:id>', methods=['GET', 'POST'])  # ✅ string:id
 @login_required
 def donem_duzenle(id):
+    """Dönem düzenle (UUID destekli)"""
     tenant_db = get_tenant_db()
     if not tenant_db:
         flash("Veritabanı bağlantısı koptu", "danger")
         return redirect('/firmalar/donemler')
 
-    donem = tenant_db.query(Donem).get(id)
+    # UUID ile çek
+    donem = tenant_db.query(Donem).filter_by(id=id).first()  # ✅ .get() yerine .filter_by()
+    
     if not donem:
         flash("Dönem bulunamadı", "warning")
         return redirect('/firmalar/donemler')
@@ -207,7 +211,6 @@ def donem_duzenle(id):
                 is_aktif = str(data.get('aktif')).lower() in ['true', '1', 'on']
                 
                 if is_aktif and not donem.aktif:
-                    # Firma ID'yi mevcut dönem nesnesinden alıyoruz
                     tenant_db.query(Donem).filter_by(firma_id=donem.firma_id).update({'aktif': False})
                 
                 donem.ad = data['ad']
@@ -226,8 +229,10 @@ def donem_duzenle(id):
                 return jsonify({'success': True, 'message': 'Dönem güncellendi.', 'redirect': '/firmalar/donemler'})
             except Exception as e:
                 tenant_db.rollback()
+                logger.error(f"❌ Dönem güncelleme hatası: {e}", exc_info=True)
                 return jsonify({'success': False, 'message': str(e)}), 500
-                
+    
+    return render_template('firmalar/form.html', form=form)               
 
 @firmalar_bp.route('/sec/<uuid:firma_id>')
 @login_required

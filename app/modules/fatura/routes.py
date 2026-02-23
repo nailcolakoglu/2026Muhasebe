@@ -21,10 +21,12 @@ from flask_babel import gettext as _
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy import func, and_, or_, text
 
-from app.extensions import db, get_tenant_db, cache
+from app.extensions import db, get_tenant_db, cache, get_tenant_info
 from app.modules.fatura.models import Fatura, FaturaKalemi
 from app.modules.stok.models import StokKart
 from app.modules.cari.models import CariHesap
+from app.modules.sube.models import Sube
+from app.modules.depo.models import Depo
 from app.form_builder import DataGrid
 from .forms import create_fatura_form
 from .services import FaturaService, FiyatHesaplamaService, FaturaDTO
@@ -44,6 +46,32 @@ logger = logging.getLogger(__name__)
 
 # Blueprint
 fatura_bp = Blueprint('fatura', __name__)
+
+
+def get_aktif_firma_id():
+    """
+    Güvenli Firma ID Çözümleyici (UUID Destekli)
+    Artık int() çevrimi yapmıyoruz, doğrudan string/UUID dönüyoruz.
+    Aktif firma ID'sini döndürür
+    
+    Returns:
+        str: Firma ID (UUID)
+    """
+    # Öncelik 1: Session'dan
+    if 'firma_id' in session:
+        return session['firma_id']
+    
+    # Öncelik 2: Tenant info'dan
+    tenant_info = get_tenant_info()
+    if tenant_info and 'firma_id' in tenant_info:
+        return tenant_info['firma_id']
+    
+    # Öncelik 3: Tenant ID = Firma ID (senin mimarinde)
+    if 'tenant_id' in session:
+        return session['tenant_id']
+    
+    logger.warning("⚠️ Firma ID bulunamadı!")
+    return None
 
 
 # ========================================
@@ -75,13 +103,15 @@ def index():
     
     Permissions: fatura_listele
     """
-    """Fatura Listesi Ekranı - i18n Ready"""
+    """Fatura Listesi Ekranı - i18n Ready - (Optimized)"""
     
     tenant_db = get_tenant_db()
     
     if not tenant_db:
-        flash('Veritabanı bağlantısı yok. Lütfen firma seçin.', 'danger')
+        flash('Veritabanı bağlantısı yok.', 'danger')
         return redirect(url_for('main.index'))
+        #return redirect('/')
+
     
     grid = DataGrid("fatura_list", Fatura, _("Faturalar"))
     
@@ -89,6 +119,7 @@ def index():
     grid.add_column('tarih', _('Tarih'), type='date', width='100px')
     grid.add_column('belge_no', _('Belge No'), width='120px')
     grid.add_column('cari.unvan', _('Cari Hesap'), sortable=True)
+    grid.add_column('sube.ad', _('Şube'), sortable=True)
     grid.add_column('fatura_turu', _('Tür'), type='badge', width='100px', badge_colors={
         'SATIS': 'success',
         'ALIS': 'primary',
@@ -109,16 +140,68 @@ def index():
     grid.add_action('delete', _('Sil'), 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'fatura.sil')
     
     # ✅ MySQL Optimized Query (Index: idx_fatura_firma_tarih)
-    query = tenant_db.query(Fatura).options(
-        # Joined load (tek sorgu)
-        joinedload(Fatura.cari),
-        joinedload(Fatura.depo)
-    ).filter(
-        Fatura.firma_id == current_user.firma_id,
-        Fatura.deleted_at.is_(None)  # Soft delete
-    ).order_by(Fatura.tarih.desc())
+    # query = tenant_db.query(Fatura).options(
+    #    # Joined load (tek sorgu)
+    #    joinedload(Fatura.cari),
+    #    joinedload(Fatura.depo)
+    #).filter(
+    #    Fatura.firma_id == current_user.firma_id,
+    #    Fatura.deleted_at.is_(None)  # Soft delete
+    #).order_by(Fatura.tarih.desc())
     
-    # Filtreleme (query string'den)
+    # ✅ EAGER LOADING (Çoklu İlişki)
+    firma_id = get_aktif_firma_id()
+    
+    # Önce hangi ilişkilerin var olduğunu kontrol et
+    eager_loads = [joinedload(Fatura.cari)]  # Cari her zaman var
+    
+    # Şube ilişkisi varsa ekle
+    if hasattr(Fatura, 'sube'):
+        eager_loads.append(joinedload(Fatura.sube))
+    
+    # Depo ilişkisi varsa ekle
+    if hasattr(Fatura, 'depo'):
+        eager_loads.append(joinedload(Fatura.depo))
+    
+    try:
+        query = tenant_db.query(Fatura).options(
+            *eager_loads  # ✅ Dinamik olarak ilişkileri ekle
+        ).filter_by(
+        firma_id=firma_id, 
+        iptal_mi=False
+        ).order_by(Fatura.tarih.desc())
+    
+        logger.debug(
+            f"✅ Fatura query oluşturuldu: firma_id={firma_id}, "
+            f"eager_loads=['cari', 'sube', 'depo']"
+        )
+    except InvalidRequestError as e:
+        # İlişki hatası varsa fallback
+        logger.error(f"❌ Eager loading hatası: {e}")
+        
+        # Basit query (ilişkiler yüklenmez, N+1 oluşur ama çalışır)
+        query = tenant_db.query(Fatura).filter_by(
+            firma_id=firma_id,
+            iptal_mi=False
+        ).order_by(Fatura.tarih.desc())
+        
+        flash('⚠️ Bazı ilişkiler yüklenemedi, performans düşük olabilir', 'warning')
+    
+    except Exception as e:
+        logger.exception(f"❌ Fatura query hatası: {e}")
+        flash('Faturalar yüklenirken hata oluştu', 'danger')
+        return redirect(url_for('main.index'))
+
+        
+        
+    # query = tenant_db.query(Fatura).options(
+    #    joinedload(Fatura.cari),   # ✅ Cari ilişkisi
+    #    joinedload(Fatura.sube),    # ✅ Şube ilişkisi
+    #    joinedload(Fatura.depo)    # ✅ Depo ilişkisi
+    # ).filter_by(firma_id=firma_id, iptal_mi=False).order_by(Fatura.tarih.desc())
+
+    
+    # Filtreleme (query string'den)  alttakiler son sql de yoktu eksiden kaldı.
     durum_filtre = request.args.get('durum')
     if durum_filtre:
         query = query.filter(Fatura.durum == durum_filtre)
@@ -187,7 +270,7 @@ def ekle():
             }), 500
     
     # GET: Form Render
-    form = create_fatura_form()
+    form = create_fatura_form(tenant_db=tenant_db)
     return render_template('fatura/form.html', form=form)
 
 

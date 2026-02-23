@@ -26,11 +26,18 @@ class Config:
     WTF_CSRF_SSL_STRICT = False  # Development için
     
     # Session ayarları
+    SESSION_COOKIE_NAME = 'session'
+
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
     SESSION_COOKIE_SECURE = False  # Production'da True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_REFRESH_EACH_REQUEST = True
+    
+    # ✅ Remember me ayarları
+    REMEMBER_COOKIE_DURATION = timedelta(days=7)
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SECURE = False  # Development'ta False
     
     # ========================================
     # 🗄️ DATABASE (MySQL Multi-Tenant)

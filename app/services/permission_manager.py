@@ -36,12 +36,22 @@ class PermissionManager:
             'rapor.genel'
         ],
 
+        'muhasebeci': [
+            'dashboard.view',
+            'muhasebe.*',
+            'fatura.*',
+            'cari.*',
+            'kasa.*', 'banka.*', 'cek.*',
+            'bolge_gor', 'sube_gor', 'stok_gor'
+        ],
+        
         # ==========================================
         # 🏢 YÖNETİM KADEMESİ (SAHA YÖNETİMİ)
         # ==========================================
         'bolge_muduru': [
             'dashboard.view',      # Bölge özetini görür
             'dashboard.bolge',     # Kendi bölgesindeki tüm şubeler
+            'bolge_gor', 'bolge_guncelle',  # ← BURASI EKSİKTİ!
             'rapor.*',             # Tüm satış/stok raporlarına erişir
             'fatura.view',         # Faturaları inceler
             'fatura.onay',         # İskonto onayı verebilir
@@ -85,7 +95,14 @@ class PermissionManager:
             'etiket.print'        # Raf etiketi basar
             # NOT: Fiyatları göremez (Genelde gizlenir)
         ],
-
+        'depo_sorumlusu': [
+            'dashboard.depo',
+            'stok.*',
+            'depo.*',
+            'irsaliye.*',
+            'stok_fisi.*',
+            'sube_gor'
+        ],
         'lojistik': [
             'irsaliye.view',      # Ne taşıdığını görür
             'sevkiyat.*',         # Sevkiyat planlama/teslimat
@@ -105,30 +122,94 @@ class PermissionManager:
             'stok.view',          # Fiyat sorma cihazı gibi
             'stok.raf',           # Hangi ürün hangi rafta
             'etiket.request'      # Etiket basılması için talep açar
-        ]
+        ],
+        
+        'manager': [
+            'dashboard.*',
+            'bolge_*', 'sube_*', 'depo_*',
+            'stok_*', 'cari_*', 'fatura_*',
+            'siparis_*', 'irsaliye_*',
+            'kasa.*', 'banka.*',
+            'rapor.*'
+        ],
+        'satis_temsilcisi': [
+            'dashboard.view',
+            'cari.create', 'cari.view', 'cari.edit',
+            'siparis.*',
+            'stok.view',
+            'fiyat.view',
+            'bolge_gor', 'sube_gor'
+        ],
+        'user': [
+            'dashboard.view',
+            'bolge_gor', 'sube_gor', 'depo_gor',
+            'stok_gor', 'cari_gor',
+            'fatura_gor', 'siparis_gor',
+            'irsaliye_gor',
+            'kasa_gor', 'banka_gor'
+        ],
+        
+        'viewer': [
+            'dashboard.view',
+            '*.view',  # Tüm görüntüleme yetkileri
+            'bolge_gor', 'sube_gor', 'stok_gor',
+            'cari_gor', 'fatura_gor',
+            'rapor_gor'
+        ]       
     }
 
     @staticmethod
     def check(user_role, permission_needed):
         """
         Rol ve Yetki Kontrolü
+        
+        Args:
+            user_role (str): Kullanıcı rolü (örn: 'admin', 'bolge_muduru')
+            permission_needed (str): İstenen yetki (örn: 'bolge_guncelle', 'fatura.delete')
+        
+        Returns:
+            bool: Yetki var mı?
+        
+        Wildcard Kuralları:
+            - '*' → Tüm yetkiler
+            - 'bolge_*' → bolge_olustur, bolge_guncelle, bolge_sil, bolge_gor
+            - 'fatura.*' → fatura.create, fatura.view, fatura.delete
+            - '*.view' → bolge_gor, stok_gor gibi tüm görüntüleme yetkileri
         """
-        if not user_role: return False
-            
+        if not user_role:
+            return False
+        
         allowed = PermissionManager.ROLE_DEFINITIONS.get(user_role, [])
         
-        # 1. Tam Yetki (*)
-        if '*' in allowed: return True
-            
-        # 2. Tam Eşleşme
-        if permission_needed in allowed: return True
-            
-        # 3. Grup Yetkisi (Wildcard) - Örn: 'fatura.*'
+        # 1. ✅ Tam yetki (*)
+        if '*' in allowed:
+            return True
+        
+        # 2. ✅ Tam eşleşme
+        if permission_needed in allowed:
+            return True
+        
+        # 3. ✅ Prefix wildcard (bolge_*, stok_*)
+        #    Sadece underscore ile ayrılmış wildcard'lar (nokta YOK)
+        for perm in allowed:
+            if '*' in perm and '.' not in perm:  # ← ÖNEMLİ: Nokta kontrolü
+                prefix = perm.replace('*', '')
+                if permission_needed.startswith(prefix):
+                    return True
+        
+        # 4. ✅ Grup yetkisi (fatura.*, cari.*)
+        #    Nokta ile ayrılmış wildcard'lar
         parts = permission_needed.split('.')
         if len(parts) > 1:
-            if f"{parts[0]}.*" in allowed: return True
-            
-        # 4. Suffix Yetkisi - Örn: '*.view'
-        if permission_needed.endswith('.view') and '*.view' in allowed: return True
-
+            if f"{parts[0]}.*" in allowed:
+                return True
+        
+        # 5. ✅ Suffix wildcard (*.view, *.gor)
+        #    Tüm görüntüleme yetkileri
+        if permission_needed.endswith('.view') and '*.view' in allowed:
+            return True
+        
+        if permission_needed.endswith('_gor') and '*_gor' in allowed:
+            return True
+        
         return False

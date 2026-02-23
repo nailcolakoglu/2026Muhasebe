@@ -1,5 +1,6 @@
 # app/modules/main/routes.py
 
+from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 from flask import Blueprint, render_template, request, jsonify, session, g, flash, redirect, url_for
 from flask_login import login_required, current_user
@@ -15,6 +16,9 @@ from app.modules.sube.models import Sube
 from app.modules.firmalar.models import Donem
 from app.form_builder.ai_generator import generate_form_from_text
 from app.form_builder.form import Form
+import logging
+
+logger = logging.getLogger(__name__)
 
 main_bp = Blueprint('main', __name__)
 
@@ -30,6 +34,8 @@ def get_karsilama_mesaji():
 @login_required
 def change_context():
     """
+    ✅ UUID DESTEKLİ Context Değiştirme
+    
     Navbar üzerinden Şube veya Dönem değiştirme işlemi.
     Güvenlik kontrolleri eklendi.
     """
@@ -39,37 +45,55 @@ def change_context():
     tenant_db = get_tenant_db()
     if not tenant_db:
         flash("Veritabanı bağlantısı yok.", "danger")
-        return redirect(request.referrer)
+        return redirect(request.referrer or url_for('main.index'))
 
-    # 1. ŞUBE DEĞİŞİMİ
+    # ============================================
+    # 1. ŞUBE DEĞİŞİMİ (UUID)
+    # ============================================
     if sube_id is not None:
-        if sube_id == "": # "Tüm Şubeler" seçildi
+        if sube_id == "":  # "Tüm Şubeler" seçildi
             # Sadece Admin/Patron/Genel Müdür tüm şubeleri görebilir
             if current_user.can('dashboard.konsolide') or current_user.rol in ['admin', 'patron']:
                 session.pop('aktif_sube_id', None)
+                session.modified = True
                 flash("Tüm şubeler (Konsolide) moduna geçildi.", "info")
             else:
                 flash("Tüm şubeleri görme yetkiniz yok.", "warning")
         else:
-            # Seçilen şube var mı ve aktif mi?
-            sube = tenant_db.query(Sube).filter_by(id=int(sube_id), aktif=True).first()
+            # ✅ UUID string olarak kullan (int() KALDIRILDI!)
+            sube = tenant_db.query(Sube).filter_by(id=sube_id, aktif=True).first()
+            
             if sube:
-                # İLERİ SEVİYE TODO: Kullanıcının bu şubeye yetkisi var mı kontrolü buraya eklenebilir.
+                # İLERİ SEVİYE TODO: Kullanıcının bu şubeye yetkisi var mı kontrolü eklenebilir
                 session['aktif_sube_id'] = sube.id
+                session.modified = True
                 flash(f"Aktif şube değiştirildi: {sube.ad}", "success")
             else:
                 flash("Seçilen şube bulunamadı veya pasif.", "warning")
 
-    # 2. DÖNEM DEĞİŞİMİ
+    # ============================================
+    # 2. DÖNEM DEĞİŞİMİ (UUID)
+    # ============================================
     if donem_id:
-        donem = tenant_db.query(Donem).filter_by(id=int(donem_id), aktif=True).first()
+        # ✅ UUID string olarak kullan (int() KALDIRILDI!)
+        donem = tenant_db.query(Donem).filter_by(id=donem_id).first()  # ✅ aktif=True kaldırıldı
+        
         if donem:
+            # Dönem kapalı mı kontrol et (opsiyonel)
+            if not donem.aktif:
+                flash(f"⚠️ Dikkat: Seçilen dönem pasif durumda ({donem.ad})", "warning")
+            
             session['aktif_donem_id'] = donem.id
+            session.modified = True
+            
+            logger.info(f"✅ Dönem değiştirildi: {donem.ad} (ID: {donem.id})")
             flash(f"Çalışma dönemi değiştirildi: {donem.ad}", "success")
         else:
+            logger.warning(f"⚠️ Dönem bulunamadı: {donem_id}")
             flash("Seçilen dönem bulunamadı.", "warning")
 
     return redirect(request.referrer or url_for('main.index'))
+
 
 @main_bp.route('/')
 @login_required
@@ -197,10 +221,21 @@ def index():
 
         # --- F. SON FATURALAR ---
         try:
-            q_fatura = tenant_db.query(Fatura).filter(Fatura.iptal_mi == False)
+            # --- SON FATURALAR (Eager Loading) ---
+            q_fatura = tenant_db.query(Fatura).options(
+                joinedload(Fatura.cari),   # ✅ Cari adı için
+                joinedload(Fatura.sube)    # ✅ Şube adı için
+            ).filter(Fatura.iptal_mi == False)
+            
             q_fatura = filter_by_sube(q_fatura, Fatura)
-            dashboard_data['son_faturalar'] = q_fatura.order_by(Fatura.tarih.desc(), Fatura.id.desc()).limit(5).all()
-        except: pass
+            dashboard_data['son_faturalar'] = q_fatura.order_by(
+                Fatura.tarih.desc(), 
+                Fatura.id.desc()
+            ).limit(5).all()
+    
+        except Exception as e:
+            logger.error(f"❌ Dashboard fatura hatası: {e}", exc_info=True)
+    
 
     except Exception as e:
         print(f"⚠️ Dashboard Genel Hata: {e}")

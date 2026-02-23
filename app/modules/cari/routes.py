@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from sqlalchemy.orm import joinedload
 from datetime import datetime  # ✅ EKLENDI
 from decimal import Decimal  # ✅ EKLENDI
 from flask import Blueprint, render_template, request, jsonify, flash, url_for, g, redirect, session
@@ -15,7 +16,7 @@ from app.modules.lokasyon.models import Sehir, Ilce  # ✅ EKLENDI
 from app.enums import FaturaTuru
 from app.form_builder import DataGrid
 from .forms import create_cari_form
-from app.extensions import db, get_tenant_db, cache
+from app.extensions import db, get_tenant_db, cache, get_tenant_info
 from app.decorators import audit_log, protected_route, permission_required, tenant_route
 from flask_babel import gettext as _, lazy_gettext
 
@@ -25,6 +26,31 @@ CACHE_TIMEOUT_MEDIUM = 1800
 
 cari_bp = Blueprint('cari', __name__)
 logger = logging.getLogger(__name__)
+
+def get_aktif_firma_id():
+    """
+    Güvenli Firma ID Çözümleyici (UUID Destekli)
+    Artık int() çevrimi yapmıyoruz, doğrudan string/UUID dönüyoruz.
+    Aktif firma ID'sini döndürür
+    
+    Returns:
+        str: Firma ID (UUID)
+    """
+    # Öncelik 1: Session'dan
+    if 'firma_id' in session:
+        return session['firma_id']
+    
+    # Öncelik 2: Tenant info'dan
+    tenant_info = get_tenant_info()
+    if tenant_info and 'firma_id' in tenant_info:
+        return tenant_info['firma_id']
+    
+    # Öncelik 3: Tenant ID = Firma ID (senin mimarinde)
+    if 'tenant_id' in session:
+        return session['tenant_id']
+    
+    logger.warning("⚠️ Firma ID bulunamadı!")
+    return None
 
 
 # ========================================
@@ -186,32 +212,40 @@ def islem_kaydet(form, cari=None):
 
 @cari_bp.route('/')
 @tenant_route
-@login_required
 def index():
-    """Cari Hesaplar Listesi"""
+    """Cari hesap listesi (Optimized)"""
     tenant_db = get_tenant_db()
-    
     if not tenant_db:
-        flash(_('Veritabanı bağlantısı yok'), 'danger')
+        flash("Veritabanı bağlantısı yok.", "danger")
         return redirect(url_for('main.index'))
+
+    grid = DataGrid("cari_list", CariHesap, "Cari Hesaplar")
     
-    grid = DataGrid("cari_list", CariHesap, _("Cari Hesaplar"))
-    
-    grid.add_column('kod', _('Kod'), width='80px')
-    grid.add_column('unvan', _('Ünvan'))
+    # Kolonlar
+    grid.add_column('kod', 'Cari Kodu', width='120px')
+    grid.add_column('unvan', 'Ünvan')
+    grid.add_column('sehir.ad', 'Şehir')  # ← N+1!
     grid.add_column('telefon', _('Telefon'))
-    grid.add_column('borc_bakiye', _('Borç'), type='currency')
-    grid.add_column('alacak_bakiye', _('Alacak'), type='currency')
+    grid.add_column('borc_bakiye', 'Borç', type='currency')
+    grid.add_column('alacak_bakiye', 'Alacak', type='currency')
     
     grid.add_action('detay', _('Ekstre'), 'bi bi-file-text', 'btn-info btn-sm', 'route', 'cari.ekstre')
     grid.add_action('edit', _('Düzenle'), 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'cari.duzenle')
     grid.add_action('delete', _('Sil'), 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'cari.sil')
     
+    
+    # ✅ EAGER LOADING
+    firma_id = get_aktif_firma_id()
+    query = tenant_db.query(CariHesap).options(
+        joinedload(CariHesap.sehir)  # ✅ Şehir ilişkisi
+    ).filter_by(firma_id=firma_id, aktif=True).order_by(CariHesap.kod)
+    
     # ✅ MySQL Optimized Query + Soft Delete
-    query = tenant_db.query(CariHesap).filter(
-        CariHesap.firma_id == current_user.firma_id,
-        CariHesap.deleted_at.is_(None)  # ✅ Soft delete kontrolü
-    ).order_by(CariHesap.kod)
+    # query = tenant_db.query(CariHesap).filter(
+    #    CariHesap.firma_id == current_user.firma_id,
+    #    CariHesap.deleted_at.is_(None)  # ✅ Soft delete kontrolü
+    # ).order_by(CariHesap.kod)
+    
     
     grid.process_query(query)
     
@@ -565,7 +599,7 @@ def api_ara():
 # 🔥 RİSK ANALİZİ (AI Destekli - Soft Delete)
 # ========================================
 @cari_bp.route('/risk-analizi')
-@protected_route('cari.view')
+@protected_route
 @login_required
 def risk_analizi():
     """AI destekli risk analiz ekranı"""
@@ -573,7 +607,7 @@ def risk_analizi():
 
 
 @cari_bp.route('/api/risk-hesapla', methods=['POST'])
-@protected_route('cari.view')
+@protected_route
 @login_required
 def api_risk_hesapla():
     """MySQL Optimized Risk Hesaplama + Soft Delete"""

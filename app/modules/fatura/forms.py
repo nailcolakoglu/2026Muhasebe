@@ -14,12 +14,30 @@ from app.enums import ParaBirimi, StokBirimleri, FaturaTuru
 from app.araclar import para_cevir
 from datetime import datetime
 from markupsafe import Markup
-from app.extensions import cache
+from app.extensions import get_tenant_db, cache
+import logging
+
+# Logger
+logger = logging.getLogger(__name__)
 
 # Cache timeout
 CACHE_TIMEOUT = 300
 
-def create_fatura_form(fatura=None):
+def create_fatura_form(fatura=None, tenant_db=None):
+    """
+    Fatura formu oluştur
+    
+    Args:
+        fatura: Mevcut fatura (düzenleme için)
+        tenant_db: Tenant database session (ÖNEMLİ!)
+    """
+    # ✅ Tenant DB session al
+    if tenant_db is None:
+        tenant_db = get_tenant_db()
+    
+    if not tenant_db:
+        raise ValueError("Tenant DB bağlantısı yok!")
+        
     is_edit = fatura is not None
     
     # Action URL
@@ -44,16 +62,42 @@ def create_fatura_form(fatura=None):
     # ==========================================
 
     theme = {'colorfocus': '#e3f2fd', 'textfocus': '#1565c0', 'borderfocus': '#2196f3'}    
-
-    # 1.Depolar (Yetki Kontrollü)
-    depo_query = Depo.query.filter_by(firma_id=current_user.firma_id)
-    if current_user.rol not in ['admin', 'patron', 'muhasebe_muduru']:
-        aktif_bolge = session.get('aktif_bolge_id')
-        aktif_sube = session.get('aktif_sube_id')
-        if aktif_bolge:  depo_query = depo_query.join(Sube).filter(Sube.bolge_id == aktif_bolge)
-        elif aktif_sube: depo_query = depo_query.filter_by(sube_id=aktif_sube)
     
-    depo_opts = [(d.id, f"{d.ad}") for d in depo_query.all()]
+    try:
+        # 1.Depolar (Yetki Kontrollü)
+        depo_query = Depo.query.filter_by(firma_id=current_user.firma_id)
+        if current_user.rol not in ['admin', 'patron', 'muhasebe_muduru']:
+            aktif_bolge = session.get('aktif_bolge_id')
+            aktif_sube = session.get('aktif_sube_id')
+            if aktif_bolge:  depo_query = depo_query.join(Sube).filter(Sube.bolge_id == aktif_bolge)
+            elif aktif_sube: depo_query = depo_query.filter_by(sube_id=aktif_sube)
+        
+        depo_opts = [(d.id, f"{d.ad}") for d in depo_query.all()]
+    except Exception as e:
+        logger.error(f"❌ Depo listesi hatası: {e}")
+        # form.add_field('cari_id', 'text', 'Cari ID', required=True)
+
+    # ✅ DEPOLAR (TENANT DB İLE!)
+    try:
+        depolar = tenant_db.query(Depo).filter_by(
+            firma_id=firma_id,
+            aktif=True
+        ).order_by(Depo.ad).all()
+        
+        depo_choices = [(str(d.id), d.ad) for d in depolar]
+        
+        form.add_field(
+            'depo_id', 'select', 'Depo',
+            required=True,
+            choices=depo_choices,
+            value=str(fatura.depo_id) if fatura else None
+        )
+    except Exception as e:
+        logger.error(f"❌ Depo listesi hatası: {e}")
+        form.add_field('depo_id', FieldType.TEXT, _('Depo ID'), required=True)
+
+
+
     
     # 2.Cari
     cariler = CariHesap.query.filter_by(firma_id=current_user.firma_id, aktif=True).all()

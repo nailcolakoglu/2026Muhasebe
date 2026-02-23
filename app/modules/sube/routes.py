@@ -1,5 +1,6 @@
 # app/modules/sube/routes.py
 
+from sqlalchemy.orm import joinedload
 from flask import Blueprint, render_template, request, jsonify, redirect, flash, session
 from flask_login import login_required, current_user
 from app.form_builder import FieldType
@@ -41,34 +42,35 @@ def get_aktif_firma_id():
     return None
 
 
-
 @sube_bp.route('/')
-@login_required
 @tenant_route
 def index():
-    """Şube listesi"""
+    """Şube listesi (Optimized)"""
     tenant_db = get_tenant_db()
     if not tenant_db:
         flash("Veritabanı bağlantısı yok.", "danger")
         return redirect('/')
 
-    # Grid Yapısı
     grid = DataGrid("sube_list", Sube, "Şube Listesi")
     
+    # Kolonlar
     grid.add_column('kod', 'Şube Kodu', width='100px')
     grid.add_column('ad', 'Şube Adı')
-    grid.add_column('bolge.ad', 'Bağlı Olduğu Bölge') 
-    grid.add_column('sehir.ad', 'Şehir')
-    grid.add_column('aktif', 'Durum', type=FieldType.SWITCH)
+    grid.add_column('bolge.ad', 'Bölge')  # ← N+1!
+    grid.add_column('sehir.ad', 'Şehir')  # ← N+1!
+    grid.add_column('telefon', 'Telefon')
     
+    # Actions
     grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'sube.duzenle')
     grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'sube.sil')
     
-    # Firma ID al
+    # ✅ EAGER LOADING (Çoklu İlişki)
     firma_id = get_aktif_firma_id()
+    query = tenant_db.query(Sube).options(
+        joinedload(Sube.bolge),   # ✅ Bölge ilişkisi
+        joinedload(Sube.sehir)    # ✅ Şehir ilişkisi
+    ).filter_by(firma_id=firma_id, aktif=True)
     
-    # Query
-    query = tenant_db.query(Sube).filter_by(firma_id=firma_id, aktif=True)
     grid.process_query(query)
     
     return render_template('sube/index.html', grid=grid)

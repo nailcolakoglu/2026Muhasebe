@@ -174,33 +174,62 @@
                         <div class="context-divider"></div>
                         
                         <div class="dropdown">
-                            <a href="#" class="context-item dropdown-toggle" data-bs-toggle="dropdown">
-                                <i class="bi bi-calendar3 me-2 text-warning"></i>
-                                {{ aktif_donem.ad if aktif_donem else 'Dönem Seç' }}
-                            </a>
-                            <ul class="dropdown-menu">
-                                <li><h6 class="dropdown-header">Çalışma Dönemi</h6></li>
-                                {% if tum_donemler %}
-                                    {% for donem in tum_donemler %}
-                                    <li>
-                                        <form action="{{ url_for('main.change_context') }}" method="POST">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <input type="hidden" name="donem_id" value="{{ donem.id }}">
-                                            <button type="submit" class="dropdown-item {{ 'active' if aktif_donem and aktif_donem.id == donem.id else '' }}">
-                                                {{ donem.ad }} ({{ donem.yil }})
-                                            </button>
-                                        </form>
-                                    </li>
-                                    {% endfor %}
-                                {% else %}
-                                    <li><span class="dropdown-item text-muted">Dönem bulunamadı</span></li>
-                                {% endif %}
-                            </ul>
-                        </div>
-                        
+							<a href="#" class="context-item dropdown-toggle" data-bs-toggle="dropdown">
+								<i class="bi bi-calendar3 me-2 text-warning"></i>
+								{{ aktif_donem.ad if aktif_donem else 'Dönem Seç' }}
+							</a>
+							<ul class="dropdown-menu">
+								<li><h6 class="dropdown-header">Çalışma Dönemi</h6></li>
+								
+								<!-- ✅ DEBUG: Dönem sayısını göster -->
+								{% if tum_donemler %}
+									<li><span class="dropdown-item-text small text-muted">{{ tum_donemler|length }} dönem bulundu</span></li>
+									<li><hr class="dropdown-divider"></li>
+									
+									{% for donem in tum_donemler %}
+									<li>
+										<form action="{{ url_for('main.change_context') }}" method="POST">
+											<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+											<input type="hidden" name="donem_id" value="{{ donem.id }}">
+											<button type="submit" class="dropdown-item {{ 'active' if aktif_donem and aktif_donem.id == donem.id else '' }}">
+												{{ donem.ad }} ({{ donem.yil }})
+												<!-- ✅ DEBUG: Aktif durumunu göster -->
+												{% if donem.aktif %}
+													<span class="badge bg-success ms-2">Aktif</span>
+												{% else %}
+													<span class="badge bg-secondary ms-2">Pasif</span>
+												{% endif %}
+											</button>
+										</form>
+									</li>
+									{% endfor %}
+								{% else %}
+									<!-- ✅ HATA MESAJI DÜZELTİLDİ -->
+									<li>
+										<span class="dropdown-item text-muted">
+											<i class="bi bi-exclamation-circle me-2"></i>
+											Dönem bulunamadı
+											{% if aktif_firma %}
+												(Firma: {{ aktif_firma.unvan }})
+											{% else %}
+												(Önce firma bilgilerini kaydedin)
+											{% endif %}
+										</span>
+									</li>
+									<li><hr class="dropdown-divider"></li>
+									<li>
+										<a class="dropdown-item text-primary" href="{{ url_for('firmalar.donem_ekle') }}">
+											<i class="bi bi-plus-circle me-2"></i>Yeni Dönem Oluştur
+										</a>
+									</li>
+								{% endif %}
+							</ul>
+						</div>
+						
                         <div class="context-divider"></div>
 
                         <div class="dropdown">
+						
                             <a href="#" class="context-item dropdown-toggle" data-bs-toggle="dropdown">
                                 <i class="bi bi-geo-alt-fill me-2 text-danger"></i>
                                 {{ aktif_sube.ad if aktif_sube else 'Tüm Şubeler' }}
@@ -238,7 +267,9 @@
                                 {% endif %}
                             </ul>
                         </div>
-                    </div>
+
+						
+					</div>
                 </div>
                 {% endif %}
 

@@ -76,6 +76,25 @@ def create_app(config_name=None):
     # CLI commands
     register_cli_commands(app)
     
+    # ============================================
+    # CONTEXT PROCESSORS (ÖNEMLİ!)
+    # ============================================
+    from app.context_processors import inject_global_vars
+    
+    app.context_processor(inject_global_vars)  # ✅ KAYITLI MI KONTROL ET!
+    
+    logger.info("✅ Context processor kaydedildi")
+    
+    
+    # ============================================
+    # ✅ SQL QUERY LOGGING (DEBUG)
+    # ============================================
+    if app.debug:
+        import logging
+        logging.basicConfig()
+        logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+        logger.info("✅ SQL query logging aktif (DEBUG mode)")
+    
     logger.info("✅ Uygulama başarıyla yapılandırıldı")
     
     return app
@@ -98,7 +117,7 @@ def register_middleware(app):
         """
         
         # 1. Static dosyalar için atla
-        skip_paths = ['/static', '/health', '/favicon.ico', '/_debug_toolbar']
+        skip_paths = ['/static', '/health', '/favicon.ico', '/auth/login', '/auth/select-tenant']
         if any(request.path.startswith(path) for path in skip_paths):
             return
         
@@ -479,37 +498,72 @@ def register_shell_context(app):
     
     @app.shell_context_processor
     def make_shell_context():
-        """Shell'de otomatik import edilecek objeler."""
-        from app.models.master import Tenant, User, License, Module
-        from app.models.tenant import Kullanici, Firma, Sube, Kasa, Depo
-        from app.modules.stok.models import StokKart, StokHareket
-        from app.modules.cari.models import CariHesap, CariHareket
-        from app.modules.fatura.models import Fatura, FaturaDetay
-        from app.modules.siparis.models import SiparisBaslik, SiparisDetay
+        """
+        Flask shell için otomatik import'lar
+        
+        Kullanım:
+            flask shell
+            >>> User.query.first()
+            >>> Tenant.query.all()
+        """
+        from app.extensions import db
+        
+        # Master modeller (güvenli import)
+        try:
+            from app.models.master import User, Tenant, UserTenantRole, License
+        except ImportError as e:
+            logger.warning(f"⚠️ Master model import hatası: {e}")
+            User = Tenant = UserTenantRole = License = None
+        
+        # Tenant modelleri (opsiyonel)
+        try:
+            from app.modules.bolge.models import Bolge
+        except ImportError:
+            Bolge = None
+        
+        try:
+            from app.modules.sube.models import Sube
+        except ImportError:
+            Sube = None
+        
+        try:
+            from app.modules.firma.models import Firma
+        except ImportError:
+            Firma = None
+        
+        try:
+            from app.modules.kullanici.models import Kullanici
+        except ImportError:
+            Kullanici = None
+        
+        # Validators
+        try:
+            from app.utils.validators import SecurityValidator
+        except ImportError:
+            SecurityValidator = None
+        
+        # Permission Manager
+        try:
+            from app.services.permission_manager import PermissionManager
+        except ImportError:
+            PermissionManager = None
         
         return {
+            'app': app,
             'db': db,
-            'cache': cache,
-            # Master models
-            'Tenant': Tenant,
+            # Master
             'User': User,
+            'Tenant': Tenant,
+            'UserTenantRole': UserTenantRole,
             'License': License,
-            'Module': Module,
-            # Tenant models
-            'Kullanici': Kullanici,
-            'Firma': Firma,
+            # Tenant
+            'Bolge': Bolge,
             'Sube': Sube,
-            'Kasa': Kasa,
-            'Depo': Depo,
-            # Operasyonel models
-            'StokKart': StokKart,
-            'StokHareket': StokHareket,
-            'CariHesap': CariHesap,
-            'CariHareket': CariHareket,
-            'Fatura': Fatura,
-            'FaturaDetay': FaturaDetay,
-            'SiparisBaslik': SiparisBaslik,
-            'SiparisDetay': SiparisDetay
+            'Firma': Firma,
+            'Kullanici': Kullanici,
+            # Utils
+            'SecurityValidator': SecurityValidator,
+            'PermissionManager': PermissionManager
         }
 
 
@@ -588,6 +642,25 @@ def register_cli_commands(app):
 # ============================================================================
 
 app = create_app()
+
+@app.route('/debug/session')
+def debug_session():
+    """Session debug (SADECE DEVELOPMENT!)"""
+    if not app.debug:
+        abort(403)
+    
+    from flask_login import current_user
+    
+    return {
+        'session': dict(session),
+        'authenticated': current_user.is_authenticated,
+        'user_id': current_user.id if current_user.is_authenticated else None,
+        'user_email': getattr(current_user, 'email', None),
+        'cookies': dict(request.cookies),
+        # ✅ YENİ: Session'ın gerçekten var olup olmadığını kontrol et
+        'session_exists': 'session' in request.cookies,
+        'session_keys': list(session.keys()) if session else []
+    }
 
 
 @app.route('/health')

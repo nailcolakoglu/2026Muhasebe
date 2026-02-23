@@ -1,5 +1,6 @@
 # app/modules/bolge/routes.py
 
+from sqlalchemy.orm import joinedload
 from flask import Blueprint, render_template, request, jsonify, redirect, flash, session
 from flask_login import login_required
 from app.extensions import get_tenant_db, get_tenant_info
@@ -7,6 +8,7 @@ from app.decorators import tenant_route, permission_required  # ✅ EKLE
 from app.modules.bolge.models import Bolge
 from app.modules.sube.models import Sube
 from app.form_builder import DataGrid
+
 from .forms import create_bolge_form
 import logging
 
@@ -32,10 +34,9 @@ def get_aktif_firma_id():
 
 
 @bolge_bp.route('/')
-@login_required
 @tenant_route
 def index():
-    """Bölge listesi"""
+    """Bölge listesi (Optimized)"""
     tenant_db = get_tenant_db()
     if not tenant_db:
         flash("Veritabanı bağlantısı yok.", "danger")
@@ -45,15 +46,18 @@ def index():
     
     grid.add_column('kod', 'Bölge Kodu', width='100px')
     grid.add_column('ad', 'Bölge Adı')
-    grid.add_column('yonetici.ad_soyad', 'Bölge Müdürü') 
+    grid.add_column('yonetici.ad_soyad', 'Bölge Müdürü')  # ← Bu N+1 yaratır!
     grid.add_column('aciklama', 'Açıklama')
     
     grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'bolge.duzenle')
     grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'bolge.sil')
     
-    # ✅ Firma ID dinamik
+    # ✅ EAGER LOADING (N+1 Çözümü)
     firma_id = get_aktif_firma_id()
-    query = tenant_db.query(Bolge).filter_by(firma_id=firma_id, aktif=True)
+    query = tenant_db.query(Bolge).options(
+        joinedload(Bolge.yonetici)  # ✅ Yöneticiyi birlikte getir!
+    ).filter_by(firma_id=firma_id, aktif=True)
+    
     grid.process_query(query)
     
     return render_template('bolge/index.html', grid=grid)

@@ -6,12 +6,14 @@ Enterprise Grade - Production Ready
 
 import os
 import logging
+from datetime import timedelta
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_caching import Cache
 from flask_babel import Babel
+from werkzeug.exceptions import HTTPException 
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import scoped_session, sessionmaker, DeclarativeBase
 from flask import g, session, request, current_app
 
@@ -47,6 +49,13 @@ login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Lütfen giriş yapın.'
 login_manager.login_message_category = 'warning'
 
+login_manager.session_protection = 'strong'  # veya 'basic' veya None
+
+# ✅ EKLE: Remember cookie ayarları
+login_manager.remember_cookie_duration = timedelta(days=7)
+login_manager.remember_cookie_httponly = True
+login_manager.remember_cookie_secure = False  # Development'ta False, production'da True
+
 
 # ========================================
 # 🌍 BABEL (i18n - Multi-Language Support)
@@ -63,17 +72,22 @@ csrf = CSRFProtect()
 # ========================================
 # 🏢 TENANT DATABASE CONNECTION (MySQL Multi-Tenant)
 # ========================================
-
-# app/extensions.py (get_tenant_db function - LINE 95-180)
-
 def get_tenant_db():
     """
-    Tenant DB session'ı getir (MySQL Multi-Tenant)
+    ✅ GÜVENLİ TENANT DB SESSION
     
-    ✅ FIX: Engine cache kaldırıldı (pickle sorunu çözüldü)
+    Security Features:
+        - ✅ Tenant ID validation (UUID format)
+        - ✅ Tenant code validation (SQL injection)
+        - ✅ Database name validation
+        - ✅ Database existence check
+        - ✅ Connection pooling
+    
+    Returns:
+        Session: SQLAlchemy session or None
     """
     
-    # 1. Cache'de var mı kontrol et
+    # 1. Cache'de var mı?
     if hasattr(g, 'tenant_db_session'):
         return g.tenant_db_session
     
@@ -85,80 +99,146 @@ def get_tenant_db():
         return None
     
     try:
-        # 3. Tenant metadata'sını al (Master DB'den)
+        # 3. ✅ SECURITY: Tenant ID validation (UUID formatı)
+        from app.utils.validators import SecurityValidator
+        
+        is_valid_uuid, error = SecurityValidator.validate_uuid(tenant_id)
+        if not is_valid_uuid:
+            logger.error(f"❌ Geçersiz tenant ID: {tenant_id} ({error})")
+            abort(400, f"Geçersiz firma ID formatı")
+        
+        # 4. Tenant metadata'sını al (Master DB)
         from app.models.master import Tenant
         tenant = db.session.get(Tenant, tenant_id)
         
         if not tenant:
             logger.error(f"❌ Tenant bulunamadı: {tenant_id}")
-            return None
+            abort(404, "Firma bulunamadı")
         
-        # 4. Tenant code alanını al
+        # 5. Tenant aktif mi?
+        if not tenant.is_active:
+            logger.warning(f"⚠️ Pasif tenant erişim denemesi: {tenant_id}")
+            abort(403, "Bu firma devre dışı bırakılmış")
+        
+        # 6. ✅ SECURITY: Tenant code validation
         tenant_code = tenant.kod
         
-        if not tenant_code:
-            logger.error(f"❌ Tenant kod alanı boş!")
-            return None
+        is_valid_code, error = SecurityValidator.validate_tenant_code(tenant_code)
+        if not is_valid_code:
+            logger.error(f"❌ Geçersiz tenant kodu: {tenant_code} ({error})")
+            abort(400, f"Geçersiz firma kodu: {error}")
         
-        # 5. Tenant database adını kontrol et
+        # 7. Database adını belirle
         if hasattr(tenant, 'db_name') and tenant.db_name:
             tenant_db_name = tenant.db_name
+            
+            # ✅ SECURITY: Database name validation
+            is_valid_db, error = SecurityValidator.validate_db_name(tenant_db_name)
+            if not is_valid_db:
+                logger.error(f"❌ Geçersiz database adı: {tenant_db_name} ({error})")
+                abort(400, f"Geçersiz database adı: {error}")
         else:
-            # Fallback: db_name yoksa kod'dan oluştur
-            tenant_db_name = f"{current_app.config['TENANT_DB_PREFIX']}{tenant_code}"
+            # Fallback: kod'dan oluştur
+            prefix = current_app.config.get('TENANT_DB_PREFIX', 'erp_tenant_')
+            tenant_db_name = f"{prefix}{tenant_code.lower()}"
+            
+            # ✅ SECURITY: Oluşturulan adı da validate et
+            is_valid_db, error = SecurityValidator.validate_db_name(tenant_db_name)
+            if not is_valid_db:
+                logger.error(f"❌ Oluşturulan database adı geçersiz: {tenant_db_name}")
+                abort(500, "Database adı oluşturulamadı")
         
-        # 6. MySQL connection URL oluştur
+        # 8. ✅ SECURITY: Database existence check
+        if not check_database_exists(tenant_db_name):
+            logger.error(f"❌ Database bulunamadı: {tenant_db_name}")
+            abort(404, f"Firma veritabanı bulunamadı: {tenant_db_name}")
+        
+        # 9. MySQL connection URL oluştur (artık güvenli!)
         tenant_db_url = current_app.config['TENANT_DB_URL_TEMPLATE'].format(
             tenant_code=tenant_db_name
         )
         
-        # ✅ 7. Engine'i HER SEFERINDE OLUŞTUR (Cache'leme!)
-        # Pickle sorunu olduğu için cache kullanmıyoruz
+        # 10. Engine oluştur
         engine = create_engine(
             tenant_db_url,
-            **current_app.config.get('SQLALCHEMY_ENGINE_OPTIONS', {
-                'pool_size': 5,           # ✅ Azaltıldı (her request'te engine oluşuyor)
-                'max_overflow': 10,
-                'pool_timeout': 30,
-                'pool_recycle': 3600,
-                'pool_pre_ping': True
-            })
+            pool_pre_ping=True,
+            pool_recycle=3600,
+            pool_size=10,
+            max_overflow=20,
+            echo=False
         )
         
-        logger.debug(f"🔧 Tenant DB engine oluşturuldu: {tenant_db_name}")
+        # 11. Session oluştur
+        Session = scoped_session(sessionmaker(bind=engine))
+        tenant_db_session = Session()
         
-        # 8. Session oluştur (scoped)
-        SessionFactory = scoped_session(
-            sessionmaker(
-                bind=engine,
-                expire_on_commit=False,
-                autoflush=False,
-                autocommit=False
-            )
-        )
-        
-        # 9. Session'ı g'ye kaydet
-        g.tenant_db_session = SessionFactory()
-        
-        # 10. Engine'i de kaydet (teardown'da dispose için)
-        g.tenant_engine = engine
-        
-        # 11. Tenant metadata'sını da kaydet
+        # 12. g nesnesine kaydet (cache)
+        g.tenant_db_session = tenant_db_session
+        g.tenant_db_engine = engine
         g.tenant_metadata = {
-            'tenant_id': tenant_id,
-            'tenant_code': tenant_code,
+            'id': tenant.id,
+            'kod': tenant.kod,
+            'unvan': tenant.unvan,
             'db_name': tenant_db_name
         }
         
-        logger.debug(f"✅ Tenant DB session açıldı: {tenant_db_name}")
+        logger.debug(f"✅ Tenant DB bağlantısı: {tenant_db_name}")
         
-        return g.tenant_db_session
+        return tenant_db_session
     
     except Exception as e:
-        logger.error(f"❌ Tenant DB bağlantı hatası: {e}", exc_info=True)
-        return None
+        logger.error(f"❌ Tenant DB hatası: {e}", exc_info=True)
+        
+        # Hata türüne göre yönlendirme
+        if isinstance(e, HTTPException):
+            raise  # abort() hataları direkt fırlat
+        
+        # Diğer hatalar için 500
+        abort(500, "Veritabanı bağlantısı kurulamadı")
 
 
+def check_database_exists(db_name: str) -> bool:
+    """
+    ✅ GÜVENLİ DATABASE KONTROL
+    
+    Database var mı kontrol et (SQL injection korumalı)
+    
+    Args:
+        db_name (str): Database adı
+    
+    Returns:
+        bool: Database var mı?
+    
+    Security:
+        - ✅ Parameterized query ile SQL injection koruması
+        - ✅ Read-only kontrol (INFORMATION_SCHEMA)
+    """
+    try:
+        from sqlalchemy import text
+        
+        # ✅ SECURITY: Parameterized query ile SQL injection koruması
+        query = text("""
+            SELECT SCHEMA_NAME 
+            FROM INFORMATION_SCHEMA.SCHEMATA 
+            WHERE SCHEMA_NAME = :db_name
+        """)
+        
+        result = db.session.execute(query, {'db_name': db_name}).fetchone()
+        
+        exists = result is not None
+        
+        if not exists:
+            logger.warning(f"⚠️ Database bulunamadı: {db_name}")
+        else:
+            logger.debug(f"✅ Database mevcut: {db_name}")
+        
+        return exists
+    
+    except Exception as e:
+        logger.error(f"❌ Database kontrol hatası: {e}", exc_info=True)
+        return False
+
+        
 def close_tenant_db(exception=None):
     """
     Tenant DB session'ını güvenli şekilde kapat
@@ -292,15 +372,17 @@ def load_user(user_id):
     Returns:
         User: User model instance veya None
     """
-    if user_id is None or user_id == 'None':
-        return None
     
-    try:
-        from app.models.master import User
-        return db.session.get(User, user_id)
-    except Exception as e:
-        logger.error(f"❌ User load hatası: {e}")
-        return None
+    from app.models.master import User
+    
+    user = db.session.get(User, user_id)
+    
+    if user:
+        logger.debug(f"✅ User loaded: {user.id}")
+    else:
+        logger.warning(f"⚠️ User not found: {user_id}")
+    
+    return user
 
 
 # ========================================

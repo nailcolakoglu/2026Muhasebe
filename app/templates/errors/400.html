@@ -1,0 +1,37 @@
+<!-- app/templates/errors/400.html -->
+
+{% extends "base.html" %}
+
+{% block title %}400 - Hatalı İstek{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-lg border-warning">
+                <div class="card-body text-center p-5">
+                    <i class="bi bi-exclamation-triangle text-warning" style="font-size: 5rem;"></i>
+                    <h1 class="display-4 mt-4 text-warning">400</h1>
+                    <h3 class="mt-3">Hatalı İstek</h3>
+                    <p class="text-muted mt-3">
+                        Gönderdiğiniz istek geçersiz.
+                        <br>
+                        Lütfen sayfayı yenileyip tekrar deneyin.
+                    </p>
+                    
+                    <hr class="my-4">
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{{ url_for('main.index') }}" class="btn btn-primary">
+                            <i class="bi bi-house-door me-2"></i>Ana Sayfaya Dön
+                        </a>
+                        <a href="javascript:history.back()" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-2"></i>Geri Dön
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,4 +1,10 @@
-# models/master/tenant.py (UUID IMPORT EKLENDİ)
+# app/models/master/tenant.py
+
+from sqlalchemy import event
+from app.utils.validators import SecurityValidator
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.extensions import db
 from datetime import datetime
@@ -19,7 +25,7 @@ class Tenant(db.Model):
     vergi_no = db.Column(db.String(20))
     vergi_dairesi = db.Column(db.String(100))
     
-    db_name = db.Column(db.String(100), nullable=False)
+    db_name = db.Column(db.String(100), unique=True, nullable=True)
     db_password_encrypted = db.Column(db.String(255))
     
     is_active = db.Column(db.Boolean, default=True)
@@ -81,3 +87,36 @@ class Tenant(db.Model):
     
     def __repr__(self):
         return f'<Tenant {self.kod} - {self.unvan}>'
+    
+    
+# ============================================
+# EVENT LISTENER: Kayıt Öncesi Validation
+# ============================================
+
+@event.listens_for(Tenant, 'before_insert')
+@event.listens_for(Tenant, 'before_update')
+def validate_tenant_before_save(mapper, connection, target):
+    """
+    Tenant kaydı öncesi güvenlik kontrolü
+    
+    Args:
+        target (Tenant): Kaydedilecek tenant
+    
+    Raises:
+        ValueError: Validation başarısız
+    """
+    # 1. Tenant code validation
+    is_valid_code, error = SecurityValidator.validate_tenant_code(target.kod)
+    if not is_valid_code:
+        logger.error(f"❌ Tenant validation hatası (kod): {target.kod} - {error}")
+        raise ValueError(f"Geçersiz tenant kodu: {error}")
+    
+    # 2. Database name validation (eğer varsa)
+    if target.db_name:
+        is_valid_db, error = SecurityValidator.validate_db_name(target.db_name)
+        if not is_valid_db:
+            logger.error(f"❌ Tenant validation hatası (db_name): {target.db_name} - {error}")
+            raise ValueError(f"Geçersiz database adı: {error}")
+    
+    logger.debug(f"✅ Tenant validation başarılı: {target.kod}")
+    

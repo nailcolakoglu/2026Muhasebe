@@ -1,6 +1,8 @@
+# app/modules/depo/models.py
 """
 Depo Modeli
 """
+
 from sqlalchemy import Integer, String, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.extensions import db
