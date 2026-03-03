@@ -1,0 +1,86 @@
+{% extends "b2b/base.html" %}
+
+{% block title %}Ürün Kataloğu - B2B{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="text-secondary fw-bold">Online Sipariş Kataloğu</h4>
+</div>
+
+<div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4">
+    {% for urun in urunler %}
+    <div class="col">
+        <div class="card h-100 border-0 shadow-sm product-card">
+			{% if urun.resim_path %} 
+                <img src="{{ url_for('static', filename='' ~ urun.resim_path) }}" class="card-img-top p-3" alt="{{ urun.ad }}" style="height: 180px; object-fit: contain;">
+            {% else %}
+				<div class="bg-light d-flex align-items-center justify-content-center" style="height: 180px;">
+					<i class="bi bi-box text-secondary display-1"></i>
+				</div>
+			{% endif %}
+            <div class="card-body d-flex flex-column">
+                <small class="text-muted">{{ urun.kod }}</small>
+                <h6 class="card-title fw-bold mt-1 mb-2">{{ urun.ad }}</h6>
+                
+                <div class="mt-auto">
+                    <h5 class="text-primary fw-bold mb-3">₺{{ "{:,.2f}".format(urun.satis_fiyati|default(0)).replace(',', 'X').replace('.', ',').replace('X', '.') }}</h5>
+                    
+                    <form class="sepete-ekle-form d-flex gap-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="stok_id" value="{{ urun.id }}">
+                        <input type="number" name="miktar" class="form-control form-control-sm w-50" value="1" min="1">
+                        <button type="submit" class="btn btn-sm btn-primary w-100 flex-grow-1"><i class="bi bi-cart-plus"></i> Ekle</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="alert alert-info border-0 shadow-sm"><i class="bi bi-info-circle me-2"></i> Henüz sistemde aktif bir ürün bulunmuyor.</div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // AJAX ile Sepete Ekleme İşlemi (Sayfa yenilenmeden)
+    document.querySelectorAll('.sepete-ekle-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = this.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            
+            btn.innerHTML = '<i class="bi bi-hourglass-split"></i>...';
+            btn.disabled = true;
+
+            fetch('{{ url_for("b2b.sepete_ekle") }}', {
+                method: 'POST',
+                body: new FormData(this)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    btn.innerHTML = '<i class="bi bi-check2"></i> Eklendi';
+                    btn.classList.replace('btn-primary', 'btn-success');
+                    
+                    // Üst menüdeki sepet sayısını güncelle
+                    const badge = document.getElementById('cart-count');
+                    if(badge) badge.innerText = data.sepet_sayisi;
+                    
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.classList.replace('btn-success', 'btn-primary');
+                        btn.disabled = false;
+                    }, 2000);
+                }
+            });
+        });
+    });
+</script>
+<style>
+    .product-card { transition: transform 0.2s; }
+    .product-card:hover { transform: translateY(-5px); }
+</style>
+{% endblock %}

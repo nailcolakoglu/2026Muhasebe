@@ -1,6 +1,9 @@
+# app/modules/finans/forms.py
+
 from app.form_builder import Form, FormField, FieldType, FormLayout
 from flask_babel import gettext as _
 from flask_login import current_user
+from app.extensions import get_tenant_db
 from app.modules.cari.models import CariHesap
 from app.modules.kasa.models import Kasa
 from app.modules.sube.models import Sube
@@ -8,6 +11,8 @@ from app.modules.banka.models import BankaHesap
 from app.enums import FinansIslemTuru, ParaBirimi
 
 def create_makbuz_form(islem=None):
+    tenant_db = get_tenant_db()
+    
     is_edit = islem is not None
     action_url = f"/finans/duzenle/{islem.id}" if is_edit else "/finans/ekle"
     
@@ -17,10 +22,10 @@ def create_makbuz_form(islem=None):
     layout = FormLayout()
 
     # --- Veri Hazırlığı ---
-    cariler = CariHesap.query.filter_by(firma_id=current_user.firma_id).all()
+    cariler = tenant_db.query(CariHesap).filter_by(firma_id=current_user.firma_id).all()
     cari_opts = [(str(c.id), f"{c.kod} - {c.unvan} ({c.doviz_turu})") for c in cariler]
     
-    kasalar = Kasa.query.filter_by(firma_id=current_user.firma_id).all()
+    kasalar = tenant_db.query(Kasa).filter_by(firma_id=current_user.firma_id).all()
     kasa_opts = [("", "Seçiniz")] + [(str(k.id), k.ad) for k in kasalar]
 
     tur_opts = [
@@ -123,13 +128,17 @@ def create_makbuz_form(islem=None):
 
 def create_virman_form():
     """Kasalar ve Bankalar Arası Transfer Formu"""
+    tenant_db = get_tenant_db()
+    
     form = Form(name="virman_form", title=_("İç Transfer (Virman)"), action="/finans/virman", method="POST", submit_text=_("Transferi Gerçekleştir"), ajax=True, show_title=False)
     layout = FormLayout()
 
     # --- Veri Hazırlığı ---
     # Kullanıcının yetkili olduğu firmadaki tüm kasalar ve bankalar
-    kasalar = Kasa.query.filter_by(firma_id=current_user.firma_id).all()
-    bankalar = BankaHesap.query.filter_by(firma_id=current_user.firma_id).all()
+    
+    kasalar = tenant_db.query(Kasa).filter_by(firma_id=current_user.firma_id).all()
+    bankalar = tenant_db.query(BankaHesap).filter_by(firma_id=current_user.firma_id).all()
+    
 
     # Seçenekleri Hazırla (Tip belirteci ekleyerek: 'K-1', 'B-3' gibi)
     kaynak_opts = []
@@ -183,13 +192,15 @@ def create_virman_form():
 
 def create_gider_form():
     """Gider/Masraf İşleme Formu"""
+    tenant_db = get_tenant_db()
+    
     form = Form(name="gider_form", title=_("Gider Fişi (Masraf)"), action="/finans/gider-ekle", method="POST", submit_text=_("Gideri Kaydet"), ajax=True, show_title=False)
     layout = FormLayout()
 
     # --- Veri Hazırlığı ---
-    kasalar = Kasa.query.filter_by(firma_id=current_user.firma_id).all()
-    bankalar = BankaHesap.query.filter_by(firma_id=current_user.firma_id).all()
-
+    kasalar = tenant_db.query(Kasa).filter_by(firma_id=current_user.firma_id).all()
+    bankalar = tenant_db.query(BankaHesap).filter_by(firma_id=current_user.firma_id).all()
+    
     hesap_opts = []
     
     for k in kasalar:
@@ -239,5 +250,3 @@ def create_gider_form():
     form.add_fields(tarih, hesap, gider_turu, tutar, belge_no, aciklama)
     
     return form
-
-

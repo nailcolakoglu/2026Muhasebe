@@ -1,4 +1,4 @@
-# utils/decorators.py (DÜZELTİLMİŞ)
+# app/utils/decorators.py (DÜZELTİLMİŞ)
 
 from functools import wraps
 from flask import session, flash, redirect, url_for, abort, current_app, request, g
@@ -11,6 +11,50 @@ try:
 except ImportError:
     pass
 
+from app.extensions import get_tenant_db
+from app.modules.b2b.models import B2BKullanici
+import logging
+
+logger = logging.getLogger(__name__)
+
+def b2b_login_required(f):
+    """
+    B2B Portalı için %100 İzole Güvenlik Duvarı.
+    flask_login'den bağımsız çalışır, sadece bayileri içeri alır.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 1. Session'da B2B yetkisi var mı?
+        if 'b2b_user_id' not in session or 'tenant_id' not in session:
+            return redirect(url_for('b2b.login'))
+        
+        # 2. Doğru Kiracının (Tenant) Veritabanına bağlandık mı?
+        tenant_db = get_tenant_db()
+        if not tenant_db:
+            session.clear()
+            return redirect(url_for('b2b.login'))
+            
+        try:
+            # 3. Veritabanından B2B Kullanıcısını Bul
+            b2b_user = tenant_db.get(B2BKullanici, session['b2b_user_id'])
+            
+            # 4. Kullanıcı silinmişse veya pasife çekilmişse anında at!
+            if not b2b_user or not b2b_user.aktif:
+                session.pop('b2b_user_id', None)
+                logger.warning(f"Pasif B2B kullanıcısı erişim denemesi: ID {session.get('b2b_user_id')}")
+                return redirect(url_for('b2b.login'))
+                
+            # 5. Kullanıcıyı global 'g' objesine enjekte et (Rotalarda kullanmak için)
+            g.b2b_user = b2b_user
+            
+        except Exception as e:
+            logger.error(f"B2B Yetki Kontrolü Hatası: {str(e)}")
+            return redirect(url_for('b2b.login'))
+            
+        return f(*args, **kwargs)
+        
+    return decorated_function
+    
 def check_license_limit(limit_type):
     """
     Lisans limitlerini kontrol eden dekoratör.
@@ -77,7 +121,6 @@ def check_license_limit(limit_type):
         return decorated_function
     return decorator
 
-
 def role_required(*roles):
     """
     Rol bazlı yetkilendirme decorator'ı
@@ -101,7 +144,6 @@ def role_required(*roles):
         return decorated_function
     return decorator
 
-
 def permission_required(permission):
     """
     İzin bazlı yetkilendirme (Gelecekte RBAC için)
@@ -118,3 +160,16 @@ def permission_required(permission):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+    
+def tenant_route(f):
+    """
+    SaaS İzolasyon Katmanı:
+    Rotanın doğru tenant context'i ile çalışmasını sağlar.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Eğer oturumda tenant yoksa veya DB bağlantısı sağlanamadıysa
+        if not session.get('tenant_id'):
+            return redirect(url_for('auth.login'))
+        return f(*args, **kwargs)
+    return decorated_function

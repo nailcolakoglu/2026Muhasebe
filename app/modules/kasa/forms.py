@@ -1,3 +1,5 @@
+# app/modules/kasa/forms.py
+
 from app.form_builder import Form, FormField, FieldType, FormLayout
 from flask import session
 from flask_babel import gettext as _
@@ -5,9 +7,9 @@ from flask_login import current_user
 from app.modules.kullanici.models import Kullanici
 from app.modules.sube.models import Sube
 from app.modules.kasa.models import Kasa 
-# 👇 Utils kullanımı (Muhasebe hesaplarını buradan çekiyoruz)
 from app.modules.muhasebe.utils import get_muhasebe_hesaplari
 from app.enums import ParaBirimi
+from app.extensions import get_tenant_db # ✨ YENİ
 
 def create_kasa_form(kasa=None):
     is_edit = kasa is not None
@@ -25,29 +27,28 @@ def create_kasa_form(kasa=None):
     )
     
     layout = FormLayout()
+    tenant_db = get_tenant_db() # ✨ YENİ
 
     # --- VERİ HAZIRLIĞI ---
     
     # 1.Şubeler (Yetkiye göre filtreli)
-    sube_query = Sube.query.filter_by(firma_id=current_user.firma_id, aktif=True)
+    sube_query = tenant_db.query(Sube).filter_by(firma_id=current_user.firma_id, aktif=True)
     merkez_rolleri = ['admin', 'patron', 'finans_muduru', 'muhasebe_muduru']
     
     if current_user.rol not in merkez_rolleri:
         aktif_bolge_id = session.get('aktif_bolge_id')
         aktif_sube_id = session.get('aktif_sube_id')
         if aktif_bolge_id:
-            sube_query = sube_query.filter_by(bolge_id=aktif_bolge_id)
+            sube_query = sube_query.filter_by(bolge_id=str(aktif_bolge_id))
         elif aktif_sube_id:
-            sube_query = sube_query.filter_by(id=aktif_sube_id)
+            sube_query = sube_query.filter_by(id=str(aktif_sube_id))
 
     subeler = sube_query.all()
-    sube_opts = [(s.id, f"{s.kod} - {s.ad}") for s in subeler]
+    sube_opts = [(str(s.id), f"{s.kod} - {s.ad}") for s in subeler]
     
     # 2.Personel Listesi (Zimmet İçin) 🛡️
-    # Sadece bu firmanın aktif personelleri
-    personeller = Kullanici.query.filter_by(firma_id=current_user.firma_id, aktif=True).all()
-    # İlk seçenek boş (Genel Kasa) olsun
-    personel_opts = [("", "Genel Kasa (Zimmet Yok)")] + [(u.id, u.ad_soyad) for u in personeller]
+    personeller = tenant_db.query(Kullanici).filter_by(firma_id=current_user.firma_id, aktif=True).all()
+    personel_opts = [("", "Genel Kasa (Zimmet Yok)")] + [(str(u.id), u.ad_soyad) for u in personeller]
 
     # 3.Muhasebe Hesapları
     muhasebe_opts = get_muhasebe_hesaplari()
@@ -78,29 +79,28 @@ def create_kasa_form(kasa=None):
         'sube_id', FieldType.SELECT, _('Bağlı Olduğu Şube'), 
         options=sube_opts, 
         required=True, 
-        value=kasa.sube_id if kasa else '',
+        value=str(kasa.sube_id) if kasa else '',
         select2_config={'placeholder': 'Şube Seçiniz'}
     )
     
-    # 👇 YENİ ALAN: Zimmetli Personel
     kullanici_id = FormField(
         'kullanici_id', FieldType.SELECT, _('Kasa Sorumlusu (Zimmet)'), 
         options=personel_opts, 
-        required=False, # Zorunlu değil
-        value=kasa.kullanici_id if kasa else '',
+        required=False,
+        value=str(kasa.kullanici_id) if kasa and kasa.kullanici_id else '',
         select2_config={'placeholder': 'Personel Seçiniz...', 'allowClear': True},
         icon='bi bi-person-badge'
     )
     
     if len(subeler) == 1 and not kasa:
-        sube_id.default_value = subeler[0].id
+        sube_id.default_value = str(subeler[0].id)
 
     doviz_turu = FormField('doviz_turu', FieldType.SELECT, _('Döviz Cinsi'), options=doviz_opts, required=True, value=kasa.doviz_turu if kasa else 'TL')
     
     muhasebe_hesap = FormField(
         'muhasebe_hesap_id', FieldType.SELECT, _('Muhasebe Hesabı (100)'), 
         options=muhasebe_opts, 
-        value=kasa.muhasebe_hesap_id if kasa else '', 
+        value=str(kasa.muhasebe_hesap_id) if kasa and kasa.muhasebe_hesap_id else '', 
         select2_config={'placeholder': 'Muhasebe Hesabı Bağla...', 'allowClear': True}
     )
 
@@ -111,7 +111,7 @@ def create_kasa_form(kasa=None):
     tabs = layout.create_tabs("kasa_tabs", [
         ('<i class="bi bi-info-circle me-2"></i>Genel Bilgiler', [
             layout.create_row(kod, ad),
-            layout.create_row(sube_id, kullanici_id), # Kullanıcıyı buraya koyduk
+            layout.create_row(sube_id, kullanici_id),
             layout.create_row(doviz_turu, aktif)
         ]),
         ('<i class="bi bi-layers me-2"></i>Entegrasyon & Detay', [
@@ -124,4 +124,3 @@ def create_kasa_form(kasa=None):
     form.add_fields(kod, ad, sube_id, kullanici_id, doviz_turu, muhasebe_hesap, aciklama, aktif)
     
     return form
-

@@ -9,16 +9,11 @@
         <form id="tahsilatForm" method="POST" action="javascript:void(0);">
             
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="mb-3">
-                <label class="fw-bold">Müşteri Seçin</label>
-                <select name="cari_id" class="form-select form-select-lg" required>
-                    <option value="">Müşteri...</option>
-                    {% for c in cariler %}
-                        <option value="{{ c.id }}">{{ c.unvan }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
+				<div class="mb-3">
+                    <label class="fw-bold">Müşteri Seçin</label>
+                    <select name="cari_id" id="cariAjaxSelect" class="form-select form-select-lg" required>
+                        </select>
+                </div>
             <div class="mb-3">
                 <label class="fw-bold">İşlem Türü</label>
                 <select name="tur" id="turSelect" class="form-select form-select-lg">
@@ -49,7 +44,27 @@
 {% block extra_js %}
 <script>
     $(document).ready(function() {
-        
+        // Müşteri (Cari) Arama Motoru (100.000 kayıt için optimize)
+        $('#cariAjaxSelect').select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Müşteri Ara (Ünvan veya Kod)...',
+            allowClear: true,
+            ajax: {
+                url: '/cari/api/ara', // Masaüstünde yazdığımız o harika API'yi mobilde de kullanıyoruz!
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return { q: params.term, page: params.page || 1 };
+                },
+                processResults: function (data) {
+                    return {
+                        results: data.results,
+                        pagination: data.pagination
+                    };
+                },
+                cache: true
+            }
+        });
         // 1.İşlem Türü Değişince Çalışacak Fonksiyon
         function turKontrol() {
             var tur = $('#turSelect').val();

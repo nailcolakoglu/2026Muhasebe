@@ -1,11 +1,10 @@
-# modules/rapor/models.py
+# app/modules/rapor/models.py
 
 import uuid
 import json 
 from app.extensions import db
-from app.models.base import FirmaFilteredQuery, TimestampMixin, SoftDeleteMixin, FirebirdModelMixin
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, JSON
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from app.models.base import FirmaFilteredQuery, TimestampMixin, SoftDeleteMixin
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime
 from datetime import datetime
 import logging 
 
@@ -37,29 +36,25 @@ class YazdirmaSablonu(db.Model, TimestampMixin, SoftDeleteMixin):
 
 
 # ===================================
-# SAVED REPORT (Firebird)
+# SAVED REPORT (MySQL/PostgreSQL Uyumlu)
 # ===================================
-class SavedReport(db.Model, FirebirdModelMixin):
+class SavedReport(db.Model):
     """
-    Kullanıcı tarafından kaydedilen raporlar (Firebird)
-    
-    Kullanım:
-        SavedReport.query_fb().filter_by(user_id=user_id).all()
+    Kullanıcı tarafından kaydedilen raporlar
     """
+    __tablename__ = 'saved_reports'
     
-    __tablename__ = 'SAVED_REPORTS'
-    __bind_key__ = None
-    
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    # 🔥 DÜZELTME 1: Proje standardı olan UUID yapısına geçirildi
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     model_name = db.Column(db.String(100), nullable=False)
     config_json = db.Column(db.Text, nullable=False)
     user_id = db.Column(db.String(36), nullable=False)
     
-    # ✅ Firebird boolean (SMALLINT 0/1)
-    is_public = db.Column(db.SmallInteger, default=0)  # ✅ Boolean yerine SmallInteger
-    schedule_enabled = db.Column(db.SmallInteger, default=0)
+    # 🔥 DÜZELTME 2: Firebird'ün SmallInteger zorunluluğu kalktı, gerçek Boolean'a dönüldü
+    is_public = db.Column(db.Boolean, default=False)
+    schedule_enabled = db.Column(db.Boolean, default=False)
     
     schedule_cron = db.Column(db.String(100))
     schedule_email_to = db.Column(db.String(500))
@@ -96,17 +91,6 @@ class SavedReport(db.Model, FirebirdModelMixin):
             logger.error(f"Config set hatası: {e}")
             raise ValueError(f"Config JSON'a çevrilemedi: {e}")
     
-    # ✅ Boolean helper property
-    @property
-    def is_public_bool(self):
-        """SmallInteger'ı boolean'a çevir"""
-        return bool(self.is_public)
-    
-    @property
-    def schedule_enabled_bool(self):
-        """SmallInteger'ı boolean'a çevir"""
-        return bool(self.schedule_enabled)
-    
     def to_dict(self):
         """API için dict formatı"""
         return {
@@ -115,15 +99,13 @@ class SavedReport(db.Model, FirebirdModelMixin):
             'description': self.description,
             'model_name': self.model_name,
             'config': self.config,
-            'is_public': self.is_public_bool,  # ✅ Boolean olarak döndür
+            'is_public': self.is_public,  # Dönüştürmeye gerek kalmadı, zaten Boolean
             'user_id': self.user_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'last_run_at': self.last_run_at.isoformat() if self.last_run_at else None,
             'run_count': self.run_count or 0
-        }
-    
-        
+        }        
     # ===================================
     # KULLANIM ÖRNEKLERİ (DOCSTRING)
     # ===================================

@@ -1,0 +1,46 @@
+docker run -d -p 6379:6379 --name erp-redis redis
+
+celery -A celery_worker.celery worker --loglevel=info -P solo
+
+
+
+Yeni Firma Oluşturma :
+http://127.0.0.1:5000/paketler/
+
+
+B2B Modülü
+http://127.0.0.1:5000/b2b/
+
+
+APP
+http://127.0.0.1:5000/
+
+
+MOBİL SATIŞ
+http://127.0.0.1:5000/mobile/
+
+
+SUPERVISOR
+http://127.0.0.1:5001/
+test@admin.com   - admin123
+
+
+E-Fatura & Entegratör Ayarları
+http://127.0.0.1:5000/efatura/ayarlar
+
+
+
+MENÜYE EKLENECEKLER
+
+DATALARIN ALANLARINI BUYULtuyor
+http://127.0.0.1:5000/efatura/db-fix
+
+terminalden giriş yapma
+http://127.0.0.1:5000/depo/terminal/mal-kabul
+depolar arası transfer
+http://127.0.0.1:5000/depo/terminal/transfer
+
+
+sanal e faturayı içeri alma
+http://127.0.0.1:5000/efatura/gelenler
+

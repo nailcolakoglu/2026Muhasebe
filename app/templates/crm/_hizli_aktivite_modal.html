@@ -1,0 +1,28 @@
+<div class="modal-header border-bottom-0 bg-light">
+    <h5 class="modal-title fw-bold text-primary">
+        <i class="bi bi-lightning-charge-fill me-2 text-warning"></i>{{ _('Hızlı Aktivite Ekle') }}
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+
+<div class="modal-body">
+    <form id="hizliAktiviteForm" 
+          action="{{ form.action }}"
+          data-cari-id="{{ firsat.cari_id or '' }}" 
+          data-aday-id="{{ firsat.aday_id or '' }}"
+          data-baslik="{{ firsat.baslik }}">
+        
+        <input type="hidden" name="firsat_id" value="{{ firsat.id }}">
+		<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {{ form.layout_html | safe }}
+        
+    </form>
+</div>
+
+<div class="modal-footer border-top-0 bg-light">
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ _('Vazgeç') }}</button>
+    <button type="button" class="btn btn-primary px-4" id="btnAktiviteKaydet">
+        <i class="bi bi-save me-1"></i>{{ _('Kaydet') }}
+    </button>
+</div>

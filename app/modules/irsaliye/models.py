@@ -1,3 +1,4 @@
+# app/modules/irsaliye/models.py
 
 from app.extensions import db
 from datetime import datetime

@@ -1,0 +1,95 @@
+{% extends "b2b/base.html" %}
+
+{% block title %}Sepetim - B2B{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <h4 class="text-secondary fw-bold"><i class="bi bi-cart3 me-2"></i>Sepetim</h4>
+        <a href="{{ url_for('b2b.katalog') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Alışverişe Dön</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4">Ürün</th>
+                            <th>Miktar</th>
+                            <th>Birim Fiyat</th>
+                            <th class="pe-4 text-end">Toplam</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stok_id, detay in sepet.items() %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold">{{ detay.ad }}</div>
+                                <small class="text-muted">{{ detay.kod }}</small>
+                            </td>
+                            <td>{{ detay.miktar }} {{ detay.birim }}</td>
+                            <td>₺{{ "{:,.2f}".format(detay.fiyat) }}</td>
+                            <td class="pe-4 text-end fw-bold">₺{{ "{:,.2f}".format(detay.miktar * detay.fiyat) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-5 text-muted">
+                                <i class="bi bi-cart-x display-4 d-block mb-3"></i>
+                                Sepetinizde henüz ürün bulunmuyor.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        {% if sepet %}
+        <button onclick="sepetiTemizle()" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i> Sepeti Temizle</button>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm bg-light">
+            <div class="card-body p-4">
+                <h5 class="fw-bold border-bottom pb-3 mb-3">Sipariş Özeti</h5>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Ara Toplam:</span>
+                    <span class="fw-bold">₺{{ "{:,.2f}".format(genel_toplam|default(0)) }}</span>
+                </div>
+                <div class="d-flex justify-content-between mt-4 border-top pt-3">
+                    <span class="fw-bold fs-5">Genel Toplam:</span>
+                    <span class="fw-bold fs-5 text-primary">₺{{ "{:,.2f}".format(genel_toplam|default(0)) }}</span>
+                </div>
+
+                {% if sepet %}
+                <form action="{{ url_for('b2b.siparis_tamamla') }}" method="POST" class="mt-4">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-success w-100 py-3 fw-bold shadow-sm" onclick="return confirm('Siparişi ERP sistemine göndermek istediğinize emin misiniz?')">
+                        <i class="bi bi-check-circle me-1"></i> Siparişi Onayla
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function sepetiTemizle() {
+        if(confirm('Sepetinizdeki tüm ürünler silinecek. Emin misiniz?')) {
+            fetch('{{ url_for("b2b.sepeti_temizle") }}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token() }}' }
+            }).then(res => res.json()).then(data => {
+                if(data.success) window.location.href = data.redirect;
+            });
+        }
+    }
+</script>
+{% endblock %}

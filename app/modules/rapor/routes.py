@@ -9,7 +9,9 @@ from app.extensions import db, get_tenant_db, csrf
 from app.modules.stok.models import StokKart, StokDepoDurumu, StokHareketi
 from app.modules.depo.models import Depo
 from app.modules.cari.models import CariHesap
-
+from app.modules.rapor.models import YazdirmaSablonu, SavedReport
+from app.modules.fatura.models import Fatura, FaturaKalemi
+from app.modules.firmalar.models import Firma
 from .rapor_builder import RaporBuilder, rapor_aylik_satis_ozeti
 from .export_engine import ExportEngine
  
@@ -40,6 +42,15 @@ from .registry import get_rapor_class, RAPOR_KATALOGU
 logger = logging.getLogger(__name__)
 
 rapor_bp = Blueprint('rapor', __name__)
+
+# ✨ DÜZELTME 1: Jinja2'ye '|yaziyla' filtresini küresel olarak öğretiyoruz
+@rapor_bp.app_template_filter('yaziyla')
+def yaziyla_filter(sayi):
+    try:
+        from app.araclar import sayiyi_yaziya_cevir
+        return sayiyi_yaziya_cevir(sayi) if sayi else ""
+    except Exception:
+        return ""
 
 # ✅ Tüm /api/* route'larını CSRF'den muaf tut
 @rapor_bp.before_request
@@ -615,12 +626,18 @@ def e_defter_indir():
         flash(f"e-Defter Hatası: {str(e)}", "danger")
         return redirect(url_for('rapor.index')) # Veya ilgili sayfaya yönlendir
 
+# ==========================================
+# DİNAMİK ŞABLON YÖNETİMİ ROTALARI
+# ==========================================
+
 @rapor_bp.route('/sablonlar')
 @login_required
 def sablonlar():
     """Şablon Yönetim Listesi"""
     if current_user.rol not in ['admin', 'patron']:
         return render_template('errors/403.html'), 403
+
+    tenant_db = get_tenant_db() # ✨ DÜZELTME: Tenant DB bağlantısı
 
     grid = DataGrid("sablon_grid", YazdirmaSablonu, "Yazdırma Şablonları")
     
@@ -632,22 +649,31 @@ def sablonlar():
     grid.add_column('aktif', 'Durum', type='boolean')
 
     grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'rapor.sablon_duzenle')
-    grid.add_action('preview', 'Önizle', 'bi bi-eye', 'btn-outline-dark btn-sm', 'route', 'rapor.sablon_onizle') # , target='_blank'
+    grid.add_action('preview', 'Önizle', 'bi bi-eye', 'btn-outline-dark btn-sm', 'route', 'rapor.sablon_onizle')
     grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'rapor.sablon_sil')
 
-    query = YazdirmaSablonu.query.filter(
-        (YazdirmaSablonu.firma_id == current_user.firma_id) | (YazdirmaSablonu.firma_id == None)
+    # ✨ DÜZELTME: Sorgu artık Tenant DB üzerinden atılıyor
+    query = tenant_db.query(YazdirmaSablonu).filter(
+        (YazdirmaSablonu.firma_id == str(current_user.firma_id)) | (YazdirmaSablonu.firma_id == None)
     )
     
     grid.process_query(query)
     return render_template('rapor/sablon_list.html', grid=grid)
 
-@rapor_bp.route('/sablon-duzenle/<int:id>', methods=['GET', 'POST'])
+
+@rapor_bp.route('/sablon-duzenle/<string:id>', methods=['GET', 'POST']) # ✨ DÜZELTME: <int:id> -> <string:id>
 @login_required
 def sablon_duzenle(id):
     if current_user.rol not in ['admin', 'patron']: return "Yetkisiz", 403
     
-    sablon = YazdirmaSablonu.query.get_or_404(id)
+    tenant_db = get_tenant_db()
+    
+    # ✨ DÜZELTME: get_or_404 yerine tenant_db query kullanımı
+    sablon = tenant_db.query(YazdirmaSablonu).filter_by(id=id).first()
+    if not sablon:
+        flash("Şablon bulunamadı!", "danger")
+        return redirect(url_for('rapor.sablonlar'))
+        
     form = create_sablon_form(sablon)
     
     if request.method == 'POST':
@@ -662,27 +688,27 @@ def sablon_duzenle(id):
             sablon.aktif = True if request.form.get('aktif') else False
             
             if sablon.varsayilan:
-                YazdirmaSablonu.query.filter_by(
+                tenant_db.query(YazdirmaSablonu).filter_by(
                     firma_id=sablon.firma_id, 
                     belge_turu=sablon.belge_turu
                 ).filter(YazdirmaSablonu.id != sablon.id).update({'varsayilan': False})
             
-            db.session.commit()
+            tenant_db.commit() # ✨ DÜZELTME: db.session yerine tenant_db
             return jsonify({'success': True, 'message': 'Şablon güncellendi.', 'redirect': '/rapor/sablonlar'})
 
-    # 👇 REHBER İÇİN VERİ HAZIRLIĞI (HATA BURADAYDI)
-    firma = Firma.query.get(current_user.firma_id)
-    # Rehberde {{ belge.x }} kullanıldığı için dummy (örnek) bir belge gönderiyoruz.
-    # Son faturayı çekelim, yoksa None gitmesin diye boş obje oluşturabiliriz ama şimdilik en son kaydı alalım.
-    ornek_belge = Fatura.query.filter_by(firma_id=current_user.firma_id).order_by(Fatura.id.desc()).first()
+    # ✨ DÜZELTME: Firma ve Fatura çekimi tenant üzerinden yapılıyor
+    firma = tenant_db.query(Firma).filter_by(id=str(current_user.firma_id)).first()
+    ornek_belge = tenant_db.query(Fatura).filter_by(firma_id=current_user.firma_id).order_by(Fatura.created_at.desc()).first()
 
     return render_template('rapor/sablon_form.html', form=form, sablon=sablon, firma=firma, belge=ornek_belge)
+
 
 @rapor_bp.route('/sablon-ekle', methods=['GET', 'POST'])
 @login_required
 def sablon_ekle():
     if current_user.rol not in ['admin', 'patron']: return "Yetkisiz", 403
     
+    tenant_db = get_tenant_db()
     form = create_sablon_form()
     
     if request.method == 'POST':
@@ -691,7 +717,7 @@ def sablon_ekle():
             data = form.get_data()
             
             sablon = YazdirmaSablonu(
-                firma_id=current_user.firma_id,
+                firma_id=str(current_user.firma_id),
                 belge_turu=data['belge_turu'],
                 baslik=data['baslik'],
                 html_icerik=data['html_icerik'],
@@ -701,44 +727,47 @@ def sablon_ekle():
             )
             
             if sablon.varsayilan:
-                 YazdirmaSablonu.query.filter_by(
-                    firma_id=current_user.firma_id, 
+                 tenant_db.query(YazdirmaSablonu).filter_by(
+                    firma_id=str(current_user.firma_id), 
                     belge_turu=sablon.belge_turu
                 ).update({'varsayilan': False})
             
-            db.session.add(sablon)
-            db.session.commit()
+            tenant_db.add(sablon)
+            tenant_db.commit() # ✨ DÜZELTME: db.session yerine tenant_db
             return jsonify({'success': True, 'message': 'Şablon oluşturuldu.', 'redirect': '/rapor/sablonlar'})
             
-    # 👇 REHBER İÇİN VERİ HAZIRLIĞI
-    firma = Firma.query.get(current_user.firma_id)
-    ornek_belge = Fatura.query.filter_by(firma_id=current_user.firma_id).order_by(Fatura.id.desc()).first()
+    firma = tenant_db.query(Firma).filter_by(id=str(current_user.firma_id)).first()
+    ornek_belge = tenant_db.query(Fatura).filter_by(firma_id=current_user.firma_id).order_by(Fatura.created_at.desc()).first()
 
     return render_template('rapor/sablon_form.html', form=form, firma=firma, belge=ornek_belge)
 
-@rapor_bp.route('/sablon-onizle/<int:id>')
+
+@rapor_bp.route('/sablon-onizle/<string:id>') # ✨ DÜZELTME: <int:id> -> <string:id>
 @login_required
 def sablon_onizle(id):
     """
     Şablonu sahte (dummy) verilerle veya gerçek son kayıtla test eder.
     """
-    sablon = YazdirmaSablonu.query.get_or_404(id)
+    tenant_db = get_tenant_db()
+    sablon = tenant_db.query(YazdirmaSablonu).filter_by(id=id).first()
     
-    # Test verisi bul (O türdeki son kayıt)
+    if not sablon:
+        return "Şablon bulunamadı", 404
+    
     veri = None
     if sablon.belge_turu == 'fatura':
-        veri = Fatura.query.filter_by(firma_id=current_user.firma_id).order_by(Fatura.id.desc()).first()
+        veri = tenant_db.query(Fatura).filter_by(firma_id=current_user.firma_id).order_by(Fatura.created_at.desc()).first()
     
-    # Eğer veri yoksa basit bir uyarı göster
     if not veri:
         return f"<h1>Önizleme İçin Veri Bulunamadı</h1><p>Lütfen önce sisteme en az bir tane <b>{sablon.belge_turu}</b> kaydı ekleyin.</p>"
     
     from flask import render_template_string
-    firma = Firma.query.get(current_user.firma_id)
+    firma = tenant_db.query(Firma).filter_by(id=str(current_user.firma_id)).first()
     
     context = {
         'belge': veri,
         'firma': firma,
+        'sayfalar': [], # Önizlemede sayfalama döngüsü hata vermesin diye boş liste gönderiyoruz
         'sablon_css': sablon.css_icerik
     }
     
@@ -747,17 +776,24 @@ def sablon_onizle(id):
     except Exception as e:
         return f"<h1>Şablon Render Hatası</h1><pre>{str(e)}</pre>"
 
-@rapor_bp.route('/sablon-sil/<int:id>', methods=['POST'])
+
+@rapor_bp.route('/sablon-sil/<string:id>', methods=['POST']) # ✨ DÜZELTME: <int:id> -> <string:id>
 @login_required
 def sablon_sil(id):
-    sablon = YazdirmaSablonu.query.get_or_404(id)
-    if sablon.firma_id != current_user.firma_id:
+    tenant_db = get_tenant_db()
+    sablon = tenant_db.query(YazdirmaSablonu).filter_by(id=id).first()
+    
+    if not sablon:
+        return jsonify({'success': False, 'message': 'Şablon bulunamadı'}), 404
+        
+    if sablon.firma_id != str(current_user.firma_id):
         return jsonify({'success': False, 'message': 'Yetkisiz işlem'}), 403
         
-    db.session.delete(sablon)
-    db.session.commit()
+    tenant_db.delete(sablon)
+    tenant_db.commit()
     return jsonify({'success': True, 'message': 'Şablon silindi.'})
 
+# ==========================================
 @rapor_bp.route('/muhasebe-raporlari')
 @login_required
 def muhasebe_raporlari():

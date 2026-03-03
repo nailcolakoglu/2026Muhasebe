@@ -38,3 +38,24 @@ class MockProvider(BaseProvider):
         if vkn_str.startswith("1"):
             return True, "urn:mail:defaultpk@gib.gov.tr"
         return False, None
+        
+    def get_incoming_invoices(self):
+        """Inbox'a (Gelen Kutusuna) düşmüş sanal faturalar üretir"""
+        import uuid, random
+        from datetime import datetime, timedelta
+        
+        print("📥 MOCK API: Gelen faturalar sorgulanıyor...")
+        time.sleep(1) # API Gecikmesi simülasyonu
+        
+        invoices = []
+        for i in range(random.randint(2, 5)):
+            invoices.append({
+                'ettn': str(uuid.uuid4()),
+                'fatura_no': f"TED2026{str(random.randint(100000000, 999999999))}",
+                'gonderici_vkn': f"111111111{i}1",
+                'gonderici_unvan': f"Örnek Tedarikçi ve San. Tic. A.Ş. - Şube {i}",
+                'tarih': (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d'),
+                'tutar': round(random.uniform(5000, 50000), 2),
+                'para_birimi': 'TRY'
+            })
+        return invoices

@@ -1,0 +1,13 @@
+# E-FATURA İÇİN DOS ORTAMINDA ÇALIŞTIRILMASI GEREKİR.
+
+D:\GitHup\2026Muhasebe>celery -A celery_worker.celery worker --loglevel=info -P solo
+
+D:\GitHup\2026Muhasebe>docker run -d -p 6379:6379 --name erp-redis redis
+
+
+python run.py
+
+veya
+
+D:\GitHup\2026Muhasebe>flask --app run.py run
+

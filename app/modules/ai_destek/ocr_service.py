@@ -37,7 +37,7 @@ class FaturaOCRService:
         if self.api_key and HAS_VISION:
             genai.configure(api_key=self.api_key)
             # Vision için model (gemini-1.5-flash veya gemini-1.5-pro)
-            self.vision_model = genai.GenerativeModel('gemini-1.5-flash')
+            self.vision_model = genai.GenerativeModel(model_name="gemini-1.5-flash")
             self.is_active = True
         else:
             self.is_active = False

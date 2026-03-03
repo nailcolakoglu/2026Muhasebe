@@ -5,6 +5,7 @@ from flask_babel import gettext as _
 from flask import url_for, session
 from flask_login import current_user
 from datetime import datetime
+from app.extensions import get_tenant_db # ✨ EKLENDİ: Tenant DB bağlantısı
 
 # Modeller
 from app.modules.cari.models import CariHesap
@@ -14,6 +15,7 @@ from app.modules.sube.models import Sube
 from app.enums import StokBirimleri
 
 def create_irsaliye_form(irsaliye=None):
+    tenant_db = get_tenant_db() # ✨ EKLENDİ: Multi-tenant izolasyonu sağlandı
     is_edit = irsaliye is not None
     
     # Action URL belirle
@@ -33,19 +35,17 @@ def create_irsaliye_form(irsaliye=None):
     # ==========================================
     firma_id = current_user.firma_id
 
-    # 1.Cariler (Alıcı Firmalar)
-    # Select2 (Aramalı Seçim) kullanacağımız için hepsini yükleyebiliriz 
-    # veya performans için AJAX ile yükleme yapabiliriz.Şimdilik standart yüklüyoruz.
-    cariler = CariHesap.query.filter_by(firma_id=firma_id, aktif=True).order_by(CariHesap.unvan).all()
+    
+    # 1.Cariler (Alıcı Firmalar) - ✨ DÜZELTME: 100.000 kaydı çekmemek için AJAX Select2 yapısı
+    # form yüklenirken sadece en son eklenen 20 cariyi (veya düzenleniyorsa mevcut carini) getiririz
+    cariler = tenant_db.query(CariHesap).filter_by(firma_id=firma_id, aktif=True).limit(20).all()
     cari_opts = [(c.id, f"{c.unvan}") for c in cariler]
-    cari_opts.insert(0, (0, "Seçiniz..."))
+    if not is_edit: cari_opts.insert(0, ('', "Seçiniz..."))
 
-    # 2.Depolar (Yetki Kontrollü)
-    # Kullanıcının yetkili olduğu şubeye ait depoları getirir.
-    depo_query = Depo.query.filter_by(firma_id=firma_id, aktif=True)
+    # 2.Depolar (Yetki Kontrollü) - ✨ DÜZELTİLDİ: tenant_db kullanıldı
+    depo_query = tenant_db.query(Depo).filter_by(firma_id=firma_id, aktif=True)
     
     if current_user.rol not in ['admin', 'patron'] and hasattr(current_user, 'yetkili_subeler'):
-        # Eğer admin değilse sadece yetkili olduğu şubelerin depolarını görsün
         yetkili_sube_ids = [s.id for s in current_user.yetkili_subeler]
         if yetkili_sube_ids:
             depo_query = depo_query.filter(Depo.sube_id.in_(yetkili_sube_ids))
@@ -53,12 +53,10 @@ def create_irsaliye_form(irsaliye=None):
     depolar = depo_query.all()
     depo_opts = [(d.id, f"{d.ad}") for d in depolar]
     
-    # Varsayılan Depo Seçimi
     varsayilan_depo = irsaliye.depo_id if irsaliye else (depo_opts[0][0] if depo_opts else '')
 
-    # 3.Stoklar (Ürünler)
-    # Performans için ilk 50 ürünü yüklüyoruz, gerisi AJAX (api/stok-ara) ile gelecek.
-    stoklar = StokKart.query.filter_by(firma_id=firma_id, aktif=True).limit(50).all()
+    # 3.Stoklar (Ürünler) - ✨ DÜZELTİLDİ: tenant_db kullanıldı
+    stoklar = tenant_db.query(StokKart).filter_by(firma_id=firma_id, aktif=True).limit(50).all()
     stok_opts = [(s.id, f"{s.kod} - {s.ad}") for s in stoklar]
 
     # Tarih ve Saat Varsayılanları
@@ -71,8 +69,7 @@ def create_irsaliye_form(irsaliye=None):
     # ==========================================
     # 1.SEKME: GENEL BİLGİLER
     # ==========================================
-    # Tema ayarları
-    theme = {'colorfocus': '#fff3cd', 'textfocus': '#856404', 'borderfocus': '#ffeeba'} # İrsaliye sarı tonlar
+    theme = {'colorfocus': '#fff3cd', 'textfocus': '#856404', 'borderfocus': '#ffeeba'} 
 
     belge_no = FormField('belge_no', FieldType.AUTO_NUMBER, _('Belge No'), required=True, 
                          value=irsaliye.belge_no if irsaliye else '', 
@@ -81,11 +78,16 @@ def create_irsaliye_form(irsaliye=None):
     tarih = FormField('tarih', FieldType.DATE, _('Sevk Tarihi'), required=True, value=val_tarih, **theme).in_row("col-md-3")
     saat = FormField('saat', FieldType.TIME, _('Sevk Saati'), required=True, value=val_saat, **theme).in_row("col-md-2")
 
-    # Cari Seçimi (Select2 Entegrasyonu)
+    #cari_id = FormField('cari_id', FieldType.SELECT, _('Alıcı Firma (Cari)'), options=cari_opts, required=True, 
+    #                    value=irsaliye.cari_id if irsaliye else '',
+    #                    select2_config={'placeholder': 'Cari Seçiniz...', 'search': True},
+    #                    html_attributes={'id': 'cari_select'}, **theme).in_row("col-md-4")
+
     cari_id = FormField('cari_id', FieldType.SELECT, _('Alıcı Firma (Cari)'), options=cari_opts, required=True, 
                         value=irsaliye.cari_id if irsaliye else '',
-                        select2_config={'placeholder': 'Cari Seçiniz...', 'search': True},
-                        html_attributes={'id': 'cari_select'}, **theme).in_row("col-md-4")
+                        # ✨ DÜZELTME: Select2'ye AJAX URL'sini verdik
+                        html_attributes={'id': 'cari_select', 'data-ajax-url': '/irsaliye/api/cari-ara', 'data-js': 'stok-select'}, 
+                        **theme).in_row("col-md-4")
 
     depo_id = FormField('depo_id', FieldType.SELECT, _('Çıkış Deposu'), options=depo_opts, required=True, 
                         value=varsayilan_depo, **theme).in_row("col-md-4")
@@ -112,30 +114,24 @@ def create_irsaliye_form(irsaliye=None):
     # ==========================================
     kalemler = FormField('kalemler', FieldType.MASTER_DETAIL, _('Sevk Edilecek Ürünler'), required=True, html_attributes={'id': 'kalemler_table'})
     
-    # AJAX Stok Arama URL'si (routes.py'de tanımlamıştık)
     stok_ajax_url = '/irsaliye/api/stok-ara'
 
     kalemler.columns = [
         FormField('id', FieldType.HIDDEN, 'ID', default_value=0, html_attributes={'style': 'width: 0px;'}),
         
-        # Stok Seçimi (AJAX Destekli)
         FormField('stok_id', FieldType.SELECT, 'Ürün / Hizmet', options=stok_opts, required=True, 
                   html_attributes={'style': 'width: 300px;', 'data-ajax-url': stok_ajax_url, 'data-js': 'stok-select'}),
         
-        # Miktar
         FormField('miktar', FieldType.NUMBER, 'Miktar', required=True, default_value=1, 
                   html_attributes={'class': 'text-end', 'style': 'width: 100px;'}),
         
-        # Birim (Enumdan Çekiliyor)
         FormField('birim', FieldType.SELECT, 'Birim', options=StokBirimleri.choices(), default_value='Adet', 
                   html_attributes={'style': 'width: 100px;'}),
 
-        # Açıklama
         FormField('aciklama', FieldType.TEXT, 'Satır Açıklaması', 
                   html_attributes={'placeholder': 'Örn: Kırmızı Renk', 'style': 'width: 250px;'})
     ]
 
-    # Düzenleme modunda eski kalemleri yükle
     if is_edit and irsaliye.kalemler:
         row_data = []
         for k in irsaliye.kalemler:
@@ -148,6 +144,22 @@ def create_irsaliye_form(irsaliye=None):
             })
         kalemler.value = row_data
 
+    # E-İrsaliye Butonları (Sadece düzenleme modunda görünür)
+    if is_edit:
+        eirsaliye_html = f'''
+        <div class="alert alert-secondary border-0 shadow-sm mt-3">
+            <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-truck me-2"></i>E-İrsaliye Entegrasyonu</h6>
+            <div class="d-flex gap-2">
+                <button type="button" onclick="eIrsaliyeGonder('{str(irsaliye.id)}')" class="btn btn-primary">
+                    <i class="bi bi-send me-1"></i> GİB'e Gönder
+                </button>
+            </div>
+        </div>
+        '''
+        tab_eirsaliye = [layout.create_html(eirsaliye_html)]
+    else:
+        tab_eirsaliye = []
+
     # ==========================================
     # LAYOUT YERLEŞİMİ
     # ==========================================
@@ -156,17 +168,19 @@ def create_irsaliye_form(irsaliye=None):
             layout.create_row(belge_no, tarih, saat, cari_id),
             layout.create_row(depo_id, aciklama)
         ]),
-        ("Lojistik & Şoför (E-İrsaliye)", [
+        ("Lojistik & Şoför", [
             layout.create_alert("Bilgi", "E-İrsaliye gönderimi için şoför ve plaka bilgileri zorunludur.", "info"),
             layout.create_row(plaka_arac, sofor_tc, sofor_ad, sofor_soyad)
         ]),
         ("Ürünler", [kalemler])
     ]
     
+    if is_edit:
+        tabs_content.append(("E-İrsaliye", tab_eirsaliye))
+        
     tabs = layout.create_tabs("irs_tabs", tabs_content)
     form.set_layout_html(tabs)
     
-    # Validasyon için alanları kaydet
     form.add_fields(belge_no, tarih, saat, cari_id, depo_id, aciklama, 
                    plaka_arac, sofor_tc, sofor_ad, sofor_soyad, kalemler)
     

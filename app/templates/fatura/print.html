@@ -2,200 +2,318 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Fatura Yazdır - {{ fatura.belge_no }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Fatura - {{ fatura.belge_no }}</title>
     <style>
-        /* Sadece baskıda çalışacak stiller */
-        @media print {
-            body { 
-                background: white; 
-                font-family: 'Courier New', Courier, monospace; /* Fatura fontu */
-                font-size: 12px;
-                -webkit-print-color-adjust: exact;
-            }
-            .page {
-                page-break-after: always; /* Her 'page' sınıfından sonra kağıt atla */
-                position: relative;
-                height: 297mm; /* A4 Yüksekliği */
-                padding: 10mm;
-                border: none !important; /* Baskıda çerçeve olmasın */
-                margin: 0 !important;
-            }
-            .page:last-child {
-                page-break-after: auto;
-            }
-            /* Tarayıcı alt/üst bilgilerini gizle */
-            @page { margin: 0; }
-            .no-print { display: none !important; }
+        /* ========================================
+         ENTERPRISE A4 RAPORLAMA CSS YAPISI
+         ========================================
+        */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #546e7a;
+            --border-color: #dfe6e9;
+            --accent-color: #d63031;
         }
-        
-        /* Ekran görünümü için */
-        body { background: #525659; }
-        .page {
-            background: white;
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f5f6fa;
+            font-family: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-size: 10pt;
+            color: #2d3436;
+        }
+
+        .a4-page {
             width: 210mm;
-            min-height: 297mm;
+            height: 297mm;
             margin: 20px auto;
-            padding: 20mm;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            background: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 15mm;
             box-sizing: border-box;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            page-break-after: always;
+        }
+
+        @media print {
+            body { background: none; }
+            .a4-page {
+                margin: 0;
+                box-shadow: none;
+                page-break-after: always;
+                height: 297mm;
+            }
+            @page { margin: 0; size: A4; }
+            .d-print-none { display: none !important; }
+        }
+
+        .report-header {
+            flex: 0 0 auto;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .report-content {
+            flex: 1 1 auto;
+            overflow: hidden;
+        }
+
+        .report-footer {
+            flex: 0 0 auto;
+            margin-top: auto;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        h1.doc-title {
+            font-size: 24pt;
+            font-weight: 700;
+            color: var(--primary-color);
+            text-transform: uppercase;
+            text-align: right;
+            margin: 0;
         }
         
-        /* Tablo Çizgileri */
-        .table-invoice th, .table-invoice td {
-            border: 1px solid #000 !important;
-            padding: 4px 8px;
-            font-size: 13px;
+        .company-info h2 { margin: 0; font-size: 16pt; color: var(--primary-color); }
+        .company-info p { margin: 2px 0; font-size: 9pt; color: var(--secondary-color); }
+
+        .info-box {
+            background-color: #f8f9fa;
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            border-radius: 4px;
+            height: 100%;
         }
-        .table-invoice thead th {
-            background-color: #f0f0f0 !important;
+        .info-box h3 { margin: 0 0 5px 0; font-size: 11pt; color: var(--primary-color); border-bottom: 1px solid var(--border-color); padding-bottom: 3px;}
+        .info-box p { margin: 2px 0; font-size: 9pt; }
+
+        .label-value { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .label-value .label { font-weight: 500; color: var(--secondary-color); }
+        .label-value .value { font-weight: 700; }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        .data-table th {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 8px 5px;
+            text-align: left;
+            font-weight: 500;
+            font-size: 9pt;
+        }
+        .data-table td {
+            padding: 6px 5px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+        .data-table tr:nth-child(even) { background-color: #f9f9f9; }
+        .text-end { text-align: right; }
+        .text-center { text-align: center; }
+        .fw-bold { font-weight: bold; }
+
+        .nakli-yekun-bar {
+            background-color: #e9ecef;
+            padding: 5px 10px;
             font-weight: bold;
+            text-align: right;
+            font-size: 9pt;
+            border: 1px solid var(--border-color);
+            margin-top: 5px;
         }
+
+        .totals-area { display: flex; justify-content: flex-end; margin-top: 20px; }
+        .totals-table { width: 300px; border-collapse: collapse; }
+        .totals-table td { padding: 5px; border-bottom: 1px solid var(--border-color); }
+        .totals-table .grand-total { font-size: 14pt; color: var(--primary-color); border-top: 2px solid var(--primary-color); }
+
+        .signatures { display: flex; justify-content: space-between; margin-top: 40px; }
+        .signature-box { width: 40%; text-align: center; }
+        .signature-line { border-bottom: 1px solid black; height: 60px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="no-print text-center py-3">
-        <button onclick="window.print()" class="btn btn-light fw-bold">
-            🖨️ YAZDIR
-        </button>
-        <a href="/fatura/duzenle/{{ fatura.id }}" class="btn btn-outline-light ms-2">Geri Dön</a>
-    </div>
-
     {% for sayfa in sayfalar %}
-    <div class="page">
+    <div class="a4-page">
         
-        <div class="row mb-4">
-            <div class="col-8">
-                <h4 class="fw-bold">{{ current_user.firma.unvan if current_user.firma else 'FİRMA ADI' }}</h4>
-                <p class="mb-0 small">
-                    {{ current_user.firma.adres or '' }}<br>
-                    Tel: {{ current_user.firma.telefon or '' }} | V.D: {{ current_user.firma.vergi_dairesi or '' }} - V.No: {{ current_user.firma.vergi_no or '' }}
-                </p>
-                
-                <div class="mt-4 p-2 border border-dark rounded">
-                    <small class="text-muted d-block fw-bold border-bottom mb-1 pb-1">SAYIN:</small>
-                    <h5 class="mb-1">{{ fatura.cari.unvan if fatura.cari else 'CARİ SEÇİLMEMİŞ' }}</h5>
-                    <div class="small">
-                        {{ fatura.cari.adres or '' }}<br>
-                        {{ fatura.cari.vergi_dairesi or '' }} / {{ fatura.cari.vergi_no or fatura.cari.tc_no or '' }}
+        <div class="report-header">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div class="company-info" style="width: 50%;">
+                    {% if firma.logo_path %}
+                        <img src="{{ url_for('static', filename=firma.logo_path) }}" alt="Logo" style="height: 50px; margin-bottom: 10px;">
+                    {% endif %}
+                    <h2>{{ firma.unvan or 'FİRMA ÜNVANI YOK' }}</h2>
+                    <p>{{ firma.adres or '' }}</p>
+                    <p>Tel: {{ firma.telefon or '' }} | E-posta: {{ firma.email or '' }}</p>
+                    <p>V.D: {{ firma.vergi_dairesi or '' }} | V.No: {{ firma.vergi_no or '' }} | Mersis: {{ firma.mersis_no or '' }}</p>
+                </div>
+
+                <div style="width: 45%; text-align: right;">
+                    <h1 class="doc-title">
+                        {% if fatura.fatura_turu and fatura.fatura_turu.name == 'SATIS_IADE' %}SATIŞ İADE FATURASI
+                        {% elif fatura.fatura_turu and fatura.fatura_turu.name == 'ALIS_IADE' %}ALIŞ İADE FATURASI
+                        {% else %}SATIŞ FATURASI{% endif %}
+                    </h1>
+                    <div style="margin-top: 15px;">
+                        <div class="label-value"><span class="label">Fatura No:</span><span class="value">{{ fatura.belge_no }}</span></div>
+                        <div class="label-value"><span class="label">Tarih:</span><span class="value">{{ fatura.tarih.strftime('%d.%m.%Y') if fatura.tarih else '' }}</span></div>
+                        {% if fatura.vade_tarihi %}
+                        <div class="label-value"><span class="label">Vade:</span><span class="value">{{ fatura.vade_tarihi.strftime('%d.%m.%Y') }}</span></div>
+                        {% endif %}
+                        {% if fatura.dis_belge_no %}
+                        <div class="label-value"><span class="label">Karşı Belge No:</span><span class="value">{{ fatura.dis_belge_no }}</span></div>
+                        {% endif %}
+                        
+                        <div class="label-value">
+                            <span class="label">Döviz:</span>
+                            <span class="value">{{ fatura.doviz_turu.name if fatura.doviz_turu else 'TL' }} (Kur: {{ "{:,.4f}".format(fatura.doviz_kuru or 1.0) }})</span>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="col-4 text-end">
-                <h3>FATURA</h3>
-                <table class="table table-bordered table-sm small mb-0 border-dark">
-                    <tr><th class="bg-light">Tarih</th><td>{{ fatura.tarih.strftime('%d.%m.%Y') if fatura.tarih else '-' }}</td></tr>
-                    <tr><th class="bg-light">Seri/Sıra</th><td>{{ fatura.belge_no }}</td></tr>
-                    <tr><th class="bg-light">Sayfa</th><td>{{ sayfa.sayfa_no }} / {{ sayfalar|length }}</td></tr>
-                </table>
+
+            <div style="margin-top: 20px;">
+                <div class="info-box">
+                    <h3>SAYIN MÜŞTERİ</h3>
+                    <p style="font-size: 11pt; font-weight: bold;">{{ fatura.cari.unvan if fatura.cari else 'Cari Bilgisi Yok' }}</p>
+                    <p>{{ fatura.cari.adres or '' }} / {{ fatura.cari.ilce or '' }} / {{ fatura.cari.il or '' }}</p>
+                    <p>V.D: {{ fatura.cari.vergi_dairesi or '' }} | V.No/TCKN: {{ fatura.cari.vergi_no or fatura.cari.tc_kimlik_no or '' }}</p>
+                    {% if fatura.sevk_adresi %}
+                    <p style="margin-top: 5px; font-style: italic;"><span class="fw-bold">Sevk Adresi:</span> {{ fatura.sevk_adresi }}</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
 
-        <table class="table table-invoice table-striped mb-0">
-            <thead>
-                <tr>
-                    <th>Ürün Adı</th>
-                    <th class="text-end" width="80">Miktar</th>
-                    <th class="text-center" width="50">Birim</th>
-                    <th class="text-end" width="100">Birim Fiyat</th>
-                    <th class="text-end" width="100">Tutar</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if sayfa.sayfa_no > 1 %}
-                <tr class="fw-bold bg-light">
-                    <td colspan="4" class="text-end">ÖNCEKİ SAYFADAN DEVİR:</td>
-                    <td class="text-end">{{ "{:,.2f}".format(sayfa.devreden or 0) }} ₺</td>
-                </tr>
-                {% endif %}
-
-                {% for kalem in sayfa.kalemler %}
-                <tr>
-                    <td>
-                        {{ kalem.stok.ad if kalem.stok else 'Bilinmeyen Ürün' }}
-                        {% if kalem.stok and kalem.stok.kod %}
-                        <br><small class="text-muted">{{ kalem.stok.kod }}</small>
-                        {% endif %}
-                    </td>
-                    <td class="text-end">{{ "{:,.2f}".format(kalem.miktar or 0) }}</td>
-                    <td class="text-center">{{ kalem.stok.birim if kalem.stok else 'Adet' }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(kalem.birim_fiyat or 0) }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(kalem.satir_toplami or 0) }}</td>
-                </tr>
-                {% endfor %}
-
-                {% set kalan_satir = 18 - (sayfa.kalemler|length) %}
-                {% if kalan_satir > 0 %}
-                    {% for i in range(kalan_satir) %}
-                    <tr style="height: 28px;"> <td colspan="5"></td>
-                    </tr>
-                    {% endfor %}
-                {% endif %}
-
-                {% if not sayfa.son_sayfa_mi %}
-                <tr class="fw-bold bg-light border-top border-dark">
-                    <td colspan="4" class="text-end">SONRAKİ SAYFAYA DEVİR (NAKLİ YEKÜN):</td>
-                    <td class="text-end">{{ "{:,.2f}".format(sayfa.nakli_yekun or 0) }} ₺</td>
-                </tr>
-                {% endif %}
-            </tbody>
-        </table>
-
-        {% if sayfa.son_sayfa_mi %}
-        <div class="row mt-3"> 
-            <div class="col-8">
-                <div class="p-2 border rounded bg-light mb-2 small fst-italic">
-                    Yalnız: {{ fatura.genel_toplam_yazi_ile if fatura.genel_toplam_yazi_ile else '#Yazı ile tutar modülü eklenebilir#' }}
-                </div>
-                
-                <div class="row g-2">
-                    <div class="col-6">
-                        <div class="border p-2 text-center" style="height: 100px;">
-                            <small class="fw-bold d-block border-bottom mb-2">Teslim Eden</small>
-                            <br>
-                            {{ current_user.firma.unvan or 'İmza / Kaşe' }}
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="border p-2 text-center" style="height: 100px;">
-                            <small class="fw-bold d-block border-bottom mb-2">Teslim Alan</small>
-                            <br>
-                            {{ fatura.cari.yetkili if fatura.cari else 'İmza' }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-4">
-                <table class="table table-bordered fw-bold mb-0">
+        <div class="report-content">
+            <table class="data-table">
+                <thead>
                     <tr>
-                        <td>Ara Toplam</td>
-                        <td class="text-end">{{ "{:,.2f}".format(fatura.toplam_tutar or 0) }} ₺</td>
+                        <th style="width: 5%;">#</th>
+                        <th style="width: 15%;">Stok Kodu</th>
+                        <th style="width: 35%;">Ürün / Hizmet Adı</th>
+                        <th class="text-center" style="width: 8%;">Miktar</th>
+                        <th class="text-center" style="width: 7%;">Birim</th>
+                        <th class="text-end" style="width: 10%;">Birim Fiyat</th>
+                        <th class="text-center" style="width: 5%;">İsk.</th>
+                        <th class="text-center" style="width: 5%;">KDV</th>
+                        <th class="text-end" style="width: 10%;">Tutar (TL)</th>
                     </tr>
-                    {% if fatura.toplam_iskonto and fatura.toplam_iskonto > 0 %}
-                    <tr>
-                        <td class="text-danger">İskonto</td>
-                        <td class="text-end text-danger">-{{ "{:,.2f}".format(fatura.toplam_iskonto or 0) }} ₺</td>
+                </thead>
+                <tbody>
+                    {% if sayfa.devreden > 0 %}
+                    <tr style="background-color: #eee; font-style: italic;">
+                        <td></td>
+                        <td colspan="7">Önceki Sayfadan Devir</td>
+                        <td class="text-end fw-bold">{{ "{:,.2f}".format(sayfa.devreden or 0) }} ₺</td>
                     </tr>
                     {% endif %}
-                    <tr>
-                        <td>KDV Toplam</td>
-                        <td class="text-end">{{ "{:,.2f}".format(fatura.toplam_kdv or 0) }} ₺</td>
-                    </tr>
-                    <tr class="bg-dark text-white">
-                        <td class="fs-5">GENEL TOPLAM</td>
-                        <td class="text-end fs-5">
-                            {% set g_toplam = fatura.genel_toplam if fatura.genel_toplam else ((fatura.toplam_tutar or 0) + (fatura.toplam_kdv or 0)) %}
-                            {{ "{:,.2f}".format(g_toplam) }} ₺
-                        </td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-        {% endif %}
 
-    </div>
+                    {% for kalem in sayfa.kalemler %}
+                    <tr>
+                        <td>{{ loop.index + ((sayfa.sayfa_no - 1) * 18) }}</td>
+                        <td>{{ kalem.stok.kod if kalem.stok else '-' }}</td>
+                        <td>{{ kalem.stok.ad if kalem.stok else 'Hizmet/Diğer' }}</td>
+                        <td class="text-center">{{ "{:,.2f}".format(kalem.miktar or 0).replace('.00', '') }}</td>
+                        <td class="text-center small">{{ kalem.birim.value if kalem.birim and kalem.birim.value is defined else kalem.birim|string|capitalize }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(kalem.birim_fiyat or 0) }}</td>
+                        <td class="text-center">{% if kalem.iskonto_orani and kalem.iskonto_orani > 0 %}%{{ kalem.iskonto_orani }}{% endif %}</td>
+                        <td class="text-center">%{{ kalem.kdv_orani or 0 }}</td>
+                        <td class="text-end fw-bold">{{ "{:,.2f}".format(kalem.satir_toplami or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="report-footer">
+            <div class="nakli-yekun-bar">
+                Bu Sayfa Toplamı: {{ "{:,.2f}".format((sayfa.nakli_yekun or 0) - (sayfa.devreden or 0)) }} ₺ | 
+                Nakli Yekün (Kümülatif): {{ "{:,.2f}".format(sayfa.nakli_yekun or 0) }} ₺
+                (Sayfa {{ sayfa.sayfa_no }} / {{ sayfalar|length }})
+            </div>
+
+            {% if sayfa.son_sayfa_mi %}
+            <div style="display: flex; gap: 20px; margin-top: 20px;">
+                <div style="flex: 1;">
+                    {% if fatura.aciklama %}
+                    <div class="info-box" style="height: auto; margin-bottom: 10px;">
+                        <h3>Açıklama</h3>
+                        <p>{{ fatura.aciklama }}</p>
+                    </div>
+                    {% endif %}
+                    <div class="info-box" style="height: auto; background-color: var(--primary-color); color: white;">
+                        <p style="margin: 0; font-size: 11pt;">Yalnız: {{ fatura.genel_toplam_yazi_ile or '' }}</p>
+                    </div>
+                </div>
+
+                <div>
+                    <table class="totals-table">
+                        <tr>
+                            <td>Ara Toplam</td>
+                            <td class="text-end">{{ "{:,.2f}".format(fatura.ara_toplam or 0) }} ₺</td>
+                        </tr>
+                        {% if fatura.iskonto_toplam and fatura.iskonto_toplam > 0 %}
+                        <tr>
+                            <td style="color: var(--accent-color);">İskonto Toplamı</td>
+                            <td class="text-end" style="color: var(--accent-color);">-{{ "{:,.2f}".format(fatura.iskonto_toplam or 0) }} ₺</td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                            <td>KDV Toplamı</td>
+                            <td class="text-end">{{ "{:,.2f}".format(fatura.kdv_toplam or 0) }} ₺</td>
+                        </tr>
+                        {% if fatura.doviz_turu and fatura.doviz_turu.name != 'TL' and fatura.doviz_kuru %}
+                        <tr>
+                            <td>Dövizli Genel Toplam</td>
+                            <td class="text-end fw-bold">
+                                {% set dovizli = (fatura.genel_toplam or 0) / (fatura.doviz_kuru or 1) %}
+                                {{ "{:,.2f}".format(dovizli) }} {{ fatura.doviz_turu.name }}
+                            </td>
+                        </tr>
+                        {% endif %}
+                        <tr class="grand-total">
+                            <td class="fw-bold">GENEL TOPLAM</td>
+                            <td class="text-end fw-bold">{{ "{:,.2f}".format(fatura.genel_toplam or 0) }} ₺</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="signatures">
+                <div class="signature-box">
+                    <p class="fw-bold">Teslim Eden</p>
+                    <div class="signature-line"></div>
+                    <p class="small">{{ firma.unvan or '' }}</p>
+                </div>
+                <div class="signature-box">
+                    <p class="fw-bold">Teslim Alan</p>
+                    <div class="signature-line"></div>
+                    <p class="small">{{ fatura.cari.unvan if fatura.cari else '' }}</p>
+                </div>
+            </div>
+            <p class="text-center small" style="margin-top: 20px; color: #999;">Bu fatura SAAS ERP sisteminde elektronik olarak üretilmiştir.</p>
+            {% endif %}
+
+        </div> 
+    </div> 
     {% endfor %}
+
+    <div style="position: fixed; top: 20px; right: 20px; z-index: 9999;" class="d-print-none">
+        <button onclick="window.print();" style="padding: 10px 20px; background: #2c3e50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; display: flex; align-items: center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 8px;"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/></svg>
+            Yazdır / PDF Olarak Kaydet
+        </button>
+    </div>
 
 </body>
 </html>

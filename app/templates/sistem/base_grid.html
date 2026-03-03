@@ -12,6 +12,14 @@
                 <li class="breadcrumb-item active text-primary" aria-current="page">{{ grid.title }}</li>
             </ol>
         </nav>
+
+        {% if add_url %}
+        <div>
+            <a href="{{ add_url }}" class="btn btn-primary shadow-sm">
+                <i class="bi bi-plus-lg me-1"></i> {{ add_btn_text|default('Yeni Ekle') }}
+            </a>
+        </div>
+        {% endif %}
     </div>
 
     <div class="row">

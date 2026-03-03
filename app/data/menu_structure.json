@@ -13,14 +13,28 @@
     "children": [
       { "title": "Sipariş Listesi", "icon": "bi bi-basket", "endpoint": "siparis.index", "order": 1 },
       { "title": "Yeni Sipariş Al", "icon": "bi bi-plus-lg", "endpoint": "siparis.ekle", "order": 2 },
-      { "title": "Satış Faturaları", "icon": "bi bi-receipt", "endpoint": "fatura.index", "order": 3 },
-      { "title": "Yeni Fatura Kes", "icon": "bi bi-receipt-cutoff", "endpoint": "fatura.ekle", "order": 4 }
+      { "title": "Sevk İrsaliyeleri", "icon": "bi bi-truck", "endpoint": "irsaliye.index", "order": 3 },
+      { "title": "Yeni İrsaliye Kes", "icon": "bi bi-clipboard-check", "endpoint": "irsaliye.ekle", "order": 4 },
+      { "title": "Satış Faturaları", "icon": "bi bi-receipt", "endpoint": "fatura.index", "order": 5 },
+      { "title": "Yeni Fatura Kes", "icon": "bi bi-receipt-cutoff", "endpoint": "fatura.ekle", "order": 6 }
+    ]
+  },
+  {
+    "title": "CRM",
+    "icon": "bi bi-person-lines-fill",
+    "order": 3,
+    "children": [
+      { "title": "Satış Hunisi (Pipeline)", "icon": "bi bi-funnel-fill", "endpoint": "crm.pipeline", "order": 1 },
+      { "title": "Satış Fırsatları", "icon": "bi bi-currency-dollar", "endpoint": "crm.firsat_index", "order": 2 },
+      { "title": "Aday Müşteriler", "icon": "bi bi-person-plus-fill", "endpoint": "crm.aday_index", "order": 3 },
+      { "title": "Görüşme ve Aktiviteler", "icon": "bi bi-calendar-check-fill", "endpoint": "crm.aktivite_index", "order": 4 },
+      { "title": "AI Müşteri Etkileşimleri", "icon": "bi bi-robot", "endpoint": "crm.hareket_index", "order": 5 }
     ]
   },
   {
     "title": "Finans",
     "icon": "bi bi-wallet2",
-    "order": 3,
+    "order": 4,
     "roles": "admin,muhasebe,finans_muduru",
     "children": [
       { "title": "Virman / Transfer", "icon": "bi bi-arrow-left-right", "endpoint": "finans.virman", "order": 1 },
@@ -37,7 +51,7 @@
   {
     "title": "Muhasebe",
     "icon": "bi bi-journal-bookmark-fill",
-    "order": 4,
+    "order": 5,
     "roles": "admin,muhasebe_muduru",
     "children": [
       { "title": "Muhasebe Fişleri", "icon": "bi bi-journal-text", "endpoint": "muhasebe.index", "order": 1 },
@@ -48,25 +62,24 @@
     ]
   },
   {
-    "title": "Stok",
+    "title": "Stok & WMS",
     "icon": "bi bi-box-seam",
-    "order": 5,
+    "order": 6,
     "roles": "admin,muhasebe,depo,sube_yoneticisi",
     "children": [
       { "title": "Stok Kartları", "icon": "bi bi-boxes", "endpoint": "stok.index", "order": 1 },
-      { "title": "Kategoriler", "icon": "bi bi-tags", "endpoint": "kategori.index", "order": 2 },
-      { "title": "Stok Fişleri", "icon": "bi bi-arrow-left-right", "endpoint": "stok_fisi.index", "order": 3 },
-      { "title": "Depo Tanımları", "icon": "bi bi-building-gear", "endpoint": "depo.index", "order": 4 },
+      { "title": "Depo & Lokasyonlar", "icon": "bi bi-building-gear", "endpoint": "depo.index", "order": 2 },
+      { "title": "Mal Kabul & Barkod", "icon": "bi bi-upc-scan", "endpoint": "stok_fisi.index", "order": 3 },
+      { "title": "Depolar Arası Transfer", "icon": "bi bi-arrow-left-right", "endpoint": "stok_fisi.transfer", "order": 4 },
       { "title": "Fiyat Listeleri", "icon": "bi bi-tags-fill", "endpoint": "fiyat.index", "order": 5 },
       { "title": "AI Stok Analizi", "icon": "bi bi-robot", "endpoint": "stok.yapay_zeka_analiz", "order": 6 },
-      { "title": "Ölü Stok Analizi", "icon": "bi bi-exclamation-octagon", "endpoint": "stok.olu_stok_analiz", "order": 7 },
-      { "title": "AI Çapraz Satış", "icon": "bi bi-cart-plus", "endpoint": "stok.capraz_satis_analizi", "order": 8 }
+      { "title": "Ölü Stok Analizi", "icon": "bi bi-exclamation-octagon", "endpoint": "stok.olu_stok_analiz", "order": 7 }
     ]
   },
   {
     "title": "Cari",
     "icon": "bi bi-people",
-    "order": 6,
+    "order": 7,
     "children": [
       { "title": "Cari Listesi", "icon": "bi bi-person-lines-fill", "endpoint": "cari.index", "order": 1 },
       { "title": "Yeni Cari Kart", "icon": "bi bi-person-plus", "endpoint": "cari.ekle", "order": 2 },
@@ -77,12 +90,15 @@
     "title": "Rapor",
     "icon": "bi bi-tags-fill",
     "endpoint": "rapor.index",
-    "order": 7
+    "order": 8,
+    "children": [
+      { "title": "Şablonlar", "icon": "bi bi-journals", "endpoint": "rapor.sablonlar", "order": 1 }
+    ]
   },
   {
     "title": "Tanımlar",
     "icon": "bi bi-gear",
-    "order": 8,
+    "order": 9,
     "roles": "admin,muhasebe",
     "children": [
       { "title": "Muhasebe Grupları", "icon": "bi bi-journals", "endpoint": "stok.muhasebe_gruplari", "order": 1 },
@@ -94,7 +110,7 @@
   {
     "title": "Sistem",
     "icon": "bi bi-gear-fill",
-    "order": 9,
+    "order": 10,
     "roles": "admin",
     "children": [
       { "title": "Firma Bilgileri", "icon": "bi bi-building", "endpoint": "firmalar.index", "order": 1 },
@@ -105,6 +121,33 @@
       { "title": "Mobil Satış", "icon": "bi bi-phone", "endpoint": "mobile.dashboard", "order": 6 },
       { "title": "AI Anomali Dedektifi", "icon": "bi bi-incognito", "endpoint": "rapor.anomali_dedektifi", "order": 7 },
       { "title": "Menü Yönetimi", "icon": "bi bi-list", "endpoint": "sistem.menu_index", "order": 8 }
+    ]
+  },
+  {
+    "title": "E-Dönüşüm",
+    "icon": "bi bi-cloud-arrow-up-fill",
+    "url": "#",
+    "order": 11,
+    "roles": ["admin", "patron", "muhasebe_muduru"],
+    "children": [
+      {
+        "title": "Giden Faturalar",
+        "icon": "bi bi-send",
+        "url": "/fatura/?tip=satis",
+        "order": 1
+      },
+      {
+        "title": "Gelen Faturalar (Inbox)",
+        "icon": "bi bi-inbox",
+        "url": "#", 
+        "order": 2
+      },
+      {
+        "title": "Entegratör Ayarları",
+        "icon": "bi bi-sliders",
+        "url": "/efatura/ayarlar",
+        "order": 3
+      }
     ]
   }
 ]

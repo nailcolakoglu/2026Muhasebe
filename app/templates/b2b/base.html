@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}B2B Portal{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .b2b-navbar { background-color: #0f172a; } /* Koyu lacivert kurumsal renk */
+        .b2b-navbar .nav-link { color: #cbd5e1; font-weight: 500; }
+        .b2b-navbar .nav-link:hover { color: #ffffff; }
+        .b2b-navbar .navbar-brand { font-weight: bold; color: #ffffff; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-expand-lg b2b-navbar shadow-sm py-3">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('b2b.dashboard') }}">
+                <i class="bi bi-box-seam me-2"></i> B2B Bayi Portalı
+            </a>
+            <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#b2bMenu">
+                <i class="bi bi-list text-white fs-2"></i>
+            </button>
+            <div class="collapse navbar-collapse" id="b2bMenu">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0 ms-4">
+					<li class="nav-item"><a class="nav-link" href="{{ url_for('b2b.dashboard') }}"><i class="bi bi-house me-1"></i> Ana Sayfa</a></li>
+					<li class="nav-item"><a class="nav-link" href="{{ url_for('b2b.katalog') }}"><i class="bi bi-shop me-1"></i> Katalog</a></li>
+					<li class="nav-item">
+						<a class="nav-link" href="{{ url_for('b2b.sepet') }}">
+							<i class="bi bi-cart3 me-1"></i> Sepetim 
+							<span id="cart-count" class="badge bg-danger rounded-pill">{{ session.get('b2b_sepet', {})|length }}</span>
+						</a>
+					</li>
+
+                    
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('b2b.katalog') }}"><i class="bi bi-cart-plus me-1"></i> Yeni Sipariş</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('b2b.siparislerim') }}"><i class="bi bi-card-list me-1"></i> Siparişlerim</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('b2b.ekstre') }}"><i class="bi bi-receipt me-1"></i> Cari Ekstre</a></li>
+                </ul>
+                <div class="d-flex align-items-center">
+                    <span class="text-light me-3"><i class="bi bi-person-circle me-1"></i> {{ g.b2b_user.ad_soyad }}</span>
+                    <a href="{{ url_for('b2b.logout') }}" class="btn btn-outline-light btn-sm rounded-pill px-3">
+                        <i class="bi bi-box-arrow-right"></i> Çıkış Yap
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container py-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

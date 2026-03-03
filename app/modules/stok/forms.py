@@ -576,19 +576,21 @@ def get_muhasebe_grup_form(target_url, edit_mode=False, instance=None):
     title = _("Muhasebe Grubu Düzenle") if edit_mode else _("Yeni Muhasebe Grubu")
     form = Form(name="muhasebe_grup_form", title=title, action=target_url, ajax=True)
     
-    # Hesap Planı (Cached)
-    cache_key = f"muhasebe_hesaplar:{current_user.firma_id}"
+    # Hesap Planı (Cached - V2 ile önbelleği sıfırlıyoruz)
+    cache_key = f"muhasebe_hesaplar_v2:{current_user.firma_id}"
     hesap_opts = cache.get(cache_key)
     
     if hesap_opts is None:
+        # ✨ DÜZELTME: hesap_tip='muavin' filtresi kaldırıldı, tüm aktif hesaplar geliyor
         hesaplar = tenant_db.query(HesapPlani).filter_by(
-            hesap_tipi='muavin',
-            firma_id=current_user.firma_id
+            firma_id=current_user.firma_id,
+            aktif=True
         ).order_by(HesapPlani.kod).all()
+        
         hesap_opts = [("", _("Seçiniz..."))] + [
             (str(h.id), f"{h.kod} - {h.ad}") for h in hesaplar
         ]
-        cache.set(cache_key, hesap_opts, timeout=CACHE_TIMEOUT)
+        cache.set(cache_key, hesap_opts, timeout=CACHE_TIMEOUT)    
     
     val = lambda k: getattr(instance, k) if instance else ''
     
@@ -707,19 +709,21 @@ def get_kdv_grup_form(target_url, edit_mode=False, instance=None):
     title = _("KDV Grubu Düzenle") if edit_mode else _("Yeni KDV Grubu")
     form = Form(name="kdv_grup_form", title=title, action=target_url, ajax=True)
     
-    # Hesap Planı (Cached - Muhasebe form ile aynı)
-    cache_key = f"muhasebe_hesaplar:{current_user.firma_id}"
+    # Hesap Planı (Cached - V2 ile önbelleği sıfırlıyoruz)
+    cache_key = f"muhasebe_hesaplar_v2:{current_user.firma_id}"
     hesap_opts = cache.get(cache_key)
     
     if hesap_opts is None:
+        # ✨ DÜZELTME: hesap_tip='muavin' filtresi kaldırıldı, tüm aktif hesaplar geliyor
         hesaplar = tenant_db.query(HesapPlani).filter_by(
-            hesap_tipi='muavin',
-            firma_id=current_user.firma_id
+            firma_id=current_user.firma_id,
+            aktif=True
         ).order_by(HesapPlani.kod).all()
+        
         hesap_opts = [("", _("Seçiniz..."))] + [
             (str(h.id), f"{h.kod} - {h.ad}") for h in hesaplar
         ]
-        cache.set(cache_key, hesap_opts, timeout=CACHE_TIMEOUT)
+        cache.set(cache_key, hesap_opts, timeout=CACHE_TIMEOUT)    
     
     val = lambda k: getattr(instance, k) if instance else ''
     

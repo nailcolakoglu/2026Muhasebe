@@ -1,37 +1,70 @@
 # app/modules/cari/listeners.py
 
-from blinker import receiver
-from app.signals import banka_hareket_onaylandi, kasa_hareket_onaylandi
-from app.enums import CariIslemTuru
-from app.modules.cari.services import CariService
+import logging
+from app.signals import (
+    kasa_hareket_olusturuldu, 
+    banka_hareket_olusturuldu,
+    cek_karsiliksiz_cikti,
+    fatura_onaylandi
+)
+from app.extensions import get_tenant_db
+from app.modules.cari.models import CariHesap
 
-@receiver(kasa_hareket_onaylandi)
+logger = logging.getLogger(__name__)
+
+@kasa_hareket_olusturuldu.connect_via(None)
 def on_kasa_hareket(sender, **kwargs):
-    hareket = sender 
+    """
+    Kasa hareketi oluştuğunda tetiklenir.
+    NOT: Finansal kayıt işlemi (CariHareket) KasaService içinde zaten yapılmıştır!
+    Burada sadece yan etkileri (Örn: Müşteriye teşekkür SMS'i) yönetiyoruz.
+    """
+    hareket = sender
     if hareket.cari_id:
-        # Kasa Tahsilat -> Cari Alacak (Müşteri borcu düşer)
-        # Kasa Tediye -> Cari Borç (Müşteri borçlanır veya satıcıya ödeme)
-        # İş mantığınıza göre burayı özelleştirin
-        pass
+        logger.info(f"🔔 Cari Bildirimi: {hareket.belge_no} nolu Kasa işlemi başarıyla alındı.")
+        # İleride eklenebilir: send_sms(cari.telefon, "Ödemeniz alınmıştır. Teşekkürler.")
 
-@receiver(banka_hareket_onaylandi)
+@banka_hareket_olusturuldu.connect_via(None)
 def on_banka_hareket(sender, **kwargs):
     hareket = sender
-    
     if hareket.cari_id:
-        # Tahsilat ise Cari ALACAK çalışır
-        islem_turu = "TAHSILAT" if hareket.islem_turu == "TAHSILAT" else "TEDIYE"
-        
-        borc = hareket.tutar if islem_turu == "TEDIYE" else 0
-        alacak = hareket.tutar if islem_turu == "TAHSILAT" else 0
-        
-        CariService.hareket_ekle(
-            cari_id=hareket.cari_id,
-            islem_turu=islem_turu,
-            belge_no=hareket.belge_no,
-            tarih=hareket.tarih,
-            aciklama=f"Banka İşlemi: {hareket.aciklama}",
-            borc=borc,
-            alacak=alacak,
-            kaynak_ref={'tur': 'BANKA', 'id': hareket.id}
-        )
+        logger.info(f"🔔 Cari Bildirimi: {hareket.belge_no} nolu Banka işlemi başarıyla alındı.")
+
+@cek_karsiliksiz_cikti.connect_via(None)
+def on_cek_karsiliksiz(sender, cari, **kwargs):
+    """
+    Kritik Operasyon: Müşterinin çeki karşılıksız çıkarsa, 
+    Sinyal burayı tetikler ve müşterinin AI Risk Skoru anında düşürülür!
+    """
+    if cari:
+        try:
+            tenant_db = get_tenant_db()
+            cari_obj = tenant_db.get(CariHesap, str(cari.id))
+            if cari_obj:
+                # Risk skorunu 30 puan ceza keserek düşür
+                eski_skor = cari_obj.risk_skoru or 100
+                yeni_skor = max(0, eski_skor - 30)
+                cari_obj.risk_skoru = yeni_skor
+                cari_obj.risk_durumu = 'YUKSEK_RISK'
+                
+                tenant_db.commit()
+                logger.warning(
+                    f"🚨 AI RİSK UYARISI: {cari_obj.unvan} çeki karşılıksız çıktı! "
+                    f"Güvenilirlik Skoru: {eski_skor} -> {yeni_skor}"
+                )
+        except Exception as e:
+            logger.error(f"❌ Risk skoru güncellenirken hata: {e}")
+
+@fatura_onaylandi.connect_via(None)
+def on_fatura_onaylandi(sender, **kwargs):
+    """Fatura onaylanınca müşterinin Son İşlem Tarihini günceller"""
+    fatura = sender
+    if fatura.cari_id:
+        try:
+            tenant_db = get_tenant_db()
+            cari = tenant_db.get(CariHesap, str(fatura.cari_id))
+            if cari:
+                cari.son_siparis_tarihi = fatura.tarih
+                tenant_db.commit()
+        except Exception:
+            pass

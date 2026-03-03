@@ -300,15 +300,9 @@ class Fatura(db.Model, TimestampMixin, SoftDeleteMixin):
         comment='E-Fatura Takip Numarası (UUID)'
     )
     
-    e_fatura_senaryo = db.Column(
-        ENUM('TICARIFATURA', 'TEMELFATURA', 'YOLCUBERABERFATURA', name='efatura_senaryo_enum'),
-        default='TICARIFATURA'
-    )
+    e_fatura_senaryo = db.Column(db.String(50), default="TICARIFATURA")
+    e_fatura_tipi = db.Column(db.String(50), default="SATIS")
     
-    e_fatura_tipi = db.Column(
-        ENUM('SATIS', 'IADE', 'TEVKIFAT', 'ISTISNA', name='efatura_tipi_enum'),
-        default='SATIS'
-    )
     
     gib_durum_kodu = db.Column(
         Integer,
@@ -535,15 +529,18 @@ class Fatura(db.Model, TimestampMixin, SoftDeleteMixin):
     # ========================================
     # HYBRID PROPERTIES
     # ========================================
-    @hybrid_property
-    def genel_toplam_yazi_ile(self) -> str:
-        """Tutarı yazıya çevirir"""
+    @property
+    def genel_toplam_yazi_ile(self):
         try:
             from app.araclar import sayiyi_yaziya_cevir
-            tutar = self.genel_toplam or Decimal('0.00')
-            return sayiyi_yaziya_cevir(tutar, self.doviz_turu)
-        except ImportError:
-            return f"{self.genel_toplam} {self.doviz_turu}"
+            if self.genel_toplam:
+                # DÜZELTME: Sadece sayıyı (1 argüman) gönderiyoruz
+                # Döviz türü vb. 2. bir argüman varsa siliyoruz.
+                return sayiyi_yaziya_cevir(self.genel_toplam)
+            return ""
+        except Exception as e:
+            # Fonksiyonda başka bir hata olursa sistemi çökertmemesi için can yeleği
+            return f"#{self.genel_toplam}#"
     
     @hybrid_property
     def odeme_yuzdesi(self) -> float:
@@ -672,7 +669,15 @@ class Fatura(db.Model, TimestampMixin, SoftDeleteMixin):
     def __repr__(self):
         return f"<Fatura {self.belge_no} - {self.genel_toplam} {self.doviz_turu}>"
 
-
+    @property
+    def gib_durum_metni(self):
+        if self.gib_durum_kodu == 1300: 
+            return 'ONAYLANDI'
+        elif self.gib_durum_kodu == 100: 
+            return 'KUYRUKTA'
+        elif self.ettn: 
+            return 'ISLENIYOR'
+        return 'GONDERILMEDI'
 
 
 

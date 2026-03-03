@@ -1,22 +1,26 @@
 from app.form_builder import Form, FormField, FieldType, FormLayout
 from flask_babel import gettext as _
 from app.modules.firmalar.models import SystemMenu
+from app.extensions import get_tenant_db
+from flask_login import current_user
 
 def create_menu_form(menu=None):
+    tenant_db = get_tenant_db()
+    
     is_edit = menu is not None
     action = f"/sistem/menu/duzenle/{menu.id}" if is_edit else "/sistem/menu/ekle"
     
     form = Form(name="menu_form", title="Menü Öğesi", action=action, method="POST", ajax=True)
     layout = FormLayout()
     
-    # Parent Seçenekleri (Kendisi hariç)
-    parents = SystemMenu.query.order_by(SystemMenu.baslik).all()
-    parent_opts = [(0, '--- Ana Menü ---')] + [(p.id, f"{p.baslik}") for p in parents if not is_edit or p.id != menu.id]
+    # Parent Seçenekleri (Tenant DB'den Çekiliyor)
+    parents = tenant_db.query(SystemMenu).order_by(SystemMenu.baslik).all()
+    parent_opts = [('', '--- Ana Menü ---')] + [(p.id, f"{p.baslik}") for p in parents if not is_edit or p.id != menu.id]
     
     baslik = FormField('baslik', FieldType.TEXT, 'Başlık', required=True, value=menu.baslik if menu else '', icon='bi bi-type')
     icon = FormField('icon', FieldType.TEXT, 'İkon Class', value=menu.icon if menu else 'bi bi-circle', placeholder='bi bi-house')
     
-    parent_id = FormField('parent_id', FieldType.SELECT, 'Üst Menü', options=parent_opts, value=menu.parent_id if menu else 0)
+    parent_id = FormField('parent_id', FieldType.SELECT, 'Üst Menü', options=parent_opts, value=menu.parent_id if menu else '')
     
     endpoint = FormField('endpoint', FieldType.TEXT, 'Flask Rota', value=menu.endpoint if menu else '', placeholder='modul.index')
     url = FormField('url', FieldType.TEXT, 'Statik URL', value=menu.url if menu else '', placeholder='/tarafim')

@@ -1,0 +1,5 @@
+CLI komutlarını shell de çalıştırma
+flask --app run.py clear-cache
+
+
+flask --app run.py run

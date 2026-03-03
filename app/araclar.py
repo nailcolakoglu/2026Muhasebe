@@ -1,6 +1,7 @@
-# araclar.py
+# app/araclar.py
 
 import math
+from app.extensions import get_tenant_db
 from flask_login import current_user
 from app.extensions import db
 from app.models.base import FirmaOwnedMixin, JSONText, FirmaFilteredQuery
@@ -8,6 +9,7 @@ from app.modules.doviz.models import DovizKuru
 from datetime import datetime
 from sqlalchemy import func
 from app.enums import FinansIslemTuru, FaturaTuru
+from app.models import Sayac
 from decimal import Decimal, InvalidOperation
 from sqlalchemy.orm import joinedload
 import logging
@@ -70,48 +72,35 @@ def para_cevir(deger):
         return Decimal('0.00')
 
 # --- 2.VERİTABANI YARDIMCILARI ---
-def siradaki_kod_uret(model, prefix, hane_sayisi=5):
+def siradaki_kod_uret(model_class, prefix='', hane_sayisi=5, field_name='kod', tenant_db=None):
     """
-    Belirtilen model için firmaya özel sıradaki kodu üretir.
-    Örn: SIP-00001
+    Verilen modeldeki son kayda bakarak sıradaki kodu tahmin eder (Örn: CARI-001)
     """
-    try:
-        # Son kaydı bul (Firmaya özel)
-        # Modelin 'belge_no' veya 'kod' alanı olduğunu varsayarız.
-        # Genelde belge_no kullanılır.
-        field = getattr(model, 'belge_no', None)
-        if not field:
-            field = getattr(model, 'kod', None)
-            
-        if not field:
-            return f"{prefix}{'1'.zfill(hane_sayisi)}"
-
-        son_kayit = model.query.filter_by(firma_id=current_user.firma_id)\
-            .filter(field.like(f"{prefix}%"))\
-            .order_by(field.desc()).first()
-            
-        if son_kayit:
-            # Mevcut koddan sayıyı ayıkla (SIP-00005 -> 5)
-            son_kod = getattr(son_kayit, field.key)
-            try:
-                # Prefix uzunluğunu atla veya '-' ile split et
-                parcalar = son_kod.split('-')
-                if len(parcalar) > 1:
-                    sayi = int(parcalar[-1])
-                    yeni_sayi = sayi + 1
-                else:
-                    # Prefix'i stringden çıkar
-                    temiz = son_kod.replace(prefix, '')
-                    yeni_sayi = int(temiz) + 1
-            except:
-                yeni_sayi = 1
-        else:
-            yeni_sayi = 1
-            
-        return f"{prefix}{str(yeni_sayi).zfill(hane_sayisi)}"
+    if tenant_db is None:
+        tenant_db = get_tenant_db()
         
+    try:
+        kolon = getattr(model_class, field_name)
+        son_kayit = tenant_db.query(model_class).order_by(kolon.desc()).first()
+        
+        yeni_kod = f"{prefix}{str(1).zfill(hane_sayisi)}"
+        
+        if son_kayit:
+            mevcut_kod = getattr(son_kayit, field_name)
+            if mevcut_kod and '-' in mevcut_kod:
+                parcalar = mevcut_kod.rsplit('-', 1)
+                if len(parcalar) == 2 and parcalar[1].isdigit():
+                    numara = parcalar[1]
+                    yeni_num = str(int(numara) + 1).zfill(len(numara))
+                    yeni_kod = f"{parcalar[0]}-{yeni_num}"
+            elif mevcut_kod and mevcut_kod.isdigit():
+                yeni_kod = str(int(mevcut_kod) + 1).zfill(len(mevcut_kod))
+                if prefix: yeni_kod = f"{prefix}{yeni_kod}"
+                
+        return yeni_kod
     except Exception as e:
-        return f"{prefix}{'1'.zfill(hane_sayisi)}"
+        print(f"Kod tahmini hatası: {e}")
+        return f"{prefix}{str(1).zfill(hane_sayisi)}"
 
 def sayiyi_yaziya_cevir(sayi):
     """
@@ -564,43 +553,49 @@ def hesapla_odemeler():
 # ---------------------------------------------------------
 # 4.NUMARA ÜRETME MOTORU (ATOMİK & GÜVENLİ)
 # ---------------------------------------------------------
-def numara_uret(firma_id, kod, yil=None, on_ek='DOC-', hane=6):
+def numara_uret(firma_id, kod, donem_yili, on_ek='', hane_sayisi=6, tenant_db=None):
     """
-    ATOMİK NUMARA ÜRETİCİSİ (Thread-Safe)
+    Belirtilen kod ve döneme ait sıradaki evrak/belge numarasını üretir.
+    Tenant DB uyumludur. (Concurrency/Eşzamanlılık için row-level lock kullanır)
     """
-    if not yil:
-        yil = datetime.now().year
-
+    if tenant_db is None:
+        tenant_db = get_tenant_db()
+        
+    # Sayac modeli genelde app.models veya app.modules.firmalar.models içindedir.
+    # Senin yapında app.models içinde olduğunu biliyoruz.
+    from app.models import Sayac 
+    
     try:
-        # Sayacı Bul ve KİLİTLE
-        sayac = Sayac.query.filter_by(
-            firma_id=firma_id, 
-            kod=kod, 
-            donem_yili=yil
+        # with_for_update() -> Aynı anda iki kişi makbuz keserse numaralar çakışmasın diye satırı kilitler
+        sayac = tenant_db.query(Sayac).filter_by(
+            firma_id=str(firma_id),
+            kod=kod,
+            donem_yili=donem_yili
         ).with_for_update().first()
 
-        # Sayaç Yoksa Oluştur
         if not sayac:
             sayac = Sayac(
-                firma_id=firma_id,
-                donem_yili=yil,
+                firma_id=str(firma_id),
+                donem_yili=donem_yili,
                 kod=kod,
                 on_ek=on_ek,
-                son_no=0
+                son_no=1,
+                hane_sayisi=hane_sayisi
             )
-            if hasattr(sayac, 'hane_sayisi'):
-                sayac.hane_sayisi = hane
-            db.session.add(sayac)
-            db.session.flush()
-        
-        sayac.son_no += 1
-        yeni_no = sayac.son_no
-        
-        hane_len = getattr(sayac, 'hane_sayisi', hane)
-        formatli_no = f"{sayac.on_ek}{str(yeni_no).zfill(hane_len)}"
-        return formatli_no
+            tenant_db.add(sayac)
+            tenant_db.flush()
+            son_no = 1
+        else:
+            sayac.son_no += 1
+            tenant_db.flush()
+            son_no = sayac.son_no
+
+        numara_str = str(son_no).zfill(hane_sayisi)
+        return f"{on_ek}{numara_str}"
 
     except Exception as e:
+        print(f"Numara Üretme Hatası: {e}")
+        # Hata anında transaction'ı geri alıp hatayı yukarı fırlatıyoruz
         raise e
 
 def get_doviz_kuru(doviz_kodu):

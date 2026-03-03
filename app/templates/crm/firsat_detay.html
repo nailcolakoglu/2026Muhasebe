@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Fırsat Detayı ve Zaman Çizelgesi{% endblock %}
+{% block extra_css %}
+<style>
+    .timeline { position: relative; padding: 20px 0; list-style: none; }
+    .timeline:before { content: ''; position: absolute; top: 0; bottom: 0; left: 40px; width: 4px; background: #e9ecef; border-radius: 4px; }
+    .timeline-item { position: relative; margin-bottom: 30px; padding-left: 80px; }
+    .timeline-icon { position: absolute; left: 24px; top: 0; width: 36px; height: 36px; border-radius: 50%; background: #0d6efd; color: white; display: flex; align-items: center; justify-content: center; z-index: 1; border: 4px solid #fff; box-shadow: 0 0 0 2px #e9ecef; }
+    .timeline-content { background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .timeline-date { font-size: 0.85rem; color: #6c757d; margin-bottom: 10px; font-weight: bold; }
+    
+    .bg-MUTLU { background-color: #198754 !important; }
+    .bg-NORMAL { background-color: #0dcaf0 !important; }
+    .bg-MUTSUZ { background-color: #ffc107 !important; color: #000; }
+    .bg-SINIRLI { background-color: #dc3545 !important; }
+    .bg-BELIRSIZ { background-color: #6c757d !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title text-primary fw-bold">{{ firsat.baslik }}</h5>
+                    <p class="mb-1"><strong>Cari:</strong> {{ firsat.cari.unvan if firsat.cari else 'Belirtilmemiş' }}</p>
+                    <p class="mb-1"><strong>Tutar:</strong> {{ "{:,.2f}".format(firsat.tahmini_tutar or 0) }} {{ firsat.para_birimi }}</p>
+                    <p class="mb-1"><strong>Aşama:</strong> <span class="badge bg-secondary">{{ firsat.asama_obj.ad if firsat.asama_obj else 'Belirsiz' }}</span></p>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-muted">Kazanma Olasılığı:</span>
+                        <span class="badge bg-{{ 'success' if firsat.ai_olasilik > 60 else 'warning' }} fs-6">%{{ firsat.ai_olasilik }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <h5 class="fw-bold mb-4"><i class="bi bi-clock-history me-2"></i>Müşteri Etkileşim Geçmişi (AI Analizli)</h5>
+            
+            {% if etkilesimler %}
+                <ul class="timeline">
+                    {% for etkilesim in etkilesimler %}
+                    <li class="timeline-item">
+                        <div class="timeline-icon bg-{{ etkilesim.duygu_durumu.name if etkilesim.duygu_durumu else 'BELIRSIZ' }}">
+                            {% if etkilesim.islem_turu.name == 'ARAMA' %}<i class="bi bi-telephone-fill"></i>
+                            {% elif etkilesim.islem_turu.name == 'ZIYARET' %}<i class="bi bi-geo-alt-fill"></i>
+                            {% elif etkilesim.islem_turu.name == 'EMAIL' %}<i class="bi bi-envelope-fill"></i>
+                            {% else %}<i class="bi bi-chat-text-fill"></i>{% endif %}
+                        </div>
+                        <div class="timeline-content">
+                            <div class="d-flex justify-content-between">
+                                <span class="timeline-date">{{ etkilesim.tarih.strftime('%d.%m.%Y - %H:%M') }}</span>
+                                <div>
+                                    <span class="badge bg-{{ etkilesim.duygu_durumu.name if etkilesim.duygu_durumu else 'BELIRSIZ' }} shadow-sm">
+                                        {{ etkilesim.duygu_durumu.name if etkilesim.duygu_durumu else 'BELİRSİZ' }}
+                                    </span>
+                                    <span class="badge bg-light text-dark border shadow-sm ms-1">Skor: {{ etkilesim.memnuniyet_skoru }}/10</span>
+                                </div>
+                            </div>
+                            <h6 class="fw-bold mt-2">{{ etkilesim.konu }}</h6>
+                            <p class="text-muted mb-0">{{ etkilesim.detay_notu }}</p>
+                            
+                            {% if etkilesim.aksiyon_gerekli %}
+                            <div class="mt-3 p-2 bg-light border-start border-4 border-warning rounded">
+                                <small class="fw-bold text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>Aksiyon Gerekli: {{ etkilesim.aksiyon_tarihi.strftime('%d.%m.%Y') if etkilesim.aksiyon_tarihi else 'Tarih Yok' }}</small>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="alert alert-light border">Bu müşteriye ait henüz bir etkileşim veya görüşme kaydı bulunmuyor.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

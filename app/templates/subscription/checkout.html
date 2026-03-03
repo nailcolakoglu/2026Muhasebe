@@ -1,0 +1,144 @@
+{% extends "public_base.html" %}
+
+{% block title %}Ödeme ve Kayıt{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 bg-light rounded-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold text-muted mb-4">Sipariş Özeti</h5>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="fw-bold">{{ plan.name }} Paketi</span>
+                        <span>₺{{ plan.price }}</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">KDV (%20)</span>
+                        <span>₺{{ (plan.price * 0.20)|round(2) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between fw-bold fs-5 text-primary">
+                        <span>Genel Toplam</span>
+                        <span>₺{{ (plan.price * 1.20)|round(2) }}</span>
+                    </div>
+                    <div class="mt-4 small text-muted">
+                        <i class="bi bi-shield-lock-fill text-success me-1"></i> 256-bit SSL Güvencesiyle
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow border-0 rounded-4">
+                <div class="card-body p-5">
+                    <h4 class="fw-bold mb-4">Hesabınızı Oluşturun</h4>
+                    
+                    <form id="checkoutForm" onsubmit="event.preventDefault(); odemeYap();">
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Firma Ünvanı</label>
+                            <input type="text" id="firmaAdi" class="form-control form-control-lg" required placeholder="Örn: ABC Teknoloji Ltd. Şti.">
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-muted small fw-bold">Yönetici E-posta</label>
+                                <input type="email" id="email" class="form-control form-control-lg" required placeholder="admin@firma.com">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-muted small fw-bold">Giriş Şifresi</label>
+                                <input type="password" id="sifre" class="form-control form-control-lg" required placeholder="******">
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+                        <h5 class="fw-bold mb-3"><i class="bi bi-credit-card-2-front text-primary me-2"></i>Ödeme Bilgileri (Simülasyon)</h5>
+                        
+                        <div class="mb-3">
+                            <label class="form-label text-muted small fw-bold">Kart Üzerindeki İsim</label>
+                            <input type="text" class="form-control" placeholder="AD SOYAD" required>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label text-muted small fw-bold">Kart Numarası</label>
+                            <input type="text" class="form-control" placeholder="0000 0000 0000 0000" maxlength="19" required>
+                        </div>
+                        <div class="row mb-4">
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">Son Kullanma (AA/YY)</label>
+                                <input type="text" class="form-control" placeholder="12/28" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-muted small fw-bold">CVC</label>
+                                <input type="text" class="form-control" placeholder="123" maxlength="3" required>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="btnOdeme" class="btn btn-primary btn-lg w-100 fw-bold shadow">
+                            Ödemeyi Tamamla ve Kuruluma Başla
+                        </button>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+function odemeYap() {
+    const btn = document.getElementById('btnOdeme');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> İşlem Yapılıyor...';
+
+    Swal.fire({
+        title: 'Ödeme İşleniyor',
+        text: 'Bankanızla güvenli bağlantı kuruluyor...',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading() }
+    });
+
+    const payload = {
+        plan_id: '{{ plan_id }}',
+        firma_adi: document.getElementById('firmaAdi').value,
+        email: document.getElementById('email').value,
+        sifre: document.getElementById('sifre').value
+    };
+
+    fetch('/paketler/api/mock-odeme', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}' // ✨ GÜVENLİK KİLİDİ AÇILDI
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Tebrikler!',
+                html: `${data.message}<br><br><b>Firma Kodunuz:</b> ${data.tenant_kod}`,
+                confirmButtonText: 'Giriş Sayfasına Git',
+                allowOutsideClick: false
+            }).then(() => {
+                window.location.href = '/auth/login'; 
+            });
+        } else {
+            Swal.fire('Hata', data.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = 'Ödemeyi Tamamla ve Kuruluma Başla';
+        }
+    })
+    .catch(err => {
+        Swal.fire('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Ödemeyi Tamamla ve Kuruluma Başla';
+    });
+}
+</script>
+{% endblock %}

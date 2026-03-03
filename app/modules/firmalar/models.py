@@ -7,6 +7,7 @@ from sqlalchemy import Integer, String, Boolean, Date, DateTime, ForeignKey, Tex
 from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import FirmaFilteredQuery, TimestampMixin, SoftDeleteMixin, JSONText
+from markupsafe import Markup
 
 # UUID oluşturucu fonksiyon
 import uuid # 👈 EKLENDİ

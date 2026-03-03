@@ -169,7 +169,7 @@ def create_hesap_form(hesap=None):
     # Üst Hesap Seçimi (Tenant DB)
     ust_hesaplar = tenant_db.query(HesapPlani).filter_by(firma_id=current_user.firma_id).order_by(HesapPlani.kod).all()
     
-    ust_opts = [(0, '--- Ana Hesap (Yok) ---')]
+    ust_opts = [('', '--- Ana Hesap (Yok) ---')]
     for h in ust_hesaplar:
         htip = safe_val(h.hesap_tipi)
         if htip != 'muavin':
@@ -198,7 +198,7 @@ def create_hesap_form(hesap=None):
 
     ust_hesap_id = FormField('ust_hesap_id', FieldType.SELECT, _('Bağlı Olduğu Üst Hesap'), 
                              options=ust_opts, required=False, 
-                             value=hesap.ust_hesap_id if hesap else 0,
+                             value=hesap.ust_hesap_id if hesap else '',
                              select2_config={'placeholder': 'Varsa Üst Hesap Seçiniz', 'search': True})
 
     kod = FormField('kod', FieldType.TEXT, _('Hesap Kodu'), required=True, value=hesap.kod if hesap else '', placeholder="Örn: 120.01.001")

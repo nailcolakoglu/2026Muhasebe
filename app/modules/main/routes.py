@@ -1,10 +1,13 @@
 # app/modules/main/routes.py
 
+from app.modules.ai_destek.ai_generator import generate_ceo_briefing
+import json
+from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import joinedload
 from datetime import datetime, date
 from flask import Blueprint, render_template, request, jsonify, session, g, flash, redirect, url_for
 from flask_login import login_required, current_user
-from sqlalchemy import func, case, literal
+from sqlalchemy import func, case, literal, extract
 from app.extensions import get_tenant_db
 from app.modules.fatura.models import Fatura
 from app.modules.kasa_hareket.models import KasaHareket
@@ -99,13 +102,15 @@ def change_context():
 @login_required
 def index():
     """
-    ROL VE ŞUBE DUYARLI DASHBOARD
+    ROL, ŞUBE VE DÖNEM DUYARLI AKILLI DASHBOARD
     """
+    # ✨ 1. YENİ: Plasiyer Giriş Yönlendirmesi
+    if current_user.rol == 'plasiyer':
+        return redirect(url_for('mobile.dashboard'))
     tenant_db = get_tenant_db()
     if not tenant_db:
         if not session.get('active_db_yolu'):
              flash("Lütfen önce firma seçimi yapınız.", "warning")
-        # Boş dashboard döndür
         return render_template('main/index.html', karsilama_mesaji="Hoşgeldiniz",
                                gunluk_satis=0, aylik_satis=0, kasa_toplam=0, banka_toplam=0,
                                toplam_alacak=0, toplam_borc=0, portfoydeki_cekler=0, odenecek_cekler=0,
@@ -114,17 +119,17 @@ def index():
     # 1. TEMEL DEĞİŞKENLER
     bugun = date.today()
     bu_ay_basi = bugun.replace(day=1)
-    
-    # NOT: 'tum_subeler' ve 'tum_donemler' değişkenlerini buradan kaldırdık.
-    # Çünkü Context Processor bunları global olarak zaten sağlıyor.
 
-    # 2. FİLTRELEME MANTIĞI (CONTEXT)
+    # 2. KURUMSAL KAPSAM (DATA SCOPING) HAFIZASI
     active_sube_id = session.get('aktif_sube_id')
+    active_donem_id = session.get('aktif_donem_id')
     
-    # SQLAlchemy Filtre Yardımcısı
-    def filter_by_sube(query, model_class):
+    # 🧠 Akıllı Filtre Motoru: Hem Şubeyi Hem Dönemi Kontrol Eder
+    def filter_by_context(query, model_class):
         if active_sube_id and hasattr(model_class, 'sube_id'):
-            return query.filter(model_class.sube_id == active_sube_id)
+            query = query.filter(model_class.sube_id == active_sube_id)
+        if active_donem_id and hasattr(model_class, 'donem_id'):
+            query = query.filter(model_class.donem_id == active_donem_id)
         return query
 
     # Yardımcı: Hata olsa bile 0 döndüren güvenli sorgu çalıştırıcı
@@ -150,21 +155,18 @@ def index():
             q_gunluk = tenant_db.query(func.coalesce(func.sum(Fatura.genel_toplam), 0)).filter(
                 Fatura.tarih == bugun, Fatura.fatura_turu == 'SATIS', Fatura.iptal_mi == False
             )
-            dashboard_data['gunluk_satis'] = safe_scalar(filter_by_sube(q_gunluk, Fatura))
+            dashboard_data['gunluk_satis'] = safe_scalar(filter_by_context(q_gunluk, Fatura))
 
             # Aylık
             q_aylik = tenant_db.query(func.coalesce(func.sum(Fatura.genel_toplam), 0)).filter(
                 Fatura.tarih >= bu_ay_basi, Fatura.fatura_turu == 'SATIS', Fatura.iptal_mi == False
             )
-            dashboard_data['aylik_satis'] = safe_scalar(filter_by_sube(q_aylik, Fatura))
+            dashboard_data['aylik_satis'] = safe_scalar(filter_by_context(q_aylik, Fatura))
 
         # --- B. FİNANS (Kasa/Banka) ---
         if current_user.can('kasa.view'):
             q_kasa = tenant_db.query(KasaHareket)
-            q_kasa = filter_by_sube(q_kasa, KasaHareket)
-            # SQL tarafında hesaplamak daha performanslıdır
-            # Ancak KasaHareket yapınıza göre Python'da toplamak gerekebilir.
-            # Şimdilik mevcut mantığı koruyup güvenli hale getiriyoruz.
+            q_kasa = filter_by_context(q_kasa, KasaHareket)
             try:
                 kasalar = q_kasa.all()
                 giris = sum(k.tutar for k in kasalar if k.islem_turu in ['tahsilat', 'virman_giris'])
@@ -175,7 +177,7 @@ def index():
         if current_user.can('banka.view'):
             try:
                 q_banka = tenant_db.query(BankaHareket)
-                # q_banka = filter_by_sube(q_banka, BankaHareket) # Bankada şube varsa açılır
+                q_banka = filter_by_context(q_banka, BankaHareket)
                 bankalar = q_banka.all()
                 giris = sum(b.tutar for b in bankalar if b.islem_turu in ['tahsilat', 'virman_giris', 'gelen_havale'])
                 cikis = sum(b.tutar for b in bankalar if b.islem_turu in ['tediye', 'virman_cikis', 'gider', 'giden_havale'])
@@ -184,13 +186,19 @@ def index():
 
         # --- C. RİSK (Cari) ---
         if current_user.can('cari.view'):
-            dashboard_data['toplam_alacak'] = safe_scalar(tenant_db.query(func.coalesce(func.sum(CariHesap.borc_bakiye), 0)))
-            dashboard_data['toplam_borc'] = safe_scalar(tenant_db.query(func.coalesce(func.sum(CariHesap.alacak_bakiye), 0)))
+            q_alacak = tenant_db.query(func.coalesce(func.sum(CariHesap.borc_bakiye), 0))
+            q_borc = tenant_db.query(func.coalesce(func.sum(CariHesap.alacak_bakiye), 0))
+            
+            # Carilerde şube filtresi varsa uygular, yoksa otomatik geçer
+            dashboard_data['toplam_alacak'] = safe_scalar(filter_by_context(q_alacak, CariHesap))
+            dashboard_data['toplam_borc'] = safe_scalar(filter_by_context(q_borc, CariHesap))
 
         # --- D. ÇEKLER ---
         if current_user.can('cek.view'):
             try:
-                cekler = tenant_db.query(CekSenet).filter(CekSenet.cek_durumu == 'PORTFOYDE').all()
+                q_cekler = tenant_db.query(CekSenet).filter(CekSenet.cek_durumu == 'PORTFOYDE')
+                q_cekler = filter_by_context(q_cekler, CekSenet)
+                cekler = q_cekler.all()
                 dashboard_data['portfoydeki_cekler'] = sum(c.tutar for c in cekler if c.portfoy_tipi == 'ALINAN')
                 dashboard_data['odenecek_cekler'] = sum(c.tutar for c in cekler if c.portfoy_tipi == 'VERILEN')
             except: pass
@@ -199,13 +207,13 @@ def index():
         if current_user.can('stok.view'):
             try:
                 # Sadece kritik seviyenin altındakileri çeken optimize sorgu
-                stoklar = tenant_db.query(StokKart).filter(
+                q_stok = tenant_db.query(StokKart).filter(
                     StokKart.aktif == True,
                     StokKart.kritik_seviye > 0
-                    # StokKart.mevcut < StokKart.kritik_seviye # Bu alan hesaplanmış alansa SQL'de çalışmayabilir
-                ).limit(50).all()
+                )
+                q_stok = filter_by_context(q_stok, StokKart)
+                stoklar = q_stok.limit(50).all()
                 
-                # Python tarafında filtrele (Mevcut miktar genelde dinamik hesaplanır)
                 for s in stoklar:
                     # TODO: Stok miktarını depolardan topla
                     mevcut = 0 
@@ -221,13 +229,12 @@ def index():
 
         # --- F. SON FATURALAR ---
         try:
-            # --- SON FATURALAR (Eager Loading) ---
             q_fatura = tenant_db.query(Fatura).options(
-                joinedload(Fatura.cari),   # ✅ Cari adı için
-                joinedload(Fatura.sube)    # ✅ Şube adı için
+                joinedload(Fatura.cari),
+                joinedload(Fatura.sube)
             ).filter(Fatura.iptal_mi == False)
             
-            q_fatura = filter_by_sube(q_fatura, Fatura)
+            q_fatura = filter_by_context(q_fatura, Fatura)
             dashboard_data['son_faturalar'] = q_fatura.order_by(
                 Fatura.tarih.desc(), 
                 Fatura.id.desc()
@@ -238,12 +245,76 @@ def index():
     
 
     except Exception as e:
-        print(f"⚠️ Dashboard Genel Hata: {e}")
+        logger.error(f"⚠️ Dashboard Genel Hata: {e}", exc_info=True)
         flash("Dashboard verileri yüklenirken bazı hatalar oluştu.", "warning")
 
     return render_template('main/index.html',
                            karsilama_mesaji=get_karsilama_mesaji(),
-                           **dashboard_data) # Dictionary'i unpack ederek gönderiyoruz
+                           **dashboard_data)
+
+
+@main_bp.route('/api/nakit-akis-grafik')
+@login_required
+def api_nakit_akis_grafik():
+    """Son 6 ayın Gelir/Gider Nakit Akışı verilerini grafiğe gönderir (Şube ve Dönem Duyarlı)"""
+    tenant_db = get_tenant_db()
+    if not tenant_db: 
+        return jsonify({'success': False})
+        
+    aylar = []
+    gelirler = []
+    giderler = []
+    
+    bugun = date.today()
+    
+    # ✨ AKILLI HAFIZA
+    active_sube_id = session.get('aktif_sube_id')
+    active_donem_id = session.get('aktif_donem_id')
+    
+    try:
+        # Son 6 ayı geriye doğru hesapla
+        for i in range(5, -1, -1):
+            hedef_tarih = bugun - relativedelta(months=i)
+            aylar.append(hedef_tarih.strftime('%b %Y')) # Örn: "Oct 2025"
+            
+            # SATIŞ TOPLAMI (Gelir)
+            q_gelir = tenant_db.query(func.coalesce(func.sum(Fatura.genel_toplam), 0)).filter(
+                Fatura.fatura_turu == 'SATIS',
+                Fatura.iptal_mi == False,
+                extract('year', Fatura.tarih) == hedef_tarih.year,
+                extract('month', Fatura.tarih) == hedef_tarih.month
+            )
+            
+            # ALIŞ/GİDER TOPLAMI (Gider)
+            q_gider = tenant_db.query(func.coalesce(func.sum(Fatura.genel_toplam), 0)).filter(
+                Fatura.fatura_turu == 'ALIS',
+                Fatura.iptal_mi == False,
+                extract('year', Fatura.tarih) == hedef_tarih.year,
+                extract('month', Fatura.tarih) == hedef_tarih.month
+            )
+            
+            # ✨ ŞUBE VE DÖNEM KISITLAMASI EKLENİYOR
+            if active_sube_id:
+                q_gelir = q_gelir.filter(Fatura.sube_id == active_sube_id)
+                q_gider = q_gider.filter(Fatura.sube_id == active_sube_id)
+                
+            if active_donem_id:
+                q_gelir = q_gelir.filter(Fatura.donem_id == active_donem_id)
+                q_gider = q_gider.filter(Fatura.donem_id == active_donem_id)
+            
+            gelirler.append(float(q_gelir.scalar() or 0))
+            giderler.append(float(q_gider.scalar() or 0))
+            
+        return jsonify({
+            'success': True,
+            'kategoriler': aylar,
+            'gelirler': gelirler,
+            'giderler': giderler
+        })
+        
+    except Exception as e:
+        logger.error(f"Grafik veri hatası: {e}")
+        return jsonify({'success': False, 'message': 'Veri çekilemedi.'})
 
 @main_bp.route('/ai/create-form', methods=['POST'])
 def ai_create_form():
@@ -264,3 +335,25 @@ def ai_create_form():
 @login_required
 def ai_sihirbaz():
     return render_template('main/ai_sihirbaz.html')
+            
+@main_bp.route('/api/ceo-brifing-olustur', methods=['POST'])
+@login_required
+def api_ceo_brifing_olustur():
+    """
+    Önyüzden gelen finansal özet verilerini AI'ya gönderip HTML brifing alır.
+    """
+    try:
+        # Frontend'den gelen JSON verisini yakala
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'message': 'Veri alınamadı.'})
+
+        # Veriyi AI jeneratörüne gönder (ensure_ascii=False ile Türkçe karakterleri koru)
+        ai_rapor_html = generate_ceo_briefing(json.dumps(data, ensure_ascii=False))
+
+        return jsonify({'success': True, 'report': ai_rapor_html})
+        
+    except Exception as e:
+        import logging
+        logging.error(f"CEO Brifing Hatası: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'AI Hatası: {str(e)}'})

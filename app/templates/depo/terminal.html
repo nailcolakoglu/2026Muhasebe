@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}WMS El Terminali{% endblock %}
+
+{% block content %}
+<div class="container mt-3" style="max-width: 600px;">
+    <div class="card bg-dark text-white shadow-sm border-0 mb-3 rounded-4">
+        <div class="card-body d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-upc-scan me-2 text-warning"></i>Hızlı Mal Kabul</h5>
+            <span class="badge bg-warning text-dark"><i class="bi bi-wifi"></i> Çevrimiçi</span>
+        </div>
+    </div>
+
+<div class="card shadow border-0 rounded-4 mb-3">
+        <div class="card-body p-4 text-center">
+            <h6 class="text-muted mb-3 text-uppercase fw-bold">Kameradan veya Cihazdan Okut</h6>
+            <div class="input-group input-group-lg shadow-sm">
+                <span class="input-group-text bg-white border-end-0 text-primary">
+                    <i class="bi bi-upc"></i>
+                </span>
+                <input type="text" id="barkodInput" class="form-control border-start-0 fw-bold text-center" 
+                       placeholder="Barkod veya Ürün Kodu..." autofocus autocomplete="off">
+                <button class="btn btn-primary px-4" type="button" onclick="manuelOkut()">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+            <small class="text-muted mt-2 d-block">Lütfen Ürün veya Raf barkodunu okutun.</small>
+        </div>
+    </div>
+	
+    <div id="islemEkrani" class="card shadow border-0 rounded-4 d-none mb-5 border-top border-warning border-4">
+        <div class="card-body p-4">
+            
+            <div class="d-flex align-items-center mb-4 p-3 bg-light rounded-3 border">
+                <i class="bi bi-box-seam fs-1 text-primary me-3"></i>
+                <div>
+                    <small class="text-muted d-block fw-bold text-uppercase">Seçilen Ürün</small>
+                    <h5 id="urunAd" class="mb-0 fw-bold text-dark">-</h5>
+                    <span id="urunKod" class="badge bg-secondary mt-1">-</span>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center mb-4 p-3 bg-light rounded-3 border">
+                <i class="bi bi-diagram-3 fs-1 text-success me-3"></i>
+                <div>
+                    <small class="text-muted d-block fw-bold text-uppercase">Hedef Raf / Lokasyon</small>
+                    <h5 id="rafAd" class="mb-0 fw-bold text-dark text-danger">RAF OKUTUNUZ!</h5>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-bold text-muted">Yerleştirilecek Miktar</label>
+                <div class="input-group input-group-lg">
+                    <input type="number" id="miktarInput" class="form-control text-center fw-bold fs-3" value="1" min="1">
+                    <span class="input-group-text bg-white fw-bold" id="birimTxt">Adet</span>
+                </div>
+            </div>
+
+            <div class="row g-2">
+                <div class="col-8">
+                    <button onclick="islemKaydet()" class="btn btn-success btn-lg w-100 fw-bold shadow">
+                        <i class="bi bi-check-circle-fill me-2"></i> KAYDET
+                    </button>
+                </div>
+                <div class="col-4">
+                    <button onclick="ekraniSifirla()" class="btn btn-outline-danger btn-lg w-100 fw-bold">
+                        <i class="bi bi-x-lg"></i> İptal
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let aktifStokId = null;
+    let aktifLokasyonId = null;
+    let aktifDepoId = null;
+
+    // Barkod okuyucular genellikle okuduktan sonra otomatik "Enter" tuşu basar
+    document.getElementById('barkodInput').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            barkodCoz(this.value);
+            this.value = ''; // Inputu temizle
+        }
+    });
+
+    function barkodCoz(barkod) {
+        if(!barkod) return;
+
+        Swal.fire({ title: 'Taranıyor...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+        fetch('/depo/api/wms/barkod-coz', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            },
+            body: JSON.stringify({ barkod: barkod })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                Swal.close();
+                document.getElementById('islemEkrani').classList.remove('d-none');
+                
+                if(data.tip === 'URUN') {
+                    aktifStokId = data.id;
+                    document.getElementById('urunAd').innerText = data.ad;
+                    document.getElementById('urunKod').innerText = data.kod;
+                    document.getElementById('birimTxt').innerText = data.birim;
+                    
+                    if(!aktifLokasyonId) document.getElementById('barkodInput').placeholder = "Şimdi RAF okutunuz...";
+                } 
+                else if (data.tip === 'LOKASYON') {
+                    aktifLokasyonId = data.id;
+                    aktifDepoId = data.depo_id;
+                    let rAd = document.getElementById('rafAd');
+                    rAd.innerText = data.ad;
+                    rAd.classList.remove('text-danger');
+                    
+                    if(!aktifStokId) document.getElementById('barkodInput').placeholder = "Şimdi ÜRÜN okutunuz...";
+                }
+
+                // Fokus'u miktar inputuna al (Eğer ikisi de tamamsa)
+                if(aktifStokId && aktifLokasyonId) {
+                    document.getElementById('barkodInput').placeholder = "Başka barkod...";
+                    document.getElementById('miktarInput').focus();
+                    document.getElementById('miktarInput').select();
+                }
+
+            } else {
+                Swal.fire('Bulunamadı', data.message, 'warning');
+            }
+        })
+        .catch(err => Swal.fire('Hata', 'Sunucu bağlantı hatası', 'error'));
+    }
+
+    function islemKaydet() {
+        let miktar = document.getElementById('miktarInput').value;
+
+        if(!aktifStokId) return Swal.fire('Hata', 'Lütfen önce bir ürün okutun!', 'warning');
+        if(!aktifLokasyonId) return Swal.fire('Hata', 'Lütfen ürünü koyacağınız rafı/lokasyonu okutun!', 'warning');
+        if(miktar <= 0) return Swal.fire('Hata', 'Miktar 0 olamaz!', 'warning');
+
+        Swal.fire({ title: 'Kaydediliyor...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+        fetch('/depo/api/wms/islem-kaydet', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+            },
+            body: JSON.stringify({
+                stok_id: aktifStokId,
+                lokasyon_id: aktifLokasyonId,
+                depo_id: aktifDepoId,
+                miktar: miktar
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.success) {
+                Swal.fire('Başarılı', data.message, 'success').then(() => {
+                    // Kayıt başarılıysa sadece ürünü sıfırla (Depocu aynı rafa başka ürünler diziyor olabilir)
+                    aktifStokId = null;
+                    document.getElementById('urunAd').innerText = "-";
+                    document.getElementById('urunKod').innerText = "-";
+                    document.getElementById('miktarInput').value = "1";
+                    document.getElementById('barkodInput').focus();
+                });
+            } else {
+                Swal.fire('Hata', data.message, 'error');
+            }
+        });
+    }
+
+    function ekraniSifirla() {
+        aktifStokId = null; aktifLokasyonId = null; aktifDepoId = null;
+        document.getElementById('urunAd').innerText = "-";
+        document.getElementById('urunKod').innerText = "-";
+        document.getElementById('rafAd').innerText = "RAF OKUTUNUZ!";
+        document.getElementById('rafAd').classList.add('text-danger');
+        document.getElementById('miktarInput').value = "1";
+        document.getElementById('barkodInput').placeholder = "Barkod Okutunuz...";
+        document.getElementById('islemEkrani').classList.add('d-none');
+        document.getElementById('barkodInput').focus();
+    }
+</script>
+{% endblock %}

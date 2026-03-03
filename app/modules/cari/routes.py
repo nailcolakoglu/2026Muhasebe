@@ -3,16 +3,16 @@
 import logging
 import uuid
 from sqlalchemy.orm import joinedload
-from datetime import datetime  # ✅ EKLENDI
-from decimal import Decimal  # ✅ EKLENDI
-from flask import Blueprint, render_template, request, jsonify, flash, url_for, g, redirect, session
+from datetime import datetime  
+from decimal import Decimal  
+from flask import Blueprint, render_template, request, jsonify, flash, url_for, g, redirect, session, abort
 from flask_login import login_required, current_user
 from sqlalchemy import func, and_, or_, cast, String, text
 from sqlalchemy.dialects.mysql import CHAR
 
 from app.modules.cari.models import CariHesap, CariHareket, CRMHareket
 from app.modules.fatura.models import Fatura
-from app.modules.lokasyon.models import Sehir, Ilce  # ✅ EKLENDI
+from app.modules.lokasyon.models import Sehir, Ilce  
 from app.enums import FaturaTuru
 from app.form_builder import DataGrid
 from .forms import create_cari_form
@@ -234,6 +234,24 @@ def index():
     grid.add_action('delete', _('Sil'), 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'cari.sil')
     
     
+    # Gizlenecek kolonlar
+    hidden_cols = [
+        'id', 'firma_id', 'sehir_id', 'ilce_id', 'eposta','toplam_siparis_sayisi','acik_hesap_limiti',
+        'adres', 'web_site', 'enlem', 'boylam','toplam_ciro',
+        'konum', 'doviz_turu', 'alis_muhasebe_hesap_id',
+        'satis_muhasebe_hesap_id', 'vergi_no', 'vergi_dairesi', 'tc_kimlik_no',
+        'odeme_plani_id', 'kaynak_turu', 'kaynak_id', 'son_iletisim_tarihi',
+        'risk_limiti', 'risk_durumu', 'risk_skoru', 'teminat_tutari',
+        'ilk_siparis_tarihi', 'son_siparis_tarihi', 'cari_tipi', 'sektor', 'musteri_grubu',
+        'segment', 'odeme_performansi', 'ai_ozeti', 'dogum_tarihi',
+        'cinsiyet', 'created_at', 'ai_metadata', 'churn_riski', 'sadakat_skoru', 'tahmini_yasam_boyu_degeri',
+        'updated_at', 'deleted_at', 'gecikme_sikligi', 'ortalama_odeme_suresi','ortalama_odeme_gunu','aktif','ortalama_siparis_tutari'
+    ]
+    
+    for col in hidden_cols:
+        grid.hide_column(col)
+
+    
     # ✅ EAGER LOADING
     firma_id = get_aktif_firma_id()
     query = tenant_db.query(CariHesap).options(
@@ -276,6 +294,11 @@ def ekle():
                 
                 for key, value in data.items():
                     if hasattr(cari, key):
+                        # 🔥 KRİTİK DÜZELTME: HTML'den gelen boş stringleri ('') NULL (None) yap.
+                        # Bu sayede MySQL UUID Foreign Key hatası vermez.
+                        if isinstance(value, str) and value.strip() == '':
+                            value = None
+                            
                         setattr(cari, key, value)
                 
                 tenant_db.add(cari)
@@ -296,7 +319,6 @@ def ekle():
                     'success': False,
                     'message': f'Hata: {str(e)}'
                 }), 500
-    
     return render_template('cari/form.html', form=form)
 
 
@@ -309,11 +331,10 @@ def duzenle(id):
     
     tenant_db = get_tenant_db()
     
-    # ✅ Soft delete kontrolü EKLENDI
     cari = tenant_db.query(CariHesap).filter(
         CariHesap.id == str(id),
         CariHesap.firma_id == current_user.firma_id,
-        CariHesap.deleted_at.is_(None)  # ✅ Silinmiş kayıtları gösterme
+        CariHesap.deleted_at.is_(None) 
     ).first()
     
     if not cari:
@@ -331,6 +352,10 @@ def duzenle(id):
                 
                 for key, value in data.items():
                     if hasattr(cari, key) and key != 'id':
+                        # 🔥 KRİTİK DÜZELTME: Boş stringleri NULL yap
+                        if isinstance(value, str) and value.strip() == '':
+                            value = None
+                            
                         setattr(cari, key, value)
                 
                 tenant_db.commit()
@@ -350,7 +375,6 @@ def duzenle(id):
                     'success': False,
                     'message': f'Hata: {str(e)}'
                 }), 500
-    
     return render_template('cari/form.html', form=form, title='Cari Düzenle')
 
 
@@ -402,74 +426,70 @@ def sil(id):
         }), 500
 
 
-@cari_bp.route('/ekstre/<uuid:id>')
+@cari_bp.route('/ekstre/<string:id>')
 @login_required
+@tenant_route
 def ekstre(id):
-    """Cari ekstre - Optimize edilmiş + Soft Delete"""
-    
     tenant_db = get_tenant_db()
     
-    # ✅ Soft delete kontrolü
-    cari = tenant_db.query(CariHesap).filter(
-        CariHesap.id == str(id),
-        CariHesap.firma_id == current_user.firma_id,
-        CariHesap.deleted_at.is_(None)  # ✅ EKLENDI
-    ).first()
-    
-    if not cari:
-        flash('Cari bulunamadı', 'danger')
-        return redirect(url_for('cari.index'))
-    
-    # ✅ OPTIMIZE EDİLMİŞ SORGU (Index: idx_hareket_cari_tarih)
-    hareketler_query = tenant_db.query(CariHareket).filter(
-        CariHareket.cari_id == str(id),
-        CariHareket.durum == 'ONAYLANDI'
-    ).order_by(CariHareket.tarih.asc())
-    
-    # ✅ Joined load (fatura, cek, vb.)
-    hareketler_query = hareketler_query.options(
-        db.joinedload(CariHareket.fatura),
-        db.joinedload(CariHareket.olusturan)
-    )
-    
-    ham_hareketler = hareketler_query.all()
-    
-    # Bakiye hesaplama
-    hareketler = []
-    bakiye = Decimal('0.00')
-    
-    for h in ham_hareketler:
-        borc = h.borc or Decimal('0.00')
-        alacak = h.alacak or Decimal('0.00')
-        bakiye += (borc - alacak)
-        
-        hareketler.append({
-            'tarih': h.tarih,
-            'belge_no': h.belge_no,
-            'islem_turu': h.islem_turu,
-            'aciklama': h.aciklama,
-            'borc': borc,
-            'alacak': alacak,
-            'bakiye': bakiye,
-            'vade_tarihi': h.vade_tarihi,
-            'gecikme_gun': h.gecikme_gun_sayisi
-        })
-    
-    # Özet istatistikler
-    ozet = {
-        'toplam_borc': sum(h['borc'] for h in hareketler),
-        'toplam_alacak': sum(h['alacak'] for h in hareketler),
-        'bakiye': bakiye,
-        'islem_sayisi': len(hareketler)
-    }
-    
-    return render_template(
-        'cari/ekstre.html',
-        cari=cari,
-        hareketler=hareketler,
-        ozet=ozet
-    )
+    # Debug: Gelen ID'yi ve aranan firma_id'yi loglayalım
+    print(f"DEBUG: Ekstre istenen ID: {id}, Firma ID: {current_user.firma_id}")
 
+    # Sorguyu daha esnek hale getirelim (UUID objesi veya string farkı için)
+    cari = tenant_db.query(CariHesap).filter(
+        CariHesap.id == id,
+        CariHesap.firma_id == current_user.firma_id
+    ).first()
+
+    if not cari:
+        # Hata vermeden önce bir de firma_id olmadan kontrol edelim (Sadece teşhis için)
+        exists_without_firma = tenant_db.query(CariHesap).filter_by(id=id).first()
+        if exists_without_firma:
+            return f"Hata: Cari bulundu ({exists_without_firma.unvan}) ancak firma_id ({exists_without_firma.firma_id}) mevcut kullanıcı ({current_user.firma_id}) ile uyuşmuyor."
+        return f"Hata: {id} ID'li cari veritabanında hiç bulunamadı.", 404
+
+    # 1. Hareketleri çek ve bakiyeyi hesapla
+    hareketler = tenant_db.query(CariHareket).filter_by(cari_id=id).order_by(CariHareket.tarih.asc()).all()
+    
+    yuruyen_bakiye = 0
+    for h in hareketler:
+        yuruyen_bakiye += (h.borc or 0) - (h.alacak or 0)
+        h.yuruyen_bakiye = yuruyen_bakiye
+
+    # 2. Sayfalandırma yapısı
+    sayfalar = [{
+        'sayfa_no': 1,
+        'hareketler': hareketler,
+        'devreden_bakiye': 0,
+        'son_sayfa_mi': True
+    }]
+    
+    # ✨ TOPLAMLARI MANUEL HESAPLIYORUZ (HATA PAYINI SIFIRLAMAK İÇİN)
+    toplam_borc = sum(h.borc or 0 for h in hareketler)
+    toplam_alacak = sum(h.alacak or 0 for h in hareketler)
+    net_bakiye = toplam_borc - toplam_alacak
+
+    # 3. Belge Üreticiye bu manuel hesapları gönderiyoruz
+    from app.modules.rapor.doc_engine import DocumentGenerator
+    try:
+        doc_gen = DocumentGenerator(current_user.firma_id)
+        return doc_gen.render_html(
+            belge_turu='cari_ekstre', 
+            veri_objesi=cari, 
+            ekstra_context={
+                'sayfalar': sayfalar,
+                'filtre_baslangic': request.args.get('baslangic', '01.01.2024'),
+                'filtre_bitis': request.args.get('bitis', datetime.now().strftime('%d.%m.%Y')),
+                'su_an': datetime.now(),
+                # ✨ ŞABLONUN DOĞRU GÖRMESİ İÇİN BURAYA EKLEDİK:
+                'manuel_borc': toplam_borc,
+                'manuel_alacak': toplam_alacak,
+                'manuel_bakiye': net_bakiye
+            }
+        )
+    except Exception as e:
+        return f"Şablon Hatası: {str(e)}"
+        
 
 # ========================================
 # API: SIRADAKİ KOD - REDIS CACHED
@@ -562,37 +582,43 @@ def api_get_ilceler():
 @cari_bp.route('/api/ara', methods=['GET'])
 @login_required
 def api_ara():
-    """Cari arama - Full-text search + Soft Delete"""
+    """Cari arama - Typeahead (Yazarken Bul) ve Select2 Uyumlu"""
     
     tenant_db = get_tenant_db()
-    q = request.args.get('q', '').strip()
+    
+    # ✨ DÜZELTME 1: JS 'term' gönderiyor. Hem 'term' hem 'q' desteği ekledik.
+    q = request.args.get('term') or request.args.get('q', '')
+    q = q.strip()
     
     if len(q) < 2:
-        return jsonify([])
+        return jsonify({'results': []})
     
-    # ✅ MySQL Full-Text Search (Index: idx_cari_fulltext) + Soft Delete
+    # ✨ DÜZELTME 2: MATCH AGAINST yerine LIKE kullanıyoruz. 
+    # Böylece "VES" yazınca "VESTEL" gibi kısmi eşleşmeleri anında bulur.
     results = tenant_db.execute(text("""
         SELECT id, kod, unvan, telefon, bakiye
         FROM cari_hesaplar
         WHERE firma_id = :firma_id
         AND deleted_at IS NULL
-        AND MATCH(unvan, adres) AGAINST(:query IN NATURAL LANGUAGE MODE)
+        AND (unvan LIKE :query OR kod LIKE :query OR telefon LIKE :query)
         LIMIT 20
     """), {
         'firma_id': current_user.firma_id,
-        'query': q
+        'query': f"%{q}%"  # Her iki tarafına % koyarak içinde geçenleri buluyoruz
     }).fetchall()
     
-    return jsonify([
-        {
-            'id': str(r[0]),
-            'kod': r[1],
-            'unvan': r[2],
-            'telefon': r[3],
-            'bakiye': float(r[4] or 0)
-        }
-        for r in results
-    ])
+    return jsonify({
+        'results': [
+            {
+                'id': str(r[0]),
+                'text': f"{r[2]} ({r[1]})",  # Select2'de görünen kısım (Ünvan + Kod)
+                'kod': r[1],
+                'telefon': r[3],
+                'bakiye': float(r[4] or 0)
+            }
+            for r in results
+        ]
+    })
 
 
 # ========================================

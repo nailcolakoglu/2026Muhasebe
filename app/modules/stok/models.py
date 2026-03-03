@@ -967,17 +967,18 @@ class StokHareketi(db.Model, TimestampMixin):
         comment='Fatura/Fiş numarası'
     )
     
-    hareket_turu = db.Column(
-        ENUM(
-            'GIRIS', 'CIKIS', 'DEVIR', 'TRANSFER',
-            'ALIS', 'SATIS', 'ALIS_IADE', 'SATIS_IADE',
-            'URETIM', 'URETIM_CIKIS', 'SARF', 'FIRE',
-            'SAYIM_FAZLA', 'SAYIM_EKSIK',
-            name='hareket_turu_enum'
-        ),
-        nullable=False,
-        index=True
-    )
+    #hareket_turu = db.Column(
+    #    ENUM(
+    #        'GIRIS', 'CIKIS', 'DEVIR', 'TRANSFER',
+    #        'ALIS', 'SATIS', 'ALIS_IADE', 'SATIS_IADE',
+    #        'URETIM', 'URETIM_CIKIS', 'SARF', 'FIRE',
+    #        'SAYIM_FAZLA', 'SAYIM_EKSIK','SATIS_IRSALIYESI',
+    #        name='hareket_turu_enum'
+    #    ),
+    #    nullable=False,
+    #    index=True
+    #)
+    hareket_turu = db.Column(db.String(50), default=HareketTuru.SATIS_IRSALIYESI.value,nullable=False,index=True)
     
     aciklama = db.Column(String(500))
     

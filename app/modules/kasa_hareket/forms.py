@@ -8,6 +8,7 @@ from app.modules.cari.models import CariHesap
 from app.modules.sube.models import Sube
 from app.modules.banka.models import BankaHesap
 from app.enums import BankaIslemTuru
+from app.extensions import get_tenant_db # ✨ YENİ: Tenant DB Importu
 
 def create_kasa_hareket_form(hareket=None):
     is_edit = hareket is not None
@@ -16,16 +17,18 @@ def create_kasa_hareket_form(hareket=None):
     
     form = Form(name="kasa_hareket_form", title=title, action=action_url, method="POST", submit_text=_("Kaydet"), ajax=True)
     layout = FormLayout()
+    
+    tenant_db = get_tenant_db() # ✨ KESİN KURAL: Form verileri Tenant DB'den çekilmeli
 
-    # --- OPTIONS ---
-    kasalar = Kasa.query.filter_by(firma_id=current_user.firma_id, aktif=True).all()
-    kasa_opts = [(k.id, f"{k.ad} ({getattr(k.doviz_turu, 'name', str(k.doviz_turu))})") for k in kasalar]
+    # --- OPTIONS (TENANT DB DESTEKLİ) ---
+    kasalar = tenant_db.query(Kasa).filter_by(firma_id=str(current_user.firma_id), aktif=True).all()
+    kasa_opts = [(str(k.id), f"{k.ad} ({getattr(k.doviz_turu, 'name', str(k.doviz_turu))})") for k in kasalar]
 
-    cariler = CariHesap.query.filter_by(firma_id=current_user.firma_id).limit(100).all()
-    cari_opts = [(c.id, f"{c.unvan}") for c in cariler]
+    cariler = tenant_db.query(CariHesap).filter_by(firma_id=str(current_user.firma_id)).limit(100).all()
+    cari_opts = [(str(c.id), f"{c.unvan}") for c in cariler]
 
-    bankalar = BankaHesap.query.filter_by(firma_id=current_user.firma_id).all()
-    banka_opts = [(b.id, f"{b.banka_adi} - {b.ad}") for b in bankalar]
+    bankalar = tenant_db.query(BankaHesap).filter_by(firma_id=str(current_user.firma_id)).all()
+    banka_opts = [(str(b.id), f"{b.banka_adi} - {b.ad}") for b in bankalar]
 
     # --- VARSAYILAN DEĞERLER (GÜVENLİ) ---
     def safe_val(val, default=""):
@@ -43,10 +46,11 @@ def create_kasa_hareket_form(hareket=None):
         
         cikis_turleri = [
             BankaIslemTuru.TEDIYE.value, 
-            BankaIslemTuru.VIRMAN_CIKIS.value
+            BankaIslemTuru.VIRMAN_CIKIS.value,
+            'TEDIYE', 'VIRMAN_CIKIS', 'tediye', 'virman_cikis'
         ]
         
-        if islem_turu_val in cikis_turleri:
+        if str(islem_turu_val) in cikis_turleri:
             mevcut_yon = 'cikis'
         
         if hareket.karsi_kasa_id: mevcut_taraf = 'kasa'
@@ -56,7 +60,7 @@ def create_kasa_hareket_form(hareket=None):
     belge_no = FormField('belge_no', FieldType.AUTO_NUMBER, _('Makbuz No'), required=True, value=hareket.belge_no if hareket else '', endpoint='/kasa-hareket/api/siradaki-no')
     tarih = FormField('tarih', FieldType.DATE, _('Tarih'), required=True, value=hareket.tarih if hareket else '')
     
-    kasa_id = FormField('kasa_id', FieldType.SELECT, _('İşlem Gören Kasa'), options=kasa_opts, required=True, value=hareket.kasa_id if hareket else '')
+    kasa_id = FormField('kasa_id', FieldType.SELECT, _('İşlem Gören Kasa'), options=kasa_opts, required=True, value=str(hareket.kasa_id) if hareket else '')
 
     # Yön Seçimi
     islem_yonu = FormField('islem_yonu', FieldType.RADIO, _('İşlem Yönü'), 
@@ -69,14 +73,14 @@ def create_kasa_hareket_form(hareket=None):
                                  value=mevcut_taraf, html_attributes={'class': 'radio-card-group btn_color:info'})
 
     # Dinamik Alanlar
-    cari_id = FormField('cari_id', FieldType.SELECT, _('Cari Hesap'), options=cari_opts, value=hareket.cari_id if hareket else '',
+    cari_id = FormField('cari_id', FieldType.SELECT, _('Cari Hesap'), options=cari_opts, value=str(hareket.cari_id) if hareket and hareket.cari_id else '',
                         conditional={'field': 'karsi_hesap_turu', 'value': 'cari'},
                         select2_config={'placeholder': 'Cari Seçiniz...', 'search': True})
     
-    banka_id = FormField('banka_id', FieldType.SELECT, _('Banka Hesabı'), options=banka_opts, value=hareket.banka_id if hareket else '',
+    banka_id = FormField('banka_id', FieldType.SELECT, _('Banka Hesabı'), options=banka_opts, value=str(hareket.banka_id) if hareket and hareket.banka_id else '',
                          conditional={'field': 'karsi_hesap_turu', 'value': 'banka'})
     
-    karsi_kasa_id = FormField('karsi_kasa_id', FieldType.SELECT, _('Hedef Kasa'), options=kasa_opts, value=hareket.karsi_kasa_id if hareket else '',
+    karsi_kasa_id = FormField('karsi_kasa_id', FieldType.SELECT, _('Hedef Kasa'), options=kasa_opts, value=str(hareket.karsi_kasa_id) if hareket and hareket.karsi_kasa_id else '',
                               conditional={'field': 'karsi_hesap_turu', 'value': 'kasa'})
 
     tutar = FormField('tutar', FieldType.CURRENCY, _('Tutar'), required=True, value=hareket.tutar if hareket else 0)

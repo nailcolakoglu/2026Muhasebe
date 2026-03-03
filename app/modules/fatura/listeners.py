@@ -122,7 +122,14 @@ def fatura_onayla_handler(fatura: Fatura):
         db.session.commit()
         
         logger.info(f"✅ Fatura onaylandı: {fatura.belge_no}")
-        
+        try:
+            from app.modules.efatura.tasks import send_efatura_async
+            # Celery'nin .delay() metodu işlemi ana iplikten (main thread) koparıp arka plana atar
+            send_efatura_async.delay(str(fatura.id), str(fatura.firma_id))
+            logger.info(f"📡 Fatura {fatura.belge_no} GİB gönderimi için arka plan kuyruğuna alındı.")
+        except Exception as e:
+            logger.error(f"Celery görev tetikleme hatası: {str(e)}")
+            
         return True, "Fatura başarıyla onaylandı"
     
     except Exception as e:

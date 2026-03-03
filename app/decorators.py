@@ -1,4 +1,5 @@
 # app/decorators.py
+
 """
 Güvenlik ve Yetkilendirme Decorator'ları
 
@@ -11,6 +12,7 @@ Kullanım Örnekleri:
     @audit_log('stok', 'create')
     @superadmin_required
 """
+
 from functools import wraps
 from flask import abort, flash, redirect, url_for, request, session, g, current_app
 from flask_login import current_user
@@ -18,7 +20,6 @@ from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
-
 
 # ============================================================================
 # 1. KİMLİK DOĞRULAMA DECORATOR'LARI

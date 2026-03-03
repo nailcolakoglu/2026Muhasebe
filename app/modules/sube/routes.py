@@ -63,7 +63,16 @@ def index():
     # Actions
     grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'sube.duzenle')
     grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'sube.sil')
+            
+    # Gizlenecek kolonlar
+    hidden_cols = [
+        'id', 'firma_id', 'bolge_id', 'sehir_id', 'ilce_id',
+        'created_at', 'updated_at', 'deleted_at', 
+    ]
     
+    for col in hidden_cols:
+        grid.hide_column(col)
+
     # ✅ EAGER LOADING (Çoklu İlişki)
     firma_id = get_aktif_firma_id()
     query = tenant_db.query(Sube).options(

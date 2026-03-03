@@ -7,6 +7,7 @@ class BaseEnum(str, Enum):
     Tüm string tabanlı Enum'lar için temel sınıf.
     choices() ve __str__() metodlarını otomatik sağlar.
     """
+    
     @classmethod
     def choices(cls):
         # Formlarda (SelectBox) kullanmak için [(value, label)] formatında liste döner
@@ -64,7 +65,7 @@ class StokKartTipi(BaseEnum):
 class HareketTuru(BaseEnum):
     # --- TEMEL ---
     DEVIR = 'devir'               # Dönem başı açılış (Giriş)
-    TRANSFER = 'transfer'         # Depolar arası transfer (Giriş/Çıkış)
+    DEPO_TRANSFER = 'depo_transfer'         # Depolar arası transfer (Giriş/Çıkış)
 
     # 👇 EKLENECEK SATIRLAR 👇
     SATIS_IRSALIYESI = "Satış İrsaliyesi"
@@ -79,14 +80,14 @@ class HareketTuru(BaseEnum):
     SATIS_IADE = 'satis_iade'     # Müşteri malı iade etti (Giriş)
 
     # --- FİŞ / İÇ İŞLEMLER ---
-    URETIM = 'uretim'             # Üretimden mamul girişi (Giriş)
-    URETIM_CIKIS = 'uretim_cikis' # Üretime hammadde çıkışı (Çıkış)
-    SARF = 'sarf'                 # İşletme içi tüketim/masraf (Çıkış)
-    FIRE = 'fire'                 # Hasar, bozulma, kayıp (Çıkış)
-    SAYIM_FAZLA = 'sayim_fazla'   # Sayım sonucu stok artışı (Giriş)
-    SAYIM_EKSIK = 'sayim_eksik'   # Sayım sonucu stok azalışı (Çıkış)
-    GIRIS = 'giris'               # Genel Giriş (Gerekirse)
-    CIKIS = 'cikis'               # Genel Çıkış (Gerekirse)
+    URETIM_GIRISI = 'uretim_girisi' # Üretimden mamul girişi (Giriş)
+    URETIM_CIKISI = 'uretim_cikisi' # Üretime hammadde çıkışı (Çıkış)
+    SARF = 'sarf'                   # İşletme içi tüketim/masraf (Çıkış)
+    FIRE = 'fire'                   # Hasar, bozulma, kayıp (Çıkış)
+    SAYIM_FAZLASI = 'sayim_fazlasi' # Sayım sonucu stok artışı (Giriş)
+    SAYIM_EKSIGI = 'sayim_eksigi'   # Sayım sonucu stok azalışı (Çıkış)
+    GIRIS = 'giris'                 # Genel Giriş (Gerekirse)
+    CIKIS = 'cikis'                 # Genel Çıkış (Gerekirse)
 
 class IslemDurumu(BaseEnum):
     BEKLIYOR = 'bekliyor'
@@ -377,3 +378,25 @@ class IrsaliyeDurumu(BaseEnum):
 
     def __str__(self):
         return self.value
+        
+class CrmAdayDurumu(BaseEnum):
+    YENI = "Yeni"
+    GORUSULUYOR = "Görüşülüyor"
+    NITELIKLI = "Nitelikli (Sıcak)"
+    DONUSTU = "Cari Hesaba Dönüştü"
+    IPTAL = "İptal / İlgilenmiyor"
+
+class CrmFirsatAsamasi(BaseEnum):
+    KESIF = "Keşif / İlk Temas"
+    IHTIYAC_ANALIZI = "İhtiyaç Analizi"
+    TEKLIF_SUNULDU = "Teklif Sunuldu"
+    PAZARLIK = "Pazarlık"
+    KAZANILDI = "Kazanıldı (Satış)"
+    KAYBEDILDI = "Kaybedildi"
+
+class CrmAktiviteTipi(BaseEnum):
+    TELEFON = "Telefon Görüşmesi"
+    TOPLANTI = "Yüz Yüze Toplantı"
+    ONLINE_TOPLANTI = "Online Toplantı"
+    EPOSTA = "E-Posta"
+    GOREV = "Görev / Hatırlatma"

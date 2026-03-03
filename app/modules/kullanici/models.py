@@ -3,6 +3,13 @@
 from app.extensions import db
 from app.models.base import TimestampMixin, SoftDeleteMixin
 
+# Kullanıcı - Şube Yetkilendirme
+kullanici_sube_yetki = db.Table('kullanici_sube_yetki',
+    db.Column('kullanici_id', db.String(36), db.ForeignKey('kullanicilar.id'), primary_key=True),
+    # 👇 BURASI DÜZELTİLDİ: Integer yerine String(36)
+    db.Column('sube_id', db.String(36), db.ForeignKey('subeler.id'), primary_key=True)
+)
+
 class Kullanici(db.Model, TimestampMixin, SoftDeleteMixin):
     """
     Firebird Kullanıcı Modeli (Gölge Tablo)

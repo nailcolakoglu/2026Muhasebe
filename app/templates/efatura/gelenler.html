@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Gelen E-Faturalar | Inbox{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h5 class="mb-0"><i class="bi bi-inbox text-primary me-2"></i>Gelen E-Faturalar (Inbox)</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="window.location.reload()">
+                <i class="bi bi-arrow-clockwise"></i> Yenile
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Fatura No</th>
+                            <th>Tedarikçi Ünvanı</th>
+                            <th>VKN/TCKN</th>
+                            <th class="text-end">Tutar</th>
+                            <th class="text-center">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in faturalar %}
+                        <tr>
+                            <td class="align-middle">{{ f.tarih }}</td>
+                            <td class="align-middle fw-bold">{{ f.fatura_no }}</td>
+                            <td class="align-middle">{{ f.gonderici_unvan }}</td>
+                            <td class="align-middle">{{ f.gonderici_vkn }}</td>
+                            <td class="align-middle text-end font-monospace fw-bold">{{ f.tutar }} {{ f.para_birimi }}</td>
+                            <td class="align-middle text-center">
+                                <button class="btn btn-sm btn-success btn-iceri-al" 
+                                        data-ettn="{{ f.ettn }}" data-vkn="{{ f.gonderici_vkn }}"
+                                        data-unvan="{{ f.gonderici_unvan }}" data-belgeno="{{ f.fatura_no }}"
+                                        data-tarih="{{ f.tarih }}" data-tutar="{{ f.tutar }}">
+                                    <i class="bi bi-download me-1"></i>İçeri Al
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">Gelen kutunuzda yeni fatura bulunmamaktadır.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Sayfadaki tüm elementler ve jQuery yüklendikten sonra çalışması için window.onload kullanıyoruz
+window.addEventListener('load', function() {
+    
+    // Eğer jQuery yoksa konsola uyarı bas
+    if (typeof $ === 'undefined') {
+        console.error("jQuery yüklenemedi! Lütfen base.html dosyanızı kontrol edin.");
+        return;
+    }
+
+    $('.btn-iceri-al').on('click', function(e) {
+        e.preventDefault();
+        var btn = $(this);
+        
+        Swal.fire({
+            title: 'Fatura İçeri Alınsın mı?',
+            text: "Bu işlem otomatik olarak Alış Faturası oluşturacak ve Cariyi alacaklandıracaktır.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Evet, İçeri Al',
+            cancelButtonText: 'İptal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                var data = {
+                    ettn: btn.data('ettn'),
+                    vkn: btn.data('vkn'),
+                    unvan: btn.data('unvan'),
+                    belge_no: btn.data('belgeno'),
+                    tarih: btn.data('tarih'),
+                    tutar: btn.data('tutar')
+                };
+                
+                // CSRF Token Güvenliği (Eğer base.html'de meta etiketi yoksa boş geçerek 400 hatasını önler)
+                var csrfToken = $('meta[name="csrf-token"]').length ? $('meta[name="csrf-token"]').attr('content') : '';
+                var headers = csrfToken ? { "X-CSRFToken": csrfToken } : {};
+                
+                $.ajax({
+                    url: '/efatura/iceri-al',
+                    type: 'POST',
+                    data: data,
+                    headers: headers,
+                    beforeSend: function() { 
+                        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> İşleniyor...'); 
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            Swal.fire('Başarılı!', res.message, 'success');
+                            // İşlem başarılıysa satırı yeşil yapıp yavaşça kaybet
+                            btn.closest('tr').addClass('table-success').fadeOut(1000);
+                        } else {
+                            Swal.fire('Hata', res.message, 'error');
+                            btn.prop('disabled', false).html('<i class="bi bi-download me-1"></i>İçeri Al');
+                        }
+                    },
+                    error: function(xhr) {
+                        // Backend'den (Python) gelen gerçek hata mesajını ekrana bas
+                        var errMsg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : 'Sunucu veya veritabanı hatası oluştu.';
+                        Swal.fire('Sistem Hatası', errMsg, 'error');
+                        btn.prop('disabled', false).html('<i class="bi bi-download me-1"></i>İçeri Al');
+                    }
+                });
+            }
+        });
+    });
+    
+});
+</script>
+{% endblock %}

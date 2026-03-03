@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B2B Portal - Giriş Yap</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #e2e8f0; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .login-card { max-width: 400px; width: 100%; border-radius: 15px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .login-header { background: #0f172a; padding: 30px 20px; text-align: center; color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="login-card bg-white">
+        <div class="login-header">
+            <h3><i class="bi bi-magnet me-2"></i> B2B Bayi Portalı</h3>
+            <p class="text-muted mb-0 mt-2" style="font-size: 0.9rem;">Sipariş ve Tahsilat Yönetim Sistemi</p>
+        </div>
+        <div class="card-body p-4">
+            
+            <div id="alertBox" class="alert d-none" role="alert"></div>
+
+            <form id="b2bLoginForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="mb-3">
+                    <label class="form-label text-secondary fw-bold small">FİRMA KODU</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="bi bi-building"></i></span>
+                        <input type="text" class="form-control" name="firma_kodu" id="firma_kodu" placeholder="Örn: IZGRUP" required autofocus>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label text-secondary fw-bold small">E-POSTA ADRESİ</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="bi bi-envelope"></i></span>
+                        <input type="email" class="form-control" name="email" id="email" placeholder="E-Posta Adresiniz" required>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label text-secondary fw-bold small">ŞİFRE</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="bi bi-lock"></i></span>
+                        <input type="password" class="form-control" name="sifre" id="sifre" placeholder="Şifreniz" required>
+                    </div>
+                </div>
+
+                <button type="submit" id="btnSubmit" class="btn btn-primary w-100 py-2 fw-bold" style="background-color: #2563eb; border: none;">
+                    Sisteme Giriş Yap <i class="bi bi-arrow-right ms-1"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('b2bLoginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('btnSubmit');
+            const alertBox = document.getElementById('alertBox');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Lütfen Bekleyin...';
+            alertBox.classList.add('d-none');
+
+            const formData = new FormData(this);
+
+            fetch('{{ url_for("b2b.login") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    window.location.href = data.redirect;
+                } else {
+                    alertBox.textContent = data.message;
+                    alertBox.className = 'alert alert-danger';
+                    btn.disabled = false;
+                    btn.innerHTML = 'Sisteme Giriş Yap <i class="bi bi-arrow-right ms-1"></i>';
+                }
+            })
+            .catch(error => {
+                alertBox.textContent = 'Sunucu ile iletişim kurulamadı.';
+                alertBox.className = 'alert alert-danger';
+                btn.disabled = false;
+                btn.innerHTML = 'Sisteme Giriş Yap <i class="bi bi-arrow-right ms-1"></i>';
+            });
+        });
+    </script>
+</body>
+</html>
