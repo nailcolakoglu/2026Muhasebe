@@ -80,6 +80,9 @@ def get_gemini_response(system_instruction, user_prompt):
     """
     Gemini modelini JSON modunda çalıştırarak yanıt alır.
     """
+    if not is_active or not ACTIVE_MODEL_NAME:
+        return None
+
     try:
         # Model Ayarları (JSON zorunluluğu)
         generation_config = {
@@ -91,8 +94,9 @@ def get_gemini_response(system_instruction, user_prompt):
         }
 
         # Modeli Başlat (Sistem talimatı ile)
+        # ✨ KRİTİK DÜZELTME: MODEL_NAME yerine ACTIVE_MODEL_NAME kullanıldı
         model = genai.GenerativeModel(
-            model_name=MODEL_NAME,
+            model_name=ACTIVE_MODEL_NAME, 
             generation_config=generation_config,
             system_instruction=system_instruction
         )
@@ -106,6 +110,7 @@ def get_gemini_response(system_instruction, user_prompt):
 
     except Exception as e:
         print(f"Gemini API Hatası: {e}")
+        return None
         return None
 
 # ----------------------------------------------------------------
@@ -407,33 +412,6 @@ def analyze_anomalies(audit_data_json):
     
     return get_gemini_response(system_prompt, user_prompt)
 
-def generate_ceo_briefing1(summary_data_json):
-    """
-    Tüm modüllerden gelen kritik verileri özetleyerek CEO için günlük brifing hazırlar.
-    """
-    if not is_active:
-        return "<div class='alert alert-warning'>AI Modülü kapalı.</div>"
-
-    system_prompt = """
-    Sen bir Holding CEO'sunun sağ kolu ve stratejik danışmanısın.
-    Sana Stok, Finans, Satış ve Risk departmanlarından gelen "Kritik Uyarılar" verilecek.
-    
-    Görevlerin:
-    1.**Filtrele:** Her şeyi anlatma.Sadece patronun bilmesi gereken "Acil" ve "Tehlikeli" durumları seç.
-    2.**Özetle:** "Günaydın Patron" diye başla ve samimi ama profesyonel bir dille 3 maddelik bir özet geç.
-    3.**Yönlendir:** Her sorun için hangi departmana ne talimat vermesi gerektiğini söyle.
-    
-    ÇIKTI FORMATI (JSON):
-    {
-      "brifing_html": "<div class='card'>...Şık bir HTML tasarım...</div>",
-      "acil_durum_seviyesi": "Yüksek" (veya Orta/Düşük)
-    }
-    """
-    
-    user_prompt = f"Departman Raporları:\n{summary_data_json}"
-    
-    return get_gemini_response(system_prompt, user_prompt)
-
 def analyze_check_image1(image_path):
     """
     Çek görselini AI'ya gönderir ve OCR verilerini JSON olarak döner.
@@ -677,31 +655,36 @@ def analyze_check_image(image_path):
 # 3.YÖNETİCİ ÖZETLERİ (Metin)
 # ----------------------------------------------------------------
 def generate_ceo_briefing(summary_data_json):
-    if not is_active:
-        return "<div class='alert alert-warning'>AI Modülü kapalı.</div>"
+    """
+    Tüm modüllerden gelen verileri özetleyerek CEO için şık bir HTML brifing hazırlar.
+    """
+    if not is_active or not ACTIVE_MODEL_NAME:
+        return "<div class='alert alert-warning shadow-sm'><i class='bi bi-exclamation-triangle me-2'></i>AI Modülü kapalı veya API Key eksik.</div>"
 
-    system_prompt = "Sen bir CEO Asistanısın.Bu verileri analiz et ve kısa, vurucu bir HTML özet çıkar."
+    system_prompt = """
+    Sen bir Holding CEO'sunun Başdanışmanı ve Finansal Analistisin.
+    Sana şirketin güncel finansal durumunu (Alacak/Borç, Kasa) ve riskli stok sayısını vereceğim.
+
+    GÖREVLERİN:
+    1. CEO'ya hitaben profesyonel ve enerjik bir giriş yap (Örn: "Günaydın Patron" veya "Değerli Yöneticim").
+    2. Alacak/Borç dengesini analiz et. Eğer alacaklar yüksekse nakit akışını öv, borç fazlaysa tahsilat uyarısı yap.
+    3. Kritik stok sayılarına dikkat çek ve "WMS üzerinden mal kabul" veya "Satınalma" talimatı ver.
+    4. Bu verileri düz metin olarak DEĞİL; Bootstrap 5 class'larını kullanarak şık kutular (card), ikonlar (bi bi-...) ve renkli badge'ler (bg-success, bg-danger) ile harika bir tasarımla sun.
+    5. En alta "Günün Stratejik Hamlesi:" adında altın değerinde tek cümlelik bir tavsiye yaz (Koyu renkli ve belirgin olsun).
+
+    ÇIKTI KURALLARI:
+    SADECE VE SADECE render edilebilir HTML kodu döndür. Markdown blokları (```html) veya ekstra metin KULLANMA.
+    """
     
     try:
         model = genai.GenerativeModel(ACTIVE_MODEL_NAME)
-        response = model.generate_content(f"{system_prompt}\n\nVeri:\n{summary_data_json}")
-        return response.text
+        response = model.generate_content([system_prompt, f"Bugünün ERP Verileri:\n{summary_data_json}"])
+        
+        # ✨ İŞTE HAYAT KURTARAN TIRAŞLAMA SATIRI:
+        # Gelen yanıttaki o gereksiz ```html ve ``` işaretlerini siliyoruz
+        html_cikti = response.text.replace('```html', '').replace('```', '').strip()
+        
+        return html_cikti
+        
     except Exception as e:
-        return f"Hata: {str(e)}"
-    """
-    CEO için günlük özet hazırlar.
-    """
-    if not is_active:
-        return "<div class='alert alert-warning'>AI Modülü kapalı.</div>"
-
-    system_prompt = """
-    Sen bir CEO Asistanısın.Verilen verileri analiz et ve HTML formatında 
-    kısa, vurucu bir yönetici özeti çıkar.Kritik durumları vurgula.
-    """
-    
-    try:
-        model = genai.GenerativeModel(TEXT_MODEL_NAME)
-        response = model.generate_content(f"{system_prompt}\n\nVeri:\n{summary_data_json}")
-        return response.text
-    except Exception as e:
-        return f"Hata: {str(e)}"
+        return f"<div class='alert alert-danger shadow-sm'>Yapay Zeka Analiz Hatası: {str(e)}</div>"

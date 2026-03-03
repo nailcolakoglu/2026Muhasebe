@@ -1,4 +1,4 @@
-# models/__init__.py
+# app/models/__init__.py
 
 """
 Merkezi Model Import Noktası
@@ -40,7 +40,7 @@ from app.models.base import (
     TimestampMixin, 
     SoftDeleteMixin,
     FirmaOwnedMixin,
-    ensure_firebird_database, 
+    #ensure_firebird_database, 
     JSONText, 
     PaginationResult, 
     ROLES_PERMISSIONS
@@ -55,90 +55,6 @@ from enums import (
     SiparisDurumu, CekDurumu, ParaBirimi,
     HesapSinifi, BakiyeTuru, OzelHesapTipi
 )
-
-# ========================================
-# 3.MODÜLER MODEL İMPORTLARI
-# ========================================
-
-# Lokasyon
-from app.modules.lokasyon.models import Sehir, Ilce
-
-# Firma ve Dönem
-from app.modules.firmalar.models import Firma, Donem, SystemMenu 
-
-# Bölge
-from app.modules.bolge.models import Bolge
-
-# Kullanıcı
-from app.modules.kullanici.models import Kullanici
-
-# Şube
-from app.modules.sube.models import Sube
-
-# Muhasebe
-from app.modules.muhasebe.models import HesapPlani, MuhasebeFisi, MuhasebeFisiDetay
-
-# Kasa
-from app.modules.kasa.models import Kasa
-
-# Banka
-from app.modules.banka.models import BankaHesap
-
-# Cari
-from app.modules.cari.models import CariHesap, CariHareket, CRMHareket
-
-# Depo
-from app.modules.depo.models import Depo
-
-# Kategori
-from app.modules.kategori.models import StokKategori
-
-# Stok
-from app.modules.stok.models import (
-    StokKart, StokHareketi, StokPaketIcerigi,
-    StokMuhasebeGrubu, StokKDVGrubu, StokDepoDurumu
-)
-
-# Fiyat
-from app.modules.fiyat.models import FiyatListesi, FiyatListesiDetay
-
-# İrsaliye
-from app.modules.irsaliye.models import Irsaliye, IrsaliyeKalemi
-
-# Fatura
-from app.modules.fatura.models import Fatura, FaturaKalemi
-
-# E-Fatura
-from app.modules.efatura.models import EntegratorAyarlari
-
-# Stok Fişi
-from app.modules.stok_fisi.models import StokFisi, StokFisiDetay
-
-# Kasa Hareket
-from app.modules.kasa_hareket.models import KasaHareket
-
-# Banka Hareket
-from app.modules.banka_hareket.models import BankaHareket
-
-# Finans
-from app.modules.finans.models import FinansIslem
-
-# Çek
-from app.modules.cek.models import CekSenet
-
-# Sipariş
-from app.modules.siparis.models import Siparis, SiparisDetay, OdemePlani
-
-# Döviz
-from app.modules.doviz.models import DovizKuru
-
-# Banka Import
-from app.modules.banka_import.models import (
-    BankaImportSablon, BankaImportKurali, BankaImportGecmisi
-)
-
-# Rapor
-from app.modules.rapor.models import YazdirmaSablonu
 
 # Form Builder
 # from app.form_builder.models import MenuItem
@@ -234,6 +150,96 @@ class WorkflowInstance(db.Model):
 
 
 # ========================================
+# 3.MODÜLER MODEL İMPORTLARI
+# ========================================
+
+# Lokasyon
+from app.modules.lokasyon.models import Sehir, Ilce
+
+# Firma ve Dönem
+from app.modules.firmalar.models import Firma, Donem, SystemMenu 
+
+# Bölge
+from app.modules.bolge.models import Bolge
+
+# Kullanıcı
+from app.modules.kullanici.models import Kullanici
+
+# Şube
+from app.modules.sube.models import Sube
+
+# Muhasebe
+from app.modules.muhasebe.models import HesapPlani, MuhasebeFisi, MuhasebeFisiDetay
+
+# Kasa
+from app.modules.kasa.models import Kasa
+
+# Banka
+from app.modules.banka.models import BankaHesap
+
+# Cari
+from app.modules.cari.models import CariHesap, CariHareket, CRMHareket
+
+# Depo
+from app.modules.depo.models import Depo
+
+# Kategori
+from app.modules.kategori.models import StokKategori
+
+# Stok
+from app.modules.stok.models import (
+    StokKart, StokHareketi, StokPaketIcerigi,
+    StokMuhasebeGrubu, StokKDVGrubu, StokDepoDurumu
+)
+
+# Fiyat
+from app.modules.fiyat.models import FiyatListesi, FiyatListesiDetay
+
+# İrsaliye
+from app.modules.irsaliye.models import Irsaliye, IrsaliyeKalemi
+
+# Fatura
+from app.modules.fatura.models import Fatura, FaturaKalemi
+
+# E-Fatura
+from app.modules.efatura.models import EntegratorAyarlari
+
+# Stok Fişi
+from app.modules.stok_fisi.models import StokFisi, StokFisiDetay
+
+# Kasa Hareket
+from app.modules.kasa_hareket.models import KasaHareket
+
+# Banka Hareket
+from app.modules.banka_hareket.models import BankaHareket
+
+# Finans
+from app.modules.finans.models import FinansIslem
+
+# Çek
+from app.modules.cek.models import CekSenet
+
+# Sipariş
+from app.modules.siparis.models import Siparis, SiparisDetay, OdemePlani
+
+# Döviz
+from app.modules.doviz.models import DovizKuru
+
+# Banka Import
+from app.modules.banka_import.models import (
+    BankaImportSablon, BankaImportKurali, BankaImportGecmisi
+)
+
+# Rapor
+from app.modules.rapor.models import YazdirmaSablonu
+
+# CRM
+from app.modules.crm.models import AdayMusteri, SatisAsamasi, SatisFirsati, CrmAktivite, CrmHareketi, CrmFirsatLogu
+
+# B2B Portalı
+from app.modules.b2b.models import B2BAyar, B2BKullanici
+
+# ========================================
 # 5.EXPORT LİSTESİ
 # ========================================
 __all__ = [
@@ -298,6 +304,13 @@ __all__ = [
     'Sayac', 'Hedef',
     'AIRaporAyarlari', 'AIRaporGecmisi',
     'WorkflowDefinition', 'WorkflowInstance',
+
+    # CRM Modelleri
+    'AdayMusteri', 'SatisAsamasi', 'SatisFirsati', 'CrmAktivite', 'CrmHareketi', 'CrmFirsatLogu',
+    
+    # B2B Modelleri
+    'B2BAyar', 'B2BKullanici',
+
 ]  
 
 

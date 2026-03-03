@@ -1,0 +1,199 @@
+{% extends "base.html" %} {% block title %}{{ cari.unvan }} - Cari Hesap Ekstresi{% endblock %}
+
+{% block styles %}
+<style>
+    /* Yazdırma (Print) Ekranı Optimizasyonu */
+    @media print {
+        .no-print { display: none !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        .table { width: 100% !important; margin-bottom: 1rem; color: #000; }
+        .table-bordered th, .table-bordered td { border: 1px solid #dee2e6 !important; }
+        body { background-color: #fff; }
+    }
+    .amount-col { text-align: right; font-variant-numeric: tabular-nums; }
+    .ekstre-header-icon { font-size: 2.5rem; color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+        <div>
+            <h4 class="mb-0 text-gray-800"><i class="bi bi-journal-text me-2"></i>Cari Hesap Ekstresi</h4>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{{ url_for('cari.index') }}">Cari Hesaplar</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">{{ cari.kod }}</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="btn-group">
+            <button onclick="window.print()" class="btn btn-secondary shadow-sm">
+                <i class="bi bi-printer me-1"></i> Yazdır
+            </button>
+            <button type="button" class="btn btn-primary shadow-sm" disabled title="Yakında eklenecek">
+                <i class="bi bi-file-earmark-pdf me-1"></i> PDF İndir
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-8 col-lg-7 mb-4">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="ekstre-header-icon me-3">
+                            <i class="bi bi-buildings"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title fw-bold mb-1">{{ cari.unvan }}</h5>
+                            <span class="text-muted"><i class="bi bi-tag me-1"></i>{{ cari.kod }}</span>
+                            <span class="ms-2">{{ cari.risk_badge_html | safe }}</span>
+                        </div>
+                    </div>
+                    <hr class="bg-light">
+                    <div class="row text-sm">
+                        <div class="col-md-6 mb-2">
+                            <strong><i class="bi bi-card-text text-muted me-1"></i>Vergi/TC No:</strong> 
+                            {{ cari.vergi_no or cari.tc_kimlik_no or 'Belirtilmemiş' }}
+                            {% if cari.vergi_dairesi %}({{ cari.vergi_dairesi }}){% endif %}
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <strong><i class="bi bi-telephone text-muted me-1"></i>Telefon:</strong> 
+                            {{ cari.telefon or 'Belirtilmemiş' }}
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <strong><i class="bi bi-geo-alt text-muted me-1"></i>Adres:</strong> 
+                            {{ cari.sehir.ad if cari.sehir else '' }} {{ cari.ilce.ad if cari.ilce else '' }}<br>
+                            <small class="text-muted">{{ cari.adres or '' }}</small>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <strong><i class="bi bi-activity text-muted me-1"></i>Son İşlem:</strong> 
+                            {{ cari.son_siparis_tarihi.strftime('%d.%m.%Y') if cari.son_siparis_tarihi else 'İşlem Yok' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-lg-5 mb-4">
+            <div class="card h-100 shadow-sm border-0 bg-light">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <h6 class="text-uppercase text-muted fw-bold mb-3">Finansal Özet</h6>
+                    
+                    <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                        <span class="text-secondary">Toplam Borç (Satışlar)</span>
+                        <span class="fw-bold text-danger">{{ "{:,.2f}".format(ozet.toplam_borc) }} ₺</span>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                        <span class="text-secondary">Toplam Alacak (Tahsilatlar)</span>
+                        <span class="fw-bold text-success">{{ "{:,.2f}".format(ozet.toplam_alacak) }} ₺</span>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-3 p-3 bg-white rounded shadow-sm">
+                        <span class="fs-5 fw-bold text-dark">GÜNCEL BAKİYE</span>
+                        <span class="fs-4">
+                            {{ cari.bakiye_durumu_html | safe }}
+                        </span>
+                    </div>
+                    <small class="text-muted mt-2 text-center">Toplam <strong>{{ ozet.islem_sayisi }}</strong> adet hareket listeleniyor.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white py-3">
+            <h6 class="m-0 fw-bold text-primary"><i class="bi bi-list-columns-reverse me-2"></i>Hesap Hareketleri Dökümü</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped table-bordered mb-0">
+                    <thead class="table-light align-middle text-center text-secondary text-sm">
+                        <tr>
+                            <th width="5%">#</th>
+                            <th width="10%">Tarih</th>
+                            <th width="12%">İşlem Türü</th>
+                            <th width="12%">Belge No</th>
+                            <th width="20%">Açıklama</th>
+                            <th width="10%">Vade/Durum</th>
+                            <th width="10%">Borç (₺)</th>
+                            <th width="10%">Alacak (₺)</th>
+                            <th width="11%">Bakiye (₺)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="align-middle text-sm">
+                        {% for h in hareketler %}
+                        <tr>
+                            <td class="text-center text-muted">{{ loop.index }}</td>
+                            <td class="text-center">{{ h.tarih.strftime('%d.%m.%Y') if h.tarih else '-' }}</td>
+                            <td class="text-center">
+                                {% if h.islem_turu == 'FATURA' %}
+                                    <span class="badge bg-primary text-white w-100">Fatura</span>
+                                {% elif h.islem_turu == 'TAHSILAT' %}
+                                    <span class="badge bg-success text-white w-100">Tahsilat</span>
+                                {% elif h.islem_turu == 'TEDIYE' %}
+                                    <span class="badge bg-danger text-white w-100">Tediye</span>
+                                {% elif h.islem_turu == 'DEVIR' %}
+                                    <span class="badge bg-secondary text-white w-100">Devir</span>
+                                {% else %}
+                                    <span class="badge bg-info text-white w-100">{{ h.islem_turu }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center fw-bold">{{ h.belge_no or '-' }}</td>
+                            <td>{{ h.aciklama or '' }}</td>
+                            <td class="text-center">
+                                {% if h.vade_tarihi %}
+                                    {{ h.vade_tarihi.strftime('%d.%m.%Y') }}<br>
+                                    {% if h.gecikme_gun > 0 %}
+                                        <small class="text-danger fw-bold"><i class="bi bi-exclamation-triangle"></i> {{ h.gecikme_gun }} gün gecikmiş</small>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="amount-col {% if h.borc > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">
+                                {{ "{:,.2f}".format(h.borc) if h.borc > 0 else '-' }}
+                            </td>
+                            <td class="amount-col {% if h.alacak > 0 %}text-success fw-bold{% else %}text-muted{% endif %}">
+                                {{ "{:,.2f}".format(h.alacak) if h.alacak > 0 else '-' }}
+                            </td>
+                            <td class="amount-col fw-bold bg-light">
+                                {% if h.bakiye > 0 %}
+                                    <span class="text-danger">{{ "{:,.2f}".format(h.bakiye) }} (B)</span>
+                                {% elif h.bakiye < 0 %}
+                                    <span class="text-success">{{ "{:,.2f}".format(h.bakiye|abs) }} (A)</span>
+                                {% else %}
+                                    <span class="text-muted">0.00</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                                Bu cari hesaba ait henüz onaylanmış bir hareket bulunmamaktadır.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% if hareketler %}
+                    <tfoot class="table-light fw-bold">
+                        <tr>
+                            <td colspan="6" class="text-end">GENEL TOPLAM :</td>
+                            <td class="amount-col text-danger">{{ "{:,.2f}".format(ozet.toplam_borc) }}</td>
+                            <td class="amount-col text-success">{{ "{:,.2f}".format(ozet.toplam_alacak) }}</td>
+                            <td class="amount-col">
+                                {{ cari.bakiye_durumu_html | safe }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

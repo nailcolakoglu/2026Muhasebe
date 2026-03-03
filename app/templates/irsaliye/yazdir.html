@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>İrsaliye Yazdır - {{ irsaliye.belge_no }}</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; font-size: 14px; }
+        .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+        .info-box { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .box { width: 48%; border: 1px solid #ddd; padding: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: #f5f5f5; }
+        .footer { margin-top: 50px; display: flex; justify-content: space-around; }
+        @media print { .no-print { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="margin-bottom: 20px;">
+        <button onclick="window.print()">Yazdır</button>
+        <button onclick="window.history.back()">Geri Dön</button>
+    </div>
+
+    <div class="header">
+        <div>
+            <h2>SEVK İRSALİYESİ</h2>
+            <p><strong>No:</strong> {{ irsaliye.belge_no }}</p>
+        </div>
+        <div style="text-align: right;">
+            <p><strong>Tarih:</strong> {{ irsaliye.tarih.strftime('%d.%m.%Y') }}</p>
+            <p><strong>Saat:</strong> {{ irsaliye.saat.strftime('%H:%M') }}</p>
+        </div>
+    </div>
+
+    <div class="info-box">
+        <div class="box">
+            <strong>ALICI BİLGİLERİ:</strong><br>
+            {{ irsaliye.cari.unvan }}<br>
+            {{ irsaliye.cari.vergi_dairesi }} / {{ irsaliye.cari.vergi_no or irsaliye.cari.tc_kimlik_no }}
+        </div>
+        <div class="box">
+            <strong>LOJİSTİK BİLGİLERİ:</strong><br>
+            <strong>Plaka:</strong> {{ irsaliye.plaka_arac or '-' }}<br>
+            <strong>Şoför:</strong> {{ irsaliye.sofor_ad }} {{ irsaliye.sofor_soyad }}<br>
+            <strong>TCKN:</strong> {{ irsaliye.sofor_tc or '-' }}
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Ürün / Hizmet</th>
+                <th style="text-align: right;">Miktar</th>
+                <th>Birim</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for kalem in irsaliye.kalemler %}
+            <tr>
+                <td>{{ kalem.stok.ad }}</td>
+                <td style="text-align: right;">{{ kalem.miktar }}</td>
+                <td>{{ kalem.birim }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <div>Teslim Eden (İmza)</div>
+        <div>Teslim Alan (İmza)</div>
+    </div>
+</body>
+</html>

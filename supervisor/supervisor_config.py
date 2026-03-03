@@ -137,10 +137,11 @@ class SupervisorConfig:
 			'max_branches': 1, 
 			'max_monthly_invoices': 50, 
 			'max_storage_mb': 500, 
+            'price': 0,
 			'modules': ['stok', 'cari', 'fatura']},
-        'starter': {'name': 'Başlangıç', 'duration_days': 365, 'max_users': 5, 'max_branches': 1, 'max_monthly_invoices': 200, 'max_storage_mb': 2000, 'modules': ['stok', 'cari', 'fatura', 'kasa', 'banka']},
-        'professional': {'name': 'Profesyonel', 'duration_days': 365, 'max_users': 20, 'max_branches': 5, 'max_monthly_invoices': 1000, 'max_storage_mb': 10000, 'modules': ['stok', 'cari', 'fatura', 'kasa', 'banka', 'muhasebe', 'efatura', 'crm']},
-        'enterprise': {'name': 'Kurumsal', 'duration_days': 365, 'max_users': 100, 'max_branches': 50, 'max_monthly_invoices': -1, 'max_storage_mb': 50000, 'modules': 'all'}
+        'starter': {'name': 'Başlangıç', 'duration_days': 365, 'max_users': 5, 'max_branches': 1, 'max_monthly_invoices': 200, 'max_storage_mb': 2000, 'price': 999, 'modules': ['stok', 'cari', 'fatura', 'kasa', 'banka']},
+        'professional': {'name': 'Profesyonel', 'duration_days': 365, 'max_users': 20, 'max_branches': 5, 'max_monthly_invoices': 1000, 'max_storage_mb': 10000, 'price': 2499, 'modules': ['stok', 'cari', 'fatura', 'kasa', 'banka', 'muhasebe', 'efatura', 'crm']},
+        'enterprise': {'name': 'Kurumsal', 'duration_days': 365, 'max_users': 100, 'max_branches': 50, 'max_monthly_invoices': -1, 'max_storage_mb': 50000, 'price': 9999, 'modules': 'all'}
     }
 	
     # ========================================

@@ -18,9 +18,19 @@
     ]
   },
   {
+    "title": "CRM",
+    "icon": "bi bi-magnet",
+    "order": 3,
+    "children": [
+      { "title": "Aday Müşteriler", "icon": "bi bi-person-bounding-box", "endpoint": "crm.aday_index", "order": 1 },
+      { "title": "Satış Fırsatları", "icon": "bi bi-funnel", "endpoint": "crm.firsat_index", "order": 2 },
+      { "title": "Aktiviteler", "icon": "bi bi-calendar-check", "endpoint": "crm.aktivite_index", "order": 3 }
+    ]
+  },
+  {
     "title": "Finans",
     "icon": "bi bi-wallet2",
-    "order": 3,
+    "order": 4,
     "roles": "admin,muhasebe,finans_muduru",
     "children": [
       { "title": "Virman / Transfer", "icon": "bi bi-arrow-left-right", "endpoint": "finans.virman", "order": 1 },
@@ -37,7 +47,7 @@
   {
     "title": "Muhasebe",
     "icon": "bi bi-journal-bookmark-fill",
-    "order": 4,
+    "order": 5,
     "roles": "admin,muhasebe_muduru",
     "children": [
       { "title": "Muhasebe Fişleri", "icon": "bi bi-journal-text", "endpoint": "muhasebe.index", "order": 1 },
@@ -50,7 +60,7 @@
   {
     "title": "Stok",
     "icon": "bi bi-box-seam",
-    "order": 5,
+    "order": 6,
     "roles": "admin,muhasebe,depo,sube_yoneticisi",
     "children": [
       { "title": "Stok Kartları", "icon": "bi bi-boxes", "endpoint": "stok.index", "order": 1 },
@@ -66,7 +76,7 @@
   {
     "title": "Cari",
     "icon": "bi bi-people",
-    "order": 6,
+    "order": 7,
     "children": [
       { "title": "Cari Listesi", "icon": "bi bi-person-lines-fill", "endpoint": "cari.index", "order": 1 },
       { "title": "Yeni Cari Kart", "icon": "bi bi-person-plus", "endpoint": "cari.ekle", "order": 2 },
@@ -77,12 +87,12 @@
     "title": "Rapor",
     "icon": "bi bi-tags-fill",
     "endpoint": "rapor.index",
-    "order": 7
+    "order": 8
   },
   {
     "title": "Tanımlar",
     "icon": "bi bi-gear",
-    "order": 8,
+    "order": 9,
     "roles": "admin,muhasebe",
     "children": [
       { "title": "Muhasebe Grupları", "icon": "bi bi-journals", "endpoint": "stok.muhasebe_gruplari", "order": 1 },
@@ -94,7 +104,7 @@
   {
     "title": "Sistem",
     "icon": "bi bi-gear-fill",
-    "order": 9,
+    "order": 10,
     "roles": "admin",
     "children": [
       { "title": "Firma Bilgileri", "icon": "bi bi-building", "endpoint": "firmalar.index", "order": 1 },
@@ -107,4 +117,4 @@
       { "title": "Menü Yönetimi", "icon": "bi bi-list", "endpoint": "sistem.menu_index", "order": 8 }
     ]
   }
-]
+]	

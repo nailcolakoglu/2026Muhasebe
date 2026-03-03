@@ -121,6 +121,15 @@ def donemler():
     
     grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'firmalar.donem_duzenle')
     
+    # Gizlenecek kolonlar
+    hidden_cols = [
+        'id', 'firma_id', 'created_at', 
+        'donem_id', 'sube_id', 'updated_at', 'deleted_at'
+    ]
+    
+    for col in hidden_cols:
+        grid.hide_column(col)
+
     if tenant_db:
         # Önce aktif firmayı bul (UUID)
         firma = tenant_db.query(Firma).first()

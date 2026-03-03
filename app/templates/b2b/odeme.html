@@ -1,0 +1,167 @@
+{% extends "b2b/base.html" %}
+
+{% block title %}Kredi Kartı ile Ödeme - B2B{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h4 class="text-secondary fw-bold"><i class="bi bi-credit-card me-2"></i>Online Tahsilat</h4>
+        <p class="text-muted">Güvenli ödeme altyapısı ile cari hesabınıza anında ödeme yapabilirsiniz.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4 p-md-5">
+                
+                <div id="paymentAlert" class="alert d-none" role="alert"></div>
+
+                <form id="paymentForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    
+                    <h5 class="fw-bold mb-4 border-bottom pb-2">Kart Bilgileri</h5>
+                    
+                    <div class="mb-4">
+                        <label class="form-label text-muted small fw-bold">ÖDENECEK TUTAR (TL)</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-light border-end-0">₺</span>
+                            <input type="number" class="form-control border-start-0 fs-4 text-primary fw-bold" name="tutar" id="tutar" step="0.01" value="{{ guncel_bakiye if guncel_bakiye > 0 else '' }}" required>
+                        </div>
+                        <div class="form-text">Ödemek istediğiniz tutarı değiştirebilirsiniz.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">KART ÜZERİNDEKİ İSİM</label>
+                        <input type="text" class="form-control form-control-lg" name="kart_isim" placeholder="Ad Soyad" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">KART NUMARASI</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-lg" placeholder="0000 0000 0000 0000" maxlength="19" required>
+                            <span class="input-group-text bg-white"><i class="bi bi-credit-card-2-front fs-4 text-muted"></i></span>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-8">
+                            <label class="form-label text-muted small fw-bold">SON KULLANMA TARİHİ</label>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-lg" required>
+                                    <option value="">Ay</option>
+                                    {% for i in range(1, 13) %}<option value="{{ '%02d' % i }}">{{ '%02d' % i }}</option>{% endfor %}
+                                </select>
+                                <span class="fs-4 text-muted align-self-center">/</span>
+                                <select class="form-select form-select-lg" required>
+                                    <option value="">Yıl</option>
+                                    {% for i in range(2026, 2037) %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label text-muted small fw-bold">CVV</label>
+                            <input type="text" class="form-control form-control-lg" placeholder="123" maxlength="3" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="btnPay" class="btn btn-success btn-lg w-100 fw-bold shadow-sm py-3" style="font-size: 1.1rem;">
+                        <i class="bi bi-shield-lock me-2"></i> Güvenli Ödemeyi Tamamla
+                    </button>
+                    
+                    <div class="text-center mt-3 text-muted small">
+                        <i class="bi bi-lock-fill text-success"></i> 256-bit SSL sertifikası ile korunmaktadır.
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm bg-light mb-4">
+            <div class="card-body p-4">
+                <h5 class="fw-bold border-bottom pb-3 mb-3">Hesap Özeti</h5>
+                
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="text-muted">Cari Ünvan:</span>
+                    <span class="fw-bold text-end">{{ g.b2b_user.cari.unvan }}</span>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <span class="text-muted">Güncel Borcunuz:</span>
+                    <span class="fs-4 fw-bold {% if guncel_bakiye > 0 %}text-danger{% else %}text-success{% endif %}">
+                        ₺{{ "{:,.2f}".format(guncel_bakiye).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                    </span>
+                </div>
+
+                <div class="alert alert-info border-0 bg-white shadow-sm mb-0">
+                    <i class="bi bi-info-circle-fill text-info me-2"></i>
+                    Yapacağınız ödeme anında cari hesabınıza işlenecek ve borcunuzdan düşülecektir.
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center opacity-75 mt-4">
+            <h6 class="text-muted small fw-bold mb-3">KABUL EDİLEN KARTLAR</h6>
+            <div class="d-flex justify-content-center gap-3 fs-1 text-secondary">
+                <i class="bi bi-credit-card-fill"></i>
+                <i class="bi bi-wallet-fill"></i>
+                <i class="bi bi-bank"></i>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('paymentForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const btn = document.getElementById('btnPay');
+        const alertBox = document.getElementById('paymentAlert');
+        const tutar = document.getElementById('tutar').value;
+        
+        // Butonu yükleniyor moduna al
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> İşleminiz Yapılıyor...';
+        alertBox.classList.add('d-none');
+
+        // Form verilerini topla
+        const formData = new FormData(this);
+
+        // API'ye gönder (Simülasyon)
+        fetch('{{ url_for("b2b.odeme_yap") }}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            alertBox.classList.remove('d-none');
+            if(data.success) {
+                alertBox.className = 'alert alert-success fw-bold';
+                alertBox.innerHTML = '<i class="bi bi-check-circle-fill me-2"></i>' + data.message;
+                btn.innerHTML = '<i class="bi bi-check-lg me-2"></i> Ödeme Başarılı';
+                btn.classList.replace('btn-success', 'btn-primary');
+                
+                // 3 Saniye sonra dashboard'a yönlendir
+                setTimeout(() => {
+                    window.location.href = '{{ url_for("b2b.dashboard") }}';
+                }, 3000);
+            } else {
+                alertBox.className = 'alert alert-danger fw-bold';
+                alertBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-2"></i>' + data.message;
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-shield-lock me-2"></i> Güvenli Ödemeyi Tamamla';
+            }
+        })
+        .catch(error => {
+            alertBox.classList.remove('d-none');
+            alertBox.className = 'alert alert-danger';
+            alertBox.textContent = 'Sunucu ile iletişim kurulamadı.';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-shield-lock me-2"></i> Güvenli Ödemeyi Tamamla';
+        });
+    });
+</script>
+{% endblock %}

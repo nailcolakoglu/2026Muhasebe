@@ -150,6 +150,10 @@ def index():
     grid.add_column('birim', 'Birim', width='80px')
     grid.add_column('satis_fiyati', 'Satış Fiyatı', type='currency')
     
+    grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'stok.duzenle')
+    grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'stok.sil')
+    
+    
     # ✅ EAGER LOADING
     firma_id = get_aktif_firma_id()
     query = tenant_db.query(StokKart).options(
@@ -1046,3 +1050,150 @@ def bakiyeleri_duzelt():
             'success': False,
             'message': _("Hata oluştu: %(error)s", error=str(e))
         }), 500
+
+# ========================================
+# MUHASEBE GRUBU İŞLEMLERİ (EKLE / DÜZENLE)
+# ========================================
+@stok_bp.route('/tanimlar/muhasebe-gruplari/yeni', methods=['GET', 'POST'])
+@protected_route
+@login_required
+def muhasebe_grup_islem_yeni():
+    """Yeni Muhasebe Grubu Ekleme Ekranı ve Kayıt İşlemi"""
+    tenant_db = get_tenant_db()
+    form = get_muhasebe_grup_form(url_for('stok.muhasebe_grup_islem_yeni'))
+
+    if request.method == 'POST':
+        form.process_request(request.form)
+        if form.validate():
+            try:
+                data = form.get_data()
+                yeni_grup = StokMuhasebeGrubu(
+                    firma_id=current_user.firma_id,
+                    kod=data.get('kod'),
+                    ad=data.get('ad'),
+                    alis_hesap_id=data.get('alis_hesap_id') or None,
+                    satis_hesap_id=data.get('satis_hesap_id') or None,
+                    alis_iade_hesap_id=data.get('alis_iade_hesap_id') or None,
+                    satis_iade_hesap_id=data.get('satis_iade_hesap_id') or None,
+                    satilan_mal_maliyeti_hesap_id=data.get('satilan_mal_maliyeti_hesap_id') or None,
+                    aciklama=data.get('aciklama'),
+                    aktif=data.get('aktif', True)
+                )
+                tenant_db.add(yeni_grup)
+                tenant_db.commit()
+                # Cache temizliği
+                cache.delete(f"stok_form_muhasebe:{current_user.firma_id}")
+                return jsonify({'success': True, 'message': 'Muhasebe Grubu başarıyla eklendi.', 'redirect': url_for('stok.muhasebe_gruplari')})
+            except Exception as e:
+                tenant_db.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 400
+        return jsonify({'success': False, 'message': 'Validasyon hatası', 'errors': form.get_errors()}), 400
+
+    return render_template('stok/form.html', form=form, title=_("Yeni Muhasebe Grubu"))
+
+@stok_bp.route('/tanimlar/muhasebe-gruplari/<uuid:id>', methods=['GET', 'POST'])
+@protected_route
+@login_required
+def muhasebe_grup_islem(id):
+    """Mevcut Muhasebe Grubunu Düzenleme Ekranı ve Kayıt İşlemi"""
+    tenant_db = get_tenant_db()
+    grup = tenant_db.query(StokMuhasebeGrubu).get(str(id))
+    if not grup:
+        abort(404)
+
+    form = get_muhasebe_grup_form(url_for('stok.muhasebe_grup_islem', id=id), edit_mode=True, instance=grup)
+
+    if request.method == 'POST':
+        form.process_request(request.form)
+        if form.validate():
+            try:
+                data = form.get_data()
+                grup.kod = data.get('kod')
+                grup.ad = data.get('ad')
+                grup.alis_hesap_id = data.get('alis_hesap_id') or None
+                grup.satis_hesap_id = data.get('satis_hesap_id') or None
+                grup.alis_iade_hesap_id = data.get('alis_iade_hesap_id') or None
+                grup.satis_iade_hesap_id = data.get('satis_iade_hesap_id') or None
+                grup.satilan_mal_maliyeti_hesap_id = data.get('satilan_mal_maliyeti_hesap_id') or None
+                grup.aciklama = data.get('aciklama')
+                grup.aktif = data.get('aktif', True)
+
+                tenant_db.commit()
+                cache.delete(f"stok_form_muhasebe:{current_user.firma_id}")
+                return jsonify({'success': True, 'message': 'Muhasebe Grubu güncellendi.', 'redirect': url_for('stok.muhasebe_gruplari')})
+            except Exception as e:
+                tenant_db.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 400
+        return jsonify({'success': False, 'message': 'Validasyon hatası', 'errors': form.get_errors()}), 400
+
+    return render_template('stok/form.html', form=form, title=_("Muhasebe Grubu Düzenle"))
+
+# ========================================
+# KDV GRUBU İŞLEMLERİ (EKLE / DÜZENLE)
+# ========================================
+@stok_bp.route('/tanimlar/kdv-gruplari/yeni', methods=['GET', 'POST'])
+@protected_route
+@login_required
+def kdv_grup_islem_yeni():
+    """Yeni KDV Grubu Ekleme Ekranı ve Kayıt İşlemi"""
+    tenant_db = get_tenant_db()
+    form = get_kdv_grup_form(url_for('stok.kdv_grup_islem_yeni'))
+
+    if request.method == 'POST':
+        form.process_request(request.form)
+        if form.validate():
+            try:
+                data = form.get_data()
+                yeni_kdv = StokKDVGrubu(
+                    firma_id=current_user.firma_id,
+                    kod=data.get('kod'),
+                    ad=data.get('ad'),
+                    alis_kdv_orani=data.get('alis_kdv_orani'),
+                    satis_kdv_orani=data.get('satis_kdv_orani'),
+                    alis_kdv_hesap_id=data.get('alis_kdv_hesap_id') or None,
+                    satis_kdv_hesap_id=data.get('satis_kdv_hesap_id') or None
+                )
+                tenant_db.add(yeni_kdv)
+                tenant_db.commit()
+                cache.delete(f"stok_form_kdv:{current_user.firma_id}")
+                return jsonify({'success': True, 'message': 'KDV Grubu başarıyla eklendi.', 'redirect': url_for('stok.kdv_gruplari')})
+            except Exception as e:
+                tenant_db.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 400
+        return jsonify({'success': False, 'message': 'Validasyon hatası', 'errors': form.get_errors()}), 400
+
+    return render_template('stok/form.html', form=form, title=_("Yeni KDV Grubu"))
+
+@stok_bp.route('/tanimlar/kdv-gruplari/<uuid:id>', methods=['GET', 'POST'])
+@protected_route
+@login_required
+def kdv_grup_islem(id):
+    """Mevcut KDV Grubunu Düzenleme Ekranı ve Kayıt İşlemi"""
+    tenant_db = get_tenant_db()
+    kdv_grup = tenant_db.query(StokKDVGrubu).get(str(id))
+    if not kdv_grup:
+        abort(404)
+
+    form = get_kdv_grup_form(url_for('stok.kdv_grup_islem', id=id), edit_mode=True, instance=kdv_grup)
+
+    if request.method == 'POST':
+        form.process_request(request.form)
+        if form.validate():
+            try:
+                data = form.get_data()
+                kdv_grup.kod = data.get('kod')
+                kdv_grup.ad = data.get('ad')
+                kdv_grup.alis_kdv_orani = data.get('alis_kdv_orani')
+                kdv_grup.satis_kdv_orani = data.get('satis_kdv_orani')
+                kdv_grup.alis_kdv_hesap_id = data.get('alis_kdv_hesap_id') or None
+                kdv_grup.satis_kdv_hesap_id = data.get('satis_kdv_hesap_id') or None
+
+                tenant_db.commit()
+                cache.delete(f"stok_form_kdv:{current_user.firma_id}")
+                return jsonify({'success': True, 'message': 'KDV Grubu güncellendi.', 'redirect': url_for('stok.kdv_gruplari')})
+            except Exception as e:
+                tenant_db.rollback()
+                return jsonify({'success': False, 'message': str(e)}), 400
+        return jsonify({'success': False, 'message': 'Validasyon hatası', 'errors': form.get_errors()}), 400
+
+    return render_template('stok/form.html', form=form, title=_("KDV Grubu Düzenle"))

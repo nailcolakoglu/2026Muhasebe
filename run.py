@@ -281,6 +281,10 @@ def register_blueprints(app):
     from app.modules.stok_fisi.routes import stok_fisi_bp
     app.register_blueprint(stok_fisi_bp, url_prefix='/stok-fisi')
     
+    # CRM Modülü
+    from app.modules.crm.routes import crm_bp
+    app.register_blueprint(crm_bp, url_prefix='/crm')
+    
     # Cari modülü
     from app.modules.cari.routes import cari_bp
     app.register_blueprint(cari_bp, url_prefix='/cari')
@@ -288,6 +292,10 @@ def register_blueprints(app):
     # Kategori modülü
     from app.modules.kategori.routes import kategori_bp
     app.register_blueprint(kategori_bp, url_prefix='/kategori')
+    
+    # ABONELİK modülü
+    from app.modules.subscription.routes import subscription_bp
+    app.register_blueprint(subscription_bp, url_prefix='/paketler')
     
     # Kullanıcı modülü
     from app.modules.kullanici.routes import kullanici_bp
@@ -301,18 +309,21 @@ def register_blueprints(app):
     from app.modules.irsaliye.routes import irsaliye_bp
     app.register_blueprint(irsaliye_bp, url_prefix='/irsaliye')
     
+    # E-İrsaliye modülü
+    from app.modules.eirsaliye.routes import eirsaliye_bp
+    app.register_blueprint(eirsaliye_bp, url_prefix='/eirsaliye')
+    
     # Fatura modülü
     from app.modules.fatura.routes import fatura_bp
     app.register_blueprint(fatura_bp, url_prefix='/fatura')
+        
+    # E-fatura modülü    
+    from app.modules.efatura.routes import efatura_bp
+    app.register_blueprint(efatura_bp, url_prefix='/efatura')
     
     from app.modules.fatura.ocr_routes import fatura_ocr_bp
     app.register_blueprint(fatura_ocr_bp)
 
-    
-    # Efatura modülü
-    from app.modules.efatura.routes import efatura_bp
-    app.register_blueprint(efatura_bp, url_prefix='/efatura')
-   
     # Doviz modülü
     from app.modules.doviz.routes import doviz_bp
     app.register_blueprint(doviz_bp, url_prefix='/doviz')
@@ -384,6 +395,13 @@ def register_blueprints(app):
     # Rapor modülü
     from app.modules.rapor.routes import rapor_bp
     app.register_blueprint(rapor_bp, url_prefix='/rapor')
+    
+    # B2B modülü
+    from app.modules.b2b.routes import b2b_bp
+    app.register_blueprint(b2b_bp, url_prefix='/b2b')
+    from app.modules.b2b.admin_routes import b2b_admin_bp
+    app.register_blueprint(b2b_admin_bp, url_prefix='/b2b-yonetim')
+    
     
     logger.info(f"📘 {len(app.blueprints)} blueprint kaydedildi")
     

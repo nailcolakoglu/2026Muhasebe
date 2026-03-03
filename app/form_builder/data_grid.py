@@ -146,8 +146,24 @@ class DataGrid:
     # 2.SORGULAMA MANTIĞI (Process Query)
     # =================================================================
 
-    def process_query(self, query, default_sort:  tuple = None):
+    def process_query(self, query, default_sort: tuple = None):
         """Request argümanlarını alır ve sorguyu işler."""
+
+        # ✨ 1. KURUMSAL KAPSAM (DATA SCOPING) - OTOMATİK ŞUBE/DÖNEM FİLTRESİ ✨
+        # Bu kod sayesinde hiçbir sayfada manuel şube filtresi yazmana gerek kalmayacak!
+        from flask import session
+
+        # A) Şube Filtresi
+        aktif_sube_id = session.get('aktif_sube_id')
+        if aktif_sube_id and hasattr(self.model, 'sube_id'):
+            column_attr = getattr(self.model, 'sube_id')
+            query = query.filter(column_attr == aktif_sube_id)
+
+        # B) Dönem Filtresi (2025 ile 2026 faturaları birbirine karışmasın diye)
+        aktif_donem_id = session.get('aktif_donem_id')
+        if aktif_donem_id and hasattr(self.model, 'donem_id'):
+            column_attr = getattr(self.model, 'donem_id')
+            query = query.filter(column_attr == aktif_donem_id)
         
         # A.KOLON FİLTRELEME
         for col in self.columns:
@@ -158,6 +174,10 @@ class DataGrid:
                 continue
                 
             column_attr = getattr(self.model, field_name)
+            
+            # ✨ KRİTİK DÜZELTME 1: Bu alan SQL Sütunu değilse (Örn: @property ise) filtrelemeyi atla
+            if not hasattr(column_attr, 'ilike'):
+                continue
             
             # --- Tarih Aralığı ve Tam Eşleşme Filtreleme ---
             if col['type'] in [FieldType.DATE, FieldType.DATETIME]:
@@ -217,6 +237,10 @@ class DataGrid:
             for col in self.columns:
                 if not col['visible'] or not hasattr(self.model, col['name']): continue
                 column_attr = getattr(self.model, col['name'])
+                
+                # ✨ KRİTİK DÜZELTME 2: Bu alan SQL Sütunu değilse (Örn: @property ise) aramayı atla
+                if not hasattr(column_attr, 'ilike'):
+                    continue
                 
                 if col['type'] == FieldType.TEXT:
                     search_filters.append(column_attr.ilike(f"%{global_search}%"))
@@ -466,9 +490,20 @@ class DataGrid:
                     html.append(f'<a href="{act_url}" class="btn btn-sm {action["class"]} me-1" title="{action["label"]}"{attrs_str}><i class="{action["icon"]}"></i></a>')
 
                 else:  # AJAX Button
-                    # ✅ AJAX için de string ID kullan
-                    html.append(f'<button class="btn btn-sm {action["class"]} me-1" data-id="{item_id}" data-action="{action["name"]}"{attrs_str}><i class="{action["icon"]}"></i></button>')
-                    
+                    # ✅ AJAX için de string ID 
+                    try:
+                        endpoint = action['route_name']
+                        if '.' not in endpoint and '.' in base_url_name:
+                            prefix = base_url_name.split('.')[0]
+                            endpoint = f"{prefix}.{endpoint}"
+                        act_url = url_for(endpoint, id=item_id) if item_id else '#'
+                    except Exception as e:
+                        print(f"❌ Custom AJAX URL hatası: {e}")
+                        act_url = '#'
+                        
+                    # 👇 YENİ: datagrid-ajax-btn class'ı ve data-url özelliği eklendi!
+                    html.append(f'<button class="btn btn-sm {action["class"]} me-1 datagrid-ajax-btn" data-url="{act_url}" data-id="{item_id}" data-action="{action["name"]}"{attrs_str} title="{action["label"]}"><i class="{action["icon"]}"></i></button>')                    
+
             html.append('</td>')
         html.append('</tr>')
         return ''.join(html)

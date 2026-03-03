@@ -1,0 +1,7 @@
+Depo Yönetim Sistemi (WMS - Warehouse Management): 
+Sadece depo bakiyesi tutmak yetmez. 
+El terminalleriyle (veya mobil uygulamanla) 
+lokasyon/raf bazlı mal kabul, 
+barkodlu sayım, 
+toplama (picking) ve 
+paketleme (packing) rotaları.

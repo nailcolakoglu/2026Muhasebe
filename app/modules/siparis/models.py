@@ -66,7 +66,8 @@ class Siparis(db.Model, TimestampMixin, SoftDeleteMixin):
     detaylar = db.relationship('SiparisDetay', backref='siparis', cascade="all, delete-orphan")
     cari = db.relationship('CariHesap', back_populates='siparisler')
     depo = db.relationship('Depo', backref='depo_siparisleri') 
-
+    plasiyer = db.relationship('Kullanici', foreign_keys=[plasiyer_id], backref='plasiyer_siparisleri')
+    
     __table_args__ = (UniqueConstraint('firma_id', 'belge_no', name='uq_siparis_no'),)
 
     def guncelle_karlilik(self):

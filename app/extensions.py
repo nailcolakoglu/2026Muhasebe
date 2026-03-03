@@ -4,6 +4,7 @@ Flask Extension'ları - MySQL Multi-Tenant + Redis Cache
 Enterprise Grade - Production Ready
 """
 
+from celery import Celery
 import os
 import logging
 from datetime import timedelta
@@ -15,10 +16,22 @@ from werkzeug.exceptions import HTTPException
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import scoped_session, sessionmaker, DeclarativeBase
-from flask import g, session, request, current_app
+from flask import abort, g, session, request, current_app
 
 # Logger
 logger = logging.getLogger(__name__)
+
+
+# Redis bağlantı ayarlarını tanımlıyoruz (Docker veya Localhost)
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
+# Celery nesnesini oluşturuyoruz
+celery = Celery(
+    "erp_saas",
+    broker=REDIS_URL,
+    backend=REDIS_URL,
+    include=['app.modules.efatura.tasks', 'app.modules.eirsaliye.tasks'] # ✨ EKLENDİ
+)
 
 
 # ========================================

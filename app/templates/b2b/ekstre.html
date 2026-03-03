@@ -1,0 +1,79 @@
+{% extends "b2b/base.html" %}
+
+{% block title %}Cari Ekstre - B2B{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="text-secondary fw-bold"><i class="bi bi-receipt me-2"></i>Cari Hesap Ekstresi</h4>
+            <p class="text-muted mb-0">{{ g.b2b_user.cari.unvan }} hesabınıza ait tüm finansal hareketler.</p>
+        </div>
+        <button onclick="window.print()" class="btn btn-outline-secondary shadow-sm">
+            <i class="bi bi-printer me-1"></i> Yazdır
+        </button>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
+        <h6 class="mb-0 fw-bold text-muted">HESAP ÖZETİ</h6>
+        <h5 class="mb-0 fw-bold {% if guncel_bakiye > 0 %}text-danger{% else %}text-success{% endif %}">
+            Güncel Bakiye: ₺{{ "{:,.2f}".format(guncel_bakiye).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+            <small class="text-muted fs-6 fw-normal">{% if guncel_bakiye > 0 %}(Borçlu){% else %}(Alacaklı/Temiz){% endif %}</small>
+        </h5>
+    </div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-hover table-striped align-middle mb-0">
+            <thead class="table-dark">
+                <tr>
+                    <th class="ps-4">Tarih</th>
+                    <th>İşlem Türü</th>
+                    <th>Evrak No</th>
+                    <th>Açıklama</th>
+                    <th class="text-end text-warning">Borç (₺)</th>
+                    <th class="text-end text-info">Alacak (₺)</th>
+                    <th class="text-end pe-4">Bakiye (₺)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for satir in hareketler %}
+                <tr>
+                    <td class="ps-4">{{ satir.tarih }}</td>
+                    <td><span class="badge bg-secondary">{{ satir.islem_turu }}</span></td>
+                    <td class="text-muted">{{ satir.evrak_no }}</td>
+                    <td><small>{{ satir.aciklama }}</small></td>
+                    
+                    <td class="text-end fw-bold text-danger">
+                        {% if satir.borc > 0 %}{{ "{:,.2f}".format(satir.borc) }}{% else %}-{% endif %}
+                    </td>
+                    <td class="text-end fw-bold text-success">
+                        {% if satir.alacak > 0 %}{{ "{:,.2f}".format(satir.alacak) }}{% else %}-{% endif %}
+                    </td>
+                    
+                    <td class="text-end pe-4 fw-bold {% if satir.bakiye > 0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ "{:,.2f}".format(satir.bakiye) }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-5 text-muted">
+                        <i class="bi bi-folder-x display-4 d-block mb-3 text-secondary"></i>
+                        Hesabınıza ait henüz bir hareket bulunmuyor.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    /* Yazdırılırken menüleri gizle, sadece tabloyu çıkar */
+    @media print {
+        .b2b-navbar, .btn-outline-secondary { display: none !important; }
+        body { background-color: white; }
+        .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+    }
+</style>
+{% endblock %}

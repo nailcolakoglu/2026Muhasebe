@@ -1,0 +1,65 @@
+{% extends "b2b/base.html" %}
+
+{% block title %}Bayi Paneli - B2B{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h4 class="text-secondary fw-bold">Hoş Geldiniz, <span class="text-dark">{{ g.b2b_user.ad_soyad }}</span></h4>
+        <p class="text-muted">Cari kodunuz ve bayi yetkilerinizle sisteme güvenli bağlantı sağladınız.</p>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 bg-primary text-white" style="background-color: #2563eb !important;">
+            <div class="card-body d-flex flex-column justify-content-center align-items-center text-center">
+                <i class="bi bi-cart-plus display-4 mb-2"></i>
+                <h5>Hızlı Sipariş Ver</h5>
+                <p class="small text-white-50">Kataloğu inceleyin ve size özel fiyatlarla sipariş oluşturun.</p>
+                <a href="{{ url_for('b2b.katalog') }}" class="btn btn-light text-primary fw-bold mt-2 px-4 rounded-pill">Siparişe Başla <i class="bi bi-arrow-right"></i></a>
+            </div>
+        </div>
+    </div>
+	
+	<div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100" style="border-left: 5px solid #ef4444 !important;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1 fw-bold small">GÜNCEL BORÇ BAKİYENİZ</p>
+                    <h3 class="mb-0 {% if guncel_bakiye > 0 %}text-danger{% else %}text-success{% endif %}">
+                        ₺{{ "{:,.2f}".format(guncel_bakiye).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                    </h3>
+                </div>
+                <div class="bg-danger bg-opacity-10 p-3 rounded-circle text-danger fs-3">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+            </div>
+            <hr>
+            <a href="{{ url_for('b2b.odeme_ekrani') }}" class="btn btn-sm btn-outline-danger w-100 fw-bold"><i class="bi bi-credit-card me-1"></i> Kredi Kartı ile Öde</a>
+        </div>
+    </div>
+</div>
+
+	<div class="col-md-4">
+		<div class="card border-0 shadow-sm h-100" style="border-left: 5px solid #f59e0b !important;">
+			<div class="card-body">
+				<div class="d-flex justify-content-between align-items-center">
+					<div>
+						<p class="text-muted mb-1 fw-bold small">BEKLEYEN SİPARİŞLER</p>
+						<h3 class="mb-0 text-warning">{{ bekleyen_siparis_sayisi }} Adet</h3>
+					</div>
+					<div class="bg-warning bg-opacity-10 p-3 rounded-circle text-warning fs-3">
+						<i class="bi bi-box-seam"></i>
+					</div>
+				</div>
+				<hr>
+				<a href="{{ url_for('b2b.siparislerim') }}" class="btn btn-sm btn-outline-warning w-100 fw-bold"><i class="bi bi-eye me-1"></i> Durumlarını İncele</a> Durumlarını İncele</a>
+			</div>
+		</div>
+	</div>
+
+</div>
+{% endblock %}

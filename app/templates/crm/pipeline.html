@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('Satış Hunisi (Pipeline)') }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .kanban-board {
+        display: flex;
+        overflow-x: auto;
+        padding: 20px 10px;
+        min-height: calc(100vh - 150px);
+        align-items: flex-start;
+    }
+
+    .kanban-column {
+        min-width: 320px;
+        max-width: 320px;
+        margin-right: 20px;
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        border: 1px solid #dee2e6;
+        display: flex;
+        flex-direction: column;
+        max-height: 100%;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+
+    .kanban-header {
+        padding: 15px;
+        border-radius: 10px 10px 0 0;
+        border-bottom: 2px solid rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .kanban-drag-area {
+        padding: 10px;
+        flex-grow: 1;
+        min-height: 200px;
+        overflow-y: auto;
+    }
+
+    .firsat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 12px;
+        border-left: 5px solid #0d6efd;
+        cursor: pointer; /* Tıklanabilir olduğunu belli etmek için pointer yaptık */
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+
+    .firsat-card:active { cursor: grabbing; }
+    .firsat-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.12); }
+
+    .sortable-ghost { opacity: 0.4; border: 2px dashed #0d6efd; background: #e9ecef; }
+
+    .ai-badge {
+        font-size: 0.7rem;
+        background: #f0f7ff;
+        color: #0056b3;
+        border: 1px solid #cce5ff;
+        padding: 2px 6px;
+        border-radius: 10px;
+        cursor: help;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold text-primary mb-0">
+            <i class="bi bi-funnel-fill me-2"></i>{{ _('Satış Hunisi (Pipeline)') }}
+        </h4>
+        <div>
+            <a href="{{ url_for('crm.firsat_ekle') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>{{ _('Yeni Fırsat') }}
+            </a>
+            <button class="btn btn-outline-secondary btn-sm ms-2" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="kanban-board">
+        {% for asama in asamalar %}
+        <div class="kanban-column">
+            <div class="kanban-header" style="background-color: {{ asama.renk or '#ffffff' }}; color: #333;">
+                <span class="fw-bold">{{ asama.ad }}</span>
+                <span class="badge rounded-pill bg-white text-dark shadow-sm">{{ asama.firsatlar|length }}</span>
+            </div>
+
+            <div class="kanban-drag-area" data-asama-id="{{ asama.id }}">
+                {% for firsat in asama.firsatlar %}
+                <div class="firsat-card" data-firsat-id="{{ firsat.id }}" style="border-left-color: {{ asama.renk }}" onclick="hizliAktiviteAc('{{ firsat.id }}', event)">
+                    
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <small class="text-muted fw-bold">
+                            {% if firsat.cari_id %}
+                                {{ firsat.cari.unvan if firsat.cari else _('Cari Yüklenemedi') }}
+                            {% elif firsat.aday_id %}
+                                {{ firsat.aday.unvan if firsat.aday else _('Aday Yüklenemedi') }}
+                            {% else %}
+                                {{ _('İsimsiz Fırsat') }}
+                            {% endif %}
+                        </small>
+                        
+                        {% if firsat.ai_olasilik %}
+                            {% set analiz_metni = "" %}
+                            {% if firsat.ai_analiz and firsat.ai_analiz.analiz %}
+                                {% set analiz_metni = firsat.ai_analiz.analiz|join(' | ') %}
+                            {% endif %}
+                            
+                            <span class="ai-badge" 
+                                  data-bs-toggle="tooltip" 
+                                  data-bs-placement="top" 
+                                  data-bs-html="true"
+                                  title="<b>AI Analizi:</b><br>{{ analiz_metni or _('Veri toplanıyor...') }}">
+                                <i class="bi bi-robot me-1"></i>%{{ firsat.ai_olasilik }}
+                            </span>
+                        {% endif %}
+                    </div>
+                    
+                    <h6 class="mb-2 fw-bold" style="font-size: 0.95rem;">{{ firsat.baslik }}</h6>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div class="text-primary fw-bold" style="font-size: 1rem;">
+                            {{ "{:,.2f}".format(firsat.tahmini_tutar or 0) }} {{ firsat.para_birimi }}
+                        </div>
+                        <div class="dropdown" onclick="event.stopPropagation();"> <button class="btn btn-link p-0 text-muted" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{{ url_for('crm.firsat_duzenle', id=firsat.id) }}"><i class="bi bi-pencil me-2"></i>{{ _('Düzenle') }}</a></li>
+                                <li><a class="dropdown-item text-danger" href="javascript:void(0)" onclick="firsatSil('{{ firsat.id }}')"><i class="bi bi-trash me-2"></i>{{ _('Sil') }}</a></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    {% if firsat.ai_olasilik %}
+                    <div class="progress mt-2" style="height: 4px;">
+                        <div class="progress-bar bg-{{ 'success' if firsat.ai_olasilik > 60 else ('warning' if firsat.ai_olasilik > 30 else 'danger') }}" 
+                             role="progressbar" style="width: {{ firsat.ai_olasilik }}%"></div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="modal fade" id="hizliAktiviteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" id="modalContent">
+            </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 1. Tooltip'leri aktifleştir
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+
+    // 2. Sürükle-Bırak Mantığı
+    const dragAreas = document.querySelectorAll('.kanban-drag-area');
+    dragAreas.forEach(area => {
+        new Sortable(area, {
+            group: 'pipeline',
+            animation: 200,
+            ghostClass: 'sortable-ghost',
+            delay: 100, // Mobilde tıklama ile sürüklemeyi ayırt etmek için küçük bir gecikme
+            delayOnTouchOnly: true,
+            onEnd: function (evt) {
+                const firsatId = evt.item.getAttribute('data-firsat-id');
+                const yeniAsamaId = evt.to.getAttribute('data-asama-id');
+                const eskiAsamaId = evt.from.getAttribute('data-asama-id');
+
+                if (yeniAsamaId === eskiAsamaId) return;
+
+                updateFirsatAsama(firsatId, yeniAsamaId);
+            }
+        });
+    });
+
+    function updateFirsatAsama(firsatId, asamaId) {
+        fetch(`/crm/firsat/tasi/${firsatId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ asama_id: asamaId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                alert('Hata oluştu, sayfa yenileniyor.');
+                location.reload();
+            }
+        });
+    }
+});
+
+// 3. ✨ Hızlı Aktivite Modalını Açan Fonksiyon
+let isDragging = false; // Sürüklerken tıklamayı engellemek için flag
+document.addEventListener('mousedown', () => isDragging = false);
+document.addEventListener('mousemove', () => isDragging = true);
+
+function hizliAktiviteAc(firsatId, event) {
+    if (isDragging || (event && event.target.closest('.dropdown'))) {
+        return;
+    }
+
+    fetch(`/crm/firsat/hizli-aktivite/${firsatId}`)
+        .then(res => res.text())
+        .then(html => {
+            // 1. Gelen HTML'i modalın içine basıyoruz
+            document.getElementById('modalContent').innerHTML = html;
+            
+            // 2. HTML eklendiğine göre artık form elemanlarını bulup doldurabiliriz!
+            const formObj = document.getElementById('hizliAktiviteForm');
+            if(formObj) {
+                const cariId = formObj.getAttribute('data-cari-id');
+                const adayId = formObj.getAttribute('data-aday-id');
+                const baslik = formObj.getAttribute('data-baslik');
+                const actionUrl = formObj.getAttribute('action');
+                
+                // Cariyi Seç
+                if(cariId) {
+                    let c = document.querySelector('#hizliAktiviteForm select[name="cari_id"]');
+                    if(c) { c.value = cariId; if(window.jQuery) $(c).trigger('change'); }
+                }
+                
+                // Adayı Seç
+                if(adayId) {
+                    let a = document.querySelector('#hizliAktiviteForm select[name="aday_id"]');
+                    if(a) { a.value = adayId; if(window.jQuery) $(a).trigger('change'); }
+                }
+                
+                // Konuyu ve Tarihi Yaz
+                let k = document.querySelector('#hizliAktiviteForm input[name="konu"]');
+                if(k && !k.value) k.value = baslik + " Görüşmesi";
+                
+                let t = document.querySelector('#hizliAktiviteForm input[name="tarih"]');
+                if(t && !t.value) t.valueAsDate = new Date();
+                
+                // 3. Kaydet butonuna çalışma mantığını BAĞLA
+                document.getElementById('btnAktiviteKaydet').addEventListener('click', function() {
+                    const formData = new FormData(formObj);
+                    const submitBtn = this;
+                    const originalText = submitBtn.innerHTML;
+                    
+                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>{{ _("Kaydediliyor...") }}';
+                    submitBtn.disabled = true;
+
+					fetch(actionUrl, { method: 'POST', body: formData })
+						.then(async response => {
+							// Sunucu HTML mi döndürdü JSON mu kontrol et (Çökmeyi önler)
+							const isJson = response.headers.get('content-type')?.includes('application/json');
+							if (!isJson) {
+								const errText = await response.text();
+								console.error("HTML Yanıtı:", errText);
+								throw new Error("Sunucu geçersiz bir format (HTML) döndürdü.");
+							}
+							return response.json();
+						})
+						.then(result => {
+							if (result.success) {
+								bootstrap.Modal.getInstance(document.getElementById('hizliAktiviteModal')).hide();
+								location.reload(); 
+							} else {
+								alert('Kayıt Hatası: ' + (result.message || 'Lütfen bilgileri kontrol edin.'));
+								submitBtn.innerHTML = originalText;
+								submitBtn.disabled = false;
+							}
+						})
+						.catch(err => {
+							console.error('Fetch Hatası:', err);
+							alert('Sunucu hatası: Lütfen tarayıcı konsolunu (F12) kontrol edin.');
+							submitBtn.innerHTML = originalText;
+							submitBtn.disabled = false;
+						});
+					});
+            }
+
+            // 4. Tüm veriler dolduktan sonra Modalı Ekranda Göster
+            new bootstrap.Modal(document.getElementById('hizliAktiviteModal')).show();
+        })
+        .catch(err => console.error("Modal yüklenirken hata oluştu:", err));
+}
+
+// 4. Silme İşlemi
+function firsatSil(id) {
+    if(confirm('{{ _("Bu fırsatı silmek istediğinize emin misiniz?") }}')) {
+        fetch(`/crm/firsat/sil/${id}`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => location.reload());
+    }
+}
+</script>
+{% endblock %}

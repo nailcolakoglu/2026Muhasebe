@@ -1,11 +1,11 @@
 # app/modules/rapor/doc_engine.py
 
 from flask import render_template_string
-from app.extensions import db
+from app.extensions import db, get_tenant_db
 from app.modules.rapor.models import YazdirmaSablonu
 from app.modules.firmalar.models import Firma
 from app.modules.cari.models import CariHesap
-from app.modules.siparis.models import Siparis #, Fatura, FaturaKalemi
+from app.modules.siparis.models import Siparis
 from jinja2.sandbox import SandboxedEnvironment
 
 class DocumentGenerator:
@@ -14,53 +14,56 @@ class DocumentGenerator:
 
     def get_sablon(self, belge_turu):
         """
-        Önce firmanın kendi özel şablonuna bakar, yoksa genel varsayılan şablonu çeker.
+        Aktif Tenant veritabanından ilgili belge türüne ait şablonu çeker.
         """
-        # 1.Firmanın Varsayılanı
-        sablon = YazdirmaSablonu.query.filter_by(
-            firma_id=self.firma_id, 
+        tenant_db = get_tenant_db()
+        
+        # 1. Aktif ve Varsayılan olan şablonu bul
+        sablon = tenant_db.query(YazdirmaSablonu).filter_by(
             belge_turu=belge_turu, 
             aktif=True, 
             varsayilan=True
         ).first()
         
-        # 2.Sistem Varsayılanı (Firma ID = None)
+        # 2. Eğer "Varsayılan" işaretli yoksa, bulduğu ilk aktif şablonu getir
         if not sablon:
-            sablon = YazdirmaSablonu.query.filter_by(
-                firma_id=None, 
+            sablon = tenant_db.query(YazdirmaSablonu).filter_by(
                 belge_turu=belge_turu, 
-                varsayilan=True
+                aktif=True
             ).first()
             
         if not sablon:
-            raise Exception(f"{belge_turu} için uygun bir yazdırma şablonu bulunamadı!")
+            raise Exception(f"'{belge_turu}' türü için veritabanınızda uygun bir yazdırma şablonu bulunamadı! Lütfen Rapor/Şablon ayarlarından bir şablon ekleyin.")
             
         return sablon
 
     def render_html(self, belge_turu, veri_objesi, ekstra_context=None):
         """
         Veriyi şablona gömer ve HTML üretir.
-        :param belge_turu: 'fatura', 'tahsilat' vb.
-        :param veri_objesi: Fatura, KasaHareket vb.veritabanı objesi
-        :param ekstra_context: Şablona gönderilecek ek değişkenler (tarih, kullanıcı vb.)
         """
+        tenant_db = get_tenant_db()
         sablon = self.get_sablon(belge_turu)
-        firma = Firma.query.get(self.firma_id)
         
-        # Context Hazırlığı (Şablon içinde kullanılacak değişkenler)
+        firma = tenant_db.query(Firma).get(self.firma_id)
+        
         context = {
-            'belge': veri_objesi,      # Örn: {{ belge.genel_toplam }}
-            'firma': firma,            # Örn: {{ firma.unvan }}
+            'belge': veri_objesi,      
+            'firma': firma,            
             'sablon_css': sablon.css_icerik
         }
         
         if ekstra_context:
             context.update(ekstra_context)
             
-        # Jinja2 ile Birleştirme (Magic Happens Here ✨)
-        #rendered_html = render_template_string(sablon.html_icerik, **context)
-        # Güvenli Render Ortamı
         env = SandboxedEnvironment()
+        
+        # ✨ DÜZELTME 2: Sandbox (Güvenli Alan) motoruna da 'yaziyla' filtresini ekliyoruz
+        try:
+            from app.araclar import sayiyi_yaziya_cevir
+            env.filters['yaziyla'] = sayiyi_yaziya_cevir
+        except ImportError:
+            pass
+        
         template = env.from_string(sablon.html_icerik)
         
         rendered_html = template.render(**context)

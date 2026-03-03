@@ -117,7 +117,18 @@
     </div>
 
     <div class="row g-4 mb-4">
-        
+        {% if current_user.can('rapor.finans') or current_user.can('admin') %}
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold text-dark"><i class="bi bi-bar-chart-line text-primary me-2"></i>Aylık Nakit Akışı (Son 6 Ay)</h6>
+                </div>
+                <div class="card-body">
+                    <div id="nakitAkisGrafigi" style="min-height: 300px;"></div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
         {% if current_user.can('stok.view') %}
         <div class="col-lg-8">
             <div class="card shadow-sm border-0 h-100">
@@ -223,29 +234,123 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 <script>
+
 function brifingGetir() {
+    // 1. Yükleniyor Animasyonu
     $('#ceoRaporAlani').removeClass('d-none').html(`
         <div class="text-center py-5">
             <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
-            <h5 class="mt-3 animate__animated animate__pulse animate__infinite fw-bold text-dark">Veriler Analiz Ediliyor...</h5>
+            <h5 class="mt-3 animate__animated animate__pulse animate__infinite fw-bold text-dark">Yapay Zeka Tüm Şirket Verilerini Analiz Ediyor...</h5>
+            <p class="text-muted small">Bu işlem 3-4 saniye sürebilir.</p>
         </div>
-    `);
+    `).show();
     
+    // 2. Sayfadaki verileri (Jinja taglarından) topla (Sıfır veritabanı sorgusu!)
+    let veriPaketi = {
+        gunluk_satis_TL: "{{ gunluk_satis or 0 }}",
+        aylik_satis_TL: "{{ aylik_satis or 0 }}",
+        toplam_alacak_TL: "{{ toplam_alacak or 0 }}",
+        toplam_borc_TL: "{{ toplam_borc or 0 }}",
+        kasa_bakiyesi_TL: "{{ kasa_toplam or 0 }}",
+        banka_varligi_TL: "{{ banka_toplam or 0 }}",
+        kritik_stok_cesidi_sayisi: "{{ kritik_stoklar|length }}"
+    };
+
+    // 3. API'ye Gönder
     $.ajax({
-        url: '/rapor/api/ceo-brifing-olustur',
+        url: '/api/ceo-brifing-olustur', // ✨ DİKKAT: URL'yi routes.py'ye uyumlu hale getirdik
         method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(veriPaketi),
+        // Eğer csrf_token kullanıyorsan aşağıdaki satırı aktif et, yoksa silebilirsin
+        // headers: { 'X-CSRFToken': '{{ csrf_token() }}' },
         success: function(res) {
             if(res.success) {
-                $('#ceoRaporAlani').hide().html(res.report).fadeIn(800);
+                // Gelen muhteşem HTML raporu ekrana bas
+                $('#ceoRaporAlani').hide().html(res.report).slideDown(800);
             } else {
-                $('#ceoRaporAlani').html(`<div class="alert alert-danger">${res.message}</div>`);
+                $('#ceoRaporAlani').html(`<div class="alert alert-danger shadow-sm"><i class="bi bi-x-circle me-2"></i>Hata: ${res.message}</div>`);
             }
         },
-        error: function() {
-            $('#ceoRaporAlani').html(`<div class="alert alert-danger">Sunucu hatası veya yetki sorunu.</div>`);
+        error: function(xhr) {
+            console.error(xhr);
+            $('#ceoRaporAlani').html(`<div class="alert alert-danger shadow-sm">Sunucuya ulaşılamadı veya zaman aşımı.</div>`);
         }
     });
+}
+
+// YENİ: Sayfa yüklendiğinde grafiği çiz
+$(document).ready(function() {
+    if (document.getElementById('nakitAkisGrafigi')) {
+        grafikYukle();
+    }
+});
+
+function grafikYukle() {
+    // Önce yükleniyor animasyonu
+    $('#nakitAkisGrafigi').html('<div class="d-flex justify-content-center align-items-center h-100"><div class="spinner-border text-primary" role="status"></div></div>');
+
+    fetch('/api/nakit-akis-grafik')
+        .then(response => response.json())
+        .then(data => {
+            if(data.success) {
+                $('#nakitAkisGrafigi').empty(); // Animasyonu temizle
+                
+                var options = {
+                    series: [{
+                        name: 'Nakit Girişi (Gelir)',
+                        data: data.gelirler
+                    }, {
+                        name: 'Nakit Çıkışı (Gider)',
+                        data: data.giderler
+                    }],
+                    chart: {
+                        type: 'bar',
+                        height: 350,
+                        toolbar: { show: false },
+                        fontFamily: 'inherit'
+                    },
+                    plotOptions: {
+                        bar: {
+                            horizontal: false,
+                            columnWidth: '55%',
+                            endingShape: 'rounded',
+                            borderRadius: 4
+                        },
+                    },
+                    dataLabels: { enabled: false },
+                    stroke: { show: true, width: 2, colors: ['transparent'] },
+                    xaxis: { categories: data.kategoriler },
+                    yaxis: {
+                        labels: {
+                            formatter: function (val) {
+                                return val.toLocaleString('tr-TR') + " ₺";
+                            }
+                        }
+                    },
+                    fill: { opacity: 1 },
+                    colors: ['#198754', '#dc3545'], // Yeşil (Gelir) ve Kırmızı (Gider)
+                    tooltip: {
+                        y: {
+                            formatter: function (val) {
+                                return val.toLocaleString('tr-TR') + " ₺";
+                            }
+                        }
+                    }
+                };
+
+                var chart = new ApexCharts(document.querySelector("#nakitAkisGrafigi"), options);
+                chart.render();
+            } else {
+                $('#nakitAkisGrafigi').html('<div class="alert alert-danger">Grafik verileri yüklenemedi.</div>');
+            }
+        })
+        .catch(err => {
+            console.error("Grafik Hatası:", err);
+            $('#nakitAkisGrafigi').html('<div class="alert alert-danger">Sunucu bağlantı hatası.</div>');
+        });
 }
 </script>
 {% endblock %}

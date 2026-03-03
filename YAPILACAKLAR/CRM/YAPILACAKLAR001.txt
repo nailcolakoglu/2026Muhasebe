@@ -1,0 +1,61 @@
+Harika bir ilerleme! Projeni sıradan bir CRM uygulamasından çıkarıp, tam teşekküllü ve Yapay Zeka destekli bir Enterprise Kurumsal Kaynak Planlama (ERP) sistemine dönüştürmek için istediğin bu 3 adımı harfiyen uygulayalım.
+
+1. Gerçek Yapay Zeka (LLM) API'sini Bağlayalım (services.py)
+Simülasyonu kaldırıp yerine Google Gemini AI (veya ChatGPT, tercih senin ama Python ile Gemini çok hızlı ve ücretsiz kotası çok yüksektir) bağlayacağız. services.py dosyanızdaki _simulate_ai_sentiment fonksiyonunu silin ve yerine şu gerçek LLM entegrasyonunu yazın.
+
+(Not: Terminalden pip install google-generativeai komutuyla kütüphaneyi kurmayı unutmayın)
+
+Python
+# app/modules/crm/services.py içine eklenecek/değiştirilecek
+
+import json
+import google.generativeai as genai
+import os
+
+# API Key'inizi buraya girin (veya .env dosyasından çekin)
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY", "BURAYA_API_ANAHTARINIZI_YAZIN"))
+
+class CrmService:
+    
+    @staticmethod
+    def _gercek_ai_sentiment(metin):
+        """Gerçek LLM API kullanarak Müşteri Duygu Analizi Yapar"""
+        if not metin: return 'BELIRSIZ', 5
+        
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            prompt = f"""
+            Sen uzman bir müşteri ilişkileri (CRM) yapay zeka asistanısın. 
+            Aşağıdaki müşteri görüşme notunu analiz et ve müşterinin duygu durumunu sınıflandır.
+            Sadece aşağıdaki JSON formatında yanıt ver, başka hiçbir metin ekleme:
+            {{"duygu": "MUTLU" veya "NORMAL" veya "MUTSUZ" veya "SINIRLI" veya "BELIRSIZ", "skor": 1-10 arası tam sayı}}
+            
+            Görüşme Notu: "{metin}"
+            """
+            
+            response = model.generate_content(prompt)
+            # LLM'den dönen markdown taglerini temizleyip JSON'a çeviriyoruz
+            temiz_metin = response.text.replace('```json', '').replace('```', '').strip()
+            sonuc = json.loads(temiz_metin)
+            
+            return sonuc.get('duygu', 'BELIRSIZ'), sonuc.get('skor', 5)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"LLM API Hatası: {str(e)}")
+            return 'BELIRSIZ', 5
+
+    @classmethod
+    def hareket_kaydet(cls, data, firma_id, kullanici_id, hareket_id=None):
+        # ... (Önceki kodların aynı kalacak) ...
+        
+            # ✨ YENİ: GERÇEK AI DUYGU ANALİZİ ENTEGRASYONU
+            guncel_duygu = hareket.duygu_durumu.name if hasattr(hareket.duygu_durumu, 'name') else str(hareket.duygu_durumu)
+
+            if hareket.detay_notu and (not hareket.duygu_durumu or guncel_duygu == 'BELIRSIZ' or guncel_duygu == 'None'):
+                # Artık gerçek Gemini modelini çağırıyoruz
+                duygu, skor = cls._gercek_ai_sentiment(hareket.detay_notu)
+                if duygu:
+                    hareket.duygu_durumu = duygu
+                    hareket.memnuniyet_skoru = skor
+                    hareket.ai_metadata = {"analiz_tipi": "gemini-1.5-flash", "guven_skoru": 0.95}
+        # ...

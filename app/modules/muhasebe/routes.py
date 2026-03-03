@@ -22,29 +22,20 @@ from app.extensions import get_tenant_db, get_tenant_info
 muhasebe_bp = Blueprint('muhasebe', __name__)
 
 def get_aktif_firma_id():
-    """
-    Güvenli Firma ID Çözümleyici (UUID Destekli)
-    Artık int() çevrimi yapmıyoruz, doğrudan string/UUID dönüyoruz.
-    """
+    """Güvenli Firma ID Çözümleyici (UUID Destekli)"""
     val = None
-    
-    # 1. Kaynaktan Al
     if current_user.is_authenticated and getattr(current_user, 'firma_id', None):
         val = current_user.firma_id
     elif get_tenant_info() and get_tenant_info().get('firma_id'):
         val = get_tenant_info().get('firma_id')
     
-    # UUID String olarak dönecek, Integer kontrolüne gerek yok.
-    # Boş string veya None kontrolü yeterli.
     if val and str(val).strip():
         return str(val)
-            
     return None
 
 def bakiye_guncelle(firma_id, etkilenen_hesap_ids=None):
-    """PROFESYONEL BAKİYE MOTORU (Firebird Tenant DB)"""
+    """PROFESYONEL BAKİYE MOTORU (Tenant DB)"""
     tenant_db = get_tenant_db()
-    # firma_id artık string olduğu için doğrudan filtreye verilebilir
     hesaplar = tenant_db.query(HesapPlani).filter_by(firma_id=firma_id).all()
     
     for h in hesaplar:
@@ -71,13 +62,10 @@ def islem_kaydet(form, fis=None):
     tenant_db = get_tenant_db()
     data = form.get_data()
     
-    # --- FİRMA ID GÜVENLİK ---
     firma_id = get_aktif_firma_id()
     if not firma_id:
         raise Exception("Firma Kimliği Hatası: Firma ID bulunamadı.")
-    # -------------------------
     
-    # 1.TARİH VE DÖNEM KONTROLÜ
     try:
         if isinstance(data['tarih'], str):
             girilen_tarih = datetime.strptime(data['tarih'], '%Y-%m-%d').date()
@@ -95,20 +83,22 @@ def islem_kaydet(form, fis=None):
     if not (aktif_donem.baslangic <= girilen_tarih <= aktif_donem.bitis):
         raise Exception(f"Fiş tarihi ({girilen_tarih.strftime('%d.%m.%Y')}) mali dönem sınırları dışında!")
 
-    # Şube
+    # Şube Kontrolü (Güvenli Yöntem)
     yetkili_sube_id = None
-    if current_user.yetkili_subeler:
+    
+    # 1. Kullanıcının atanmış şubesi var mı kontrol et (hasattr ile çökme önlenir)
+    if hasattr(current_user, 'yetkili_subeler') and current_user.yetkili_subeler:
          yetkili_sube_id = current_user.yetkili_subeler[0].id 
     else:
+         # 2. Yoksa firmanın ilk şubesini (Merkez) varsayılan olarak al
          ilk_sube = tenant_db.query(Sube).filter_by(firma_id=firma_id).first()
-         yetkili_sube_id = ilk_sube.id if ilk_sube else 1
-
-    # 2.FİŞ BAŞLIĞI
+         yetkili_sube_id = ilk_sube.id if ilk_sube else None
+         
     is_new = False
     if not fis:
         is_new = True
         fis = MuhasebeFisi(
-            firma_id=firma_id, # UUID String gider
+            firma_id=firma_id,
             donem_id=aktif_donem.id,
             sube_id=yetkili_sube_id,
             kaydeden_id=current_user.id,
@@ -135,7 +125,6 @@ def islem_kaydet(form, fis=None):
 
     if is_new: tenant_db.flush()
 
-    # 3.DETAYLARI İŞLE
     if not is_new:
         tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=fis.id).delete()
     
@@ -202,6 +191,7 @@ def islem_kaydet(form, fis=None):
 @role_required('admin', 'muhasebe')
 def index():
     tenant_db = get_tenant_db()
+    
     firma_id = get_aktif_firma_id()
     
     grid = DataGrid("muhasebe_list", MuhasebeFisi, "Muhasebe Fişleri", per_page=20, enable_grouping=True, 
@@ -219,20 +209,25 @@ def index():
     grid.add_action('edit', 'İncele/Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'muhasebe.duzenle')
     grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'muhasebe.sil')
     
-    # Güvenlik: ID yoksa boş dön
     if not firma_id:
          flash("Firma Kimliği doğrulanamadı. Oturumunuzu kontrol edin.", "danger")
          query = tenant_db.query(MuhasebeFisi).filter(literal(False)) 
     else:
-         # firma_id UUID/String olduğu için doğrudan eşleşir
          query = tenant_db.query(MuhasebeFisi).filter_by(firma_id=firma_id).order_by(MuhasebeFisi.tarih.desc())
    
-    grid.hide_column('id').hide_column('firma_id').hide_column('donem_id').hide_column('sube_id').hide_column('kaynak_modul').hide_column('kaynak_id')
+    # Gizlenecek kolonlar
+    hidden_cols = [
+        'id', 'firma_id', 'sube_id', 'donem_id', 'kaynak_modul', 'kaynak_id',
+        'muhasebe_hesap_id', 'e_defter_donemi', 'gib_durum_kodu', 'gib_hata_mesaji', 'sistem_kayit_tarihi', 
+        'son_duzenleme_tarihi', 'kaydeden_id', 'duzenleyen_id',
+        'created_at', 'updated_at', 'deleted_at', 
+    ]
+    
+    for col in hidden_cols:
+        grid.hide_column(col)
 
     grid.process_query(query)
     return render_template('muhasebe/index.html', grid=grid)
-
-# ... (Ekle, Düzenle, Sil fonksiyonları aynı kalacak, sadece islem_kaydet çağırıyorlar) ...
 
 @muhasebe_bp.route('/ekle', methods=['GET', 'POST'])
 @login_required
@@ -250,7 +245,8 @@ def ekle():
                 return jsonify({'success': False, 'message': str(e)}), 500
     return render_template('muhasebe/form.html', form=form)
 
-@muhasebe_bp.route('/duzenle/<int:id>', methods=['GET', 'POST'])
+# 👇 UUID Düzeltmesi (<string:id>)
+@muhasebe_bp.route('/duzenle/<string:id>', methods=['GET', 'POST'])
 @login_required
 def duzenle(id):
     tenant_db = get_tenant_db()
@@ -268,7 +264,8 @@ def duzenle(id):
                 return jsonify({'success': False, 'message': str(e)}), 500
     return render_template('muhasebe/form.html', form=form)
 
-@muhasebe_bp.route('/sil/<int:id>', methods=['POST'])
+# 👇 UUID Düzeltmesi (<string:id>)
+@muhasebe_bp.route('/sil/<string:id>', methods=['POST'])
 @login_required
 @permission_required('fatura_sil')
 def sil(id):
@@ -335,7 +332,13 @@ def hesap_ekle():
                 if mevcut:
                     return jsonify({'success': False, 'message': f"Bu hesap kodu ({data['kod']}) zaten kullanımda!"}), 400
 
-                ust_id = int(data['ust_hesap_id']) if data['ust_hesap_id'] and str(data['ust_hesap_id']) != '0' else None
+                # 👇 UUID Düzeltmesi (Eskiden int(data['ust_hesap_id']) şeklindeydi, artık String/None)
+                ust_id = data.get('ust_hesap_id')
+                if not ust_id or str(ust_id) in ['0', '', 'None']:
+                    ust_id = None
+                else:
+                    ust_id = str(ust_id)
+                
                 seviye = 1
                 if ust_id:
                     ust_hesap = tenant_db.get(HesapPlani, ust_id)
@@ -345,7 +348,6 @@ def hesap_ekle():
                         if str(tip) == 'muavin':
                             return jsonify({'success': False, 'message': 'Muavin hesaba alt hesap eklenemez!'}), 400
 
-                # firma_id artık UUID/String
                 hesap = HesapPlani(
                     firma_id=firma_id, 
                     ust_hesap_id=ust_id,
@@ -366,19 +368,15 @@ def hesap_ekle():
                 return jsonify({'success': False, 'message': f"Hata: {str(e)}"}), 500
     return render_template('muhasebe/form.html', form=form)
 
-# ... (Hesap düzenle/sil rotaları benzer mantıkla güncellendi) ...
-
-@muhasebe_bp.route('/yazdir/dos/<int:id>')
+# 👇 UUID Düzeltmesi (<string:id>)
+@muhasebe_bp.route('/yazdir/dos/<string:id>')
 @login_required
 def yazdir_dos(id):
     tenant_db = get_tenant_db()
     fis = tenant_db.get(MuhasebeFisi, id)
     if not fis: abort(404)
     
-    # Firma bilgisi Master DB'de
     from app.modules.firmalar.models import Firma
-    
-    # UUID ile sorgulama
     firma = db.session.get(Firma, fis.firma_id) 
     
     rapor = TextReportEngine(sayfa_satir_sayisi=60, sayfa_genisligi=80)
@@ -394,7 +392,6 @@ def yazdir_dos(id):
         belge_no=fis.fis_no,
         tarih=fis.tarih.strftime('%d.%m.%Y')
     )
-    # ... Rapor detay döngüsü (Değişiklik yok) ...
     for detay in fis.detaylar:
         rapor.sayfa_sonu_kontrol(
             firma_adi=firma.unvan if firma else "Firma Bilgisi Yok",
@@ -415,19 +412,23 @@ def yazdir_dos(id):
         headers={"Content-disposition": f"attachment; filename={fis.fis_no}.txt"}
     )
     
-# Diğer fonksiyonlar (fis/kaydet, resmi-defter/kesinlestir) get_aktif_firma_id() kullanarak güncellendi.
 @muhasebe_bp.route('/fis/kaydet', methods=['POST'])
 @login_required
 def kaydet():
-    form_data = request.json 
-    sube_id = current_user.yetkili_subeler[0].id if current_user.yetkili_subeler else 1
+    form_data = request.json
+    
+    # Güvenli Şube ID alımı
+    sube_id = None
+    if hasattr(current_user, 'yetkili_subeler') and current_user.yetkili_subeler:
+        sube_id = current_user.yetkili_subeler[0].id
+        
     tenant_db = get_tenant_db()
     
     firma_id = get_aktif_firma_id()
     if not firma_id: return jsonify({'status': 'error', 'message': 'Firma kimliği doğrulanamadı.'}), 400
 
     donem = tenant_db.query(Donem).filter_by(firma_id=firma_id, aktif=True).first()
-    donem_id = donem.id if donem else 1
+    donem_id = donem.id if donem else None
 
     basari, mesaj = fis_kaydet(
         data=form_data,
@@ -454,11 +455,12 @@ def kesinlestir():
     if not firma_id: return jsonify({'success': False, 'message': 'Firma kimliği hatası.'}), 400
     donem = tenant_db.query(Donem).filter_by(firma_id=firma_id, aktif=True).first()
     
-    basari, mesaj = resmi_defteri_kesinlestir(firma_id=firma_id, donem_id=donem.id if donem else 1, bitis_tarihi=tarih)
+    basari, mesaj = resmi_defteri_kesinlestir(firma_id=firma_id, donem_id=donem.id if donem else None, bitis_tarihi=tarih)
     if basari: return jsonify({'success': True, 'message': mesaj})
     else: return jsonify({'success': False, 'message': mesaj}), 400
 
-@muhasebe_bp.route('/hesap/duzenle/<int:id>', methods=['GET', 'POST'])
+# 👇 UUID Düzeltmesi (<string:id> ve ID kontrolü)
+@muhasebe_bp.route('/hesap/duzenle/<string:id>', methods=['GET', 'POST'])
 @login_required
 def hesap_duzenle(id):
     tenant_db = get_tenant_db()
@@ -470,12 +472,21 @@ def hesap_duzenle(id):
         if form.validate():
             try:
                 data = form.get_data()
-                ust_id = int(data['ust_hesap_id']) if data['ust_hesap_id'] and str(data['ust_hesap_id']) != '0' else None
+                
+                # 👇 UUID Düzeltmesi
+                ust_id = data.get('ust_hesap_id')
+                if not ust_id or str(ust_id) in ['0', '', 'None']:
+                    ust_id = None
+                else:
+                    ust_id = str(ust_id)
+                
                 if ust_id == hesap.id: return jsonify({'success': False, 'message': 'Hesap kendi kendisinin üst hesabı olamaz!'}), 400
+                
                 seviye = 1
                 if ust_id:
                     ust = tenant_db.get(HesapPlani, ust_id)
                     seviye = ust.seviye + 1
+                    
                 hesap.ust_hesap_id = ust_id
                 hesap.seviye = seviye
                 hesap.kod = data['kod']
@@ -491,7 +502,8 @@ def hesap_duzenle(id):
                 return jsonify({'success': False, 'message': str(e)}), 500
     return render_template('muhasebe/form.html', form=form)
 
-@muhasebe_bp.route('/hesap/sil/<int:id>', methods=['POST'])
+# 👇 UUID Düzeltmesi (<string:id>)
+@muhasebe_bp.route('/hesap/sil/<string:id>', methods=['POST'])
 @login_required
 def hesap_sil(id):
     tenant_db = get_tenant_db()

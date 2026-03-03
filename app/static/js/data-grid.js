@@ -275,23 +275,99 @@
     }
 
     // ==================== 3. DİĞER ÖZELLİKLER (Search, Sort, Filter) ====================
-    function initColumnChooser() { /* ... Mevcut Kodunuz ... */ }
-    
-    function initGlobalSearch() {
-        $('.dx-grid-filter').each(function() {
-            var $search = $(this).attr('placeholder', '🔍 Ara...');
-            var gridId = $search.data('target');
-            var timeout;
-            $search.on('keyup', function() {
-                clearTimeout(timeout);
-                var val = $(this).val().toLowerCase();
-                timeout = setTimeout(function() {
-                    var $rows = $('#dx-grid-' + gridId + ' tbody tr:not(.dx-group-row)');
-                    $rows.each(function() {
-                        $(this).toggle($(this).text().toLowerCase().indexOf(val) > -1);
-                    });
-                }, 300);
+    function initColumnChooser() {
+        $('.dx-grid-card').each(function() {
+            var $card = $(this);
+            var gridId = $card.attr('id').replace('dx-grid-card-', ''); // Örn: fatura_list
+            var $grid = $('#dx-grid-' + gridId);
+            
+            var $header = $card.find('.card-header');
+            if ($header.length === 0) return;
+
+            // Kartın başlık kısmındaki buton alanını (div) bul. 
+            var $headerActions = $header.find('> div').last();
+
+            // ✨ DÜZELTME: Eğer buton alanı (Export vs.) yoksa, kendimiz oluşturalım!
+            if ($headerActions.length === 0) {
+                $headerActions = $('<div></div>');
+                $header.append($headerActions);
+            }
+
+            // Zaten eklenmişse tekrar ekleme
+            if ($headerActions.find('.dx-column-chooser').length > 0) return;
+
+            // 1. Dropdown Menü İskeletini Oluştur
+            var $dropdown = $('<div class="dropdown d-inline-block ms-2 dx-column-chooser"></div>');
+            var $btn = $('<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"><i class="bi bi-layout-three-columns"></i> Sütunlar</button>');
+            var $menu = $('<ul class="dropdown-menu dropdown-menu-end shadow-sm p-2" style="min-width: 200px; z-index: 1050;"></ul>');
+
+            // 2. Tablodaki Başlıkları (TH) Bul ve Checkbox Olarak Ekle
+            $grid.find('thead tr:first th[data-field]').each(function() {
+                var fieldName = $(this).data('field');
+                var fieldText = $(this).text().trim();
+                if (!fieldName || !fieldText) return;
+
+                var isChecked = $(this).is(':visible') ? 'checked' : '';
+                var cbId = 'cb_' + gridId + '_' + fieldName;
+
+                var $li = $(`
+                    <li>
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input toggle-column-cb" type="checkbox" value="${fieldName}" id="${cbId}" ${isChecked}>
+                            <label class="form-check-label text-truncate" style="max-width: 150px; cursor: pointer;" for="${cbId}">${fieldText}</label>
+                        </div>
+                    </li>
+                `);
+                $menu.append($li);
             });
+
+            $dropdown.append($btn).append($menu);
+            $headerActions.append($dropdown);
+
+            // 3. Tıklama (Göster/Gizle) Olayını Dinle
+            $menu.on('change', '.toggle-column-cb', function() {
+                var field = $(this).val();
+                var show = $(this).is(':checked');
+                
+                // Başlığı (TH) bul
+                var $th = $grid.find(`th[data-field="${field}"]`);
+                var colIndex = $th.index();
+                
+                // Başlığı, Filtre kutusunu ve Veri hücrelerini Gizle/Göster
+                show ? $th.fadeIn(200) : $th.fadeOut(200);
+                
+                var $filterTh = $grid.find('thead tr.dx-filter-row th').eq(colIndex);
+                show ? $filterTh.fadeIn(200) : $filterTh.fadeOut(200);
+
+                $grid.find('tbody tr').each(function() {
+                    var $td = $(this).find('td').eq(colIndex);
+                    show ? $td.fadeIn(200) : $td.fadeOut(200);
+                });
+            });
+        });
+    }
+	
+	function initGlobalSearch() {
+        // ESKİ CLIENT-SIDE KODUNU SİLDİK, YERİNE SERVER-SIDE (SUNUCU TARAFLI) ARAMA EKLEDİK
+        
+        $(document).on('keyup', '.dx-grid-filter', function(e) {
+            // 100.000 kayıtta her harfe basıldığında sunucuyu yormamak için 
+            // sadece "Enter" tuşuna basıldığında arama yapıyoruz.
+            if (e.key === 'Enter') {
+                var val = $(this).val().trim();
+                var params = new URLSearchParams(window.location.search);
+                
+                params.set('page', 1); // Yeni bir arama yapıldığında her zaman 1. sayfaya dön
+                
+                if (val) {
+                    params.set('q', val); // URL'e q=VESTEL ekle
+                } else {
+                    params.delete('q');   // Kutu boşaltılıp Enter'a basılırsa aramayı iptal et
+                }
+                
+                // Sayfayı yeni parametrelerle sunucudan yeniden yükle
+                window.location.href = window.location.pathname + '?' + params.toString();
+            }
         });
     }
 
@@ -309,64 +385,64 @@
     }
 
     // ==================== 4. AKILLI AJAX / SİLME İŞLEMİ (GÜNCELLENEN KISIM) ====================
-    function initAjaxActions() {
-        // Selector: datagrid-action olanlar, data-action="delete" olanlar ve title="Sil" olanlar
-        var actionSelector = '.datagrid-action[data-type="ajax"], [data-action="delete"], button[title="Sil"]';
+	function initAjaxActions() {
+        // 👇 YENİ: .datagrid-ajax-btn eklendi. Artık her butonumuzu yakalayacak!
+        var actionSelector = '.datagrid-action[data-type="ajax"], [data-action="delete"], button[title="Sil"], .datagrid-ajax-btn';
 
         $(document).off('click', actionSelector).on('click', actionSelector, function(e) {
             e.preventDefault();
             var btn = $(this);
             
-            // 1. URL Belirleme
+            // 1. URL Belirleme (Artık data-url'den Python'un ürettiği tam adresi çekecek)
             var url = btn.attr('data-url') || btn.attr('href');
             
-            // Eğer URL yoksa ve silme butonuysa URL'yi otomatik üret
             if (!url) {
-                var action = btn.data('action'); // "delete"
-                var id = btn.data('id');         // "2"
-                
+                var action = btn.data('action'); 
+                var id = btn.data('id');         
                 if (action === 'delete' && id) {
-                    var path = window.location.pathname; // "/kasa" veya "/kasa/"
+                    var path = window.location.pathname; 
                     if (path.endsWith('/')) path = path.slice(0, -1);
-                    
-                    // Otomatik URL: /kasa/sil/2
                     url = path + '/sil/' + id;
-                    debugOutput('Otomatik URL Üretildi: ' + url);
                 }
             }
 
-            // 2. Kontrol
             if (!url || url === '#' || url === 'javascript:void(0);') {
                 Swal.fire('Hata', 'İşlem adresi (URL) bulunamadı.', 'error');
                 return;
             }
 
+            // 2. Dinamik Mesaj Belirleme
+            var actionName = btn.data('action');
+            var isDelete = actionName === 'delete' || btn.attr('title') === 'Sil';
+            
+            var confirmTitle = isDelete ? 'Emin misiniz?' : 'İşlemi Onaylıyor musunuz?';
+            var confirmText = isDelete ? "Bu kayıt silinecek! Bu işlem geri alınamaz." : "Bu işlem arka planda çalıştırılacaktır.";
+            var confirmBtn = isDelete ? 'Evet, Sil!' : 'Evet, Çalıştır!';
+
             // 3. Onay ve Gönderim
             Swal.fire({
-                title: 'Emin misiniz?',
-                text: "Bu kayıt silinecek! Bu işlem geri alınamaz.",
-                icon: 'warning',
+                title: confirmTitle,
+                text: confirmText,
+                icon: isDelete ? 'warning' : 'question',
                 showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Evet, Sil!',
+                confirmButtonColor: isDelete ? '#d33' : '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: confirmBtn,
                 cancelButtonText: 'İptal'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    sendAjaxRequest(url, btn);
+                    sendAjaxRequest(url, btn, isDelete);
                 }
             });
         });
     }
 
-    function sendAjaxRequest(url, btn) {
-        // CSRF Token'ı HTML'den al
+    function sendAjaxRequest(url, btn, isDelete) {
         var csrfToken = $('meta[name="csrf-token"]').attr('content');
         $.ajax({
             url: url,
-            type: 'POST',
+            type: 'POST', // Her zaman POST kullanıyoruz
             dataType: 'json',
-            // 👇 GÜVENLİK ANAHTARI BURADA EKLENİYOR
             headers: {
                 "X-CSRFToken": csrfToken
             },
@@ -384,11 +460,18 @@
                         title: 'Başarılı!',
                         text: response.message,
                         icon: 'success',
-                        timer: 1500,
+                        timer: 2000,
                         showConfirmButton: false
                     });
-                    // Satırı kaldır
-                    btn.closest('tr').fadeOut(500, function() { $(this).remove(); });
+                    
+                    // 👇 YENİ MANTIK: Eğer işlem silmeyse satırı uçur, değilse sayfayı yenile ki güncel durum (Örn: Kuyrukta) görünsün!
+                    if (isDelete) {
+                        btn.closest('tr').fadeOut(500, function() { $(this).remove(); });
+                    } else {
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1500);
+                    }
                 } else {
                     Swal.fire('Hata!', response.message || 'İşlem başarısız.', 'error');
                 }
@@ -406,14 +489,16 @@
             }
         });
     }
-
-    // ==================== BAŞLATMA (INIT) ====================
+    
+	
+	// ==================== BAŞLATMA (INIT) ====================
     function initDataGrid() {
         debugOutput('DataGrid Core JS Initializing...');
         
         initGrouping();
         initColumnFiltering();
         initGlobalSearch();
+		initColumnChooser();
         initAjaxActions(); // Yeni Akıllı Silme
         
         // Özet Footer'ı başlat

@@ -1,0 +1,47 @@
+{% extends "public_base.html" %} {% block title %}Paketler ve Fiyatlandırma{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <h1 class="fw-bold text-primary">İşletmeniz İçin En Uygun Planı Seçin</h1>
+        <p class="lead text-muted">Gizli ücret yok, sürpriz yok. 30 gün ücretsiz deneyin.</p>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+        {% for plan_key, plan in paketler.items() %}
+        {% if plan_key != 'trial' %}
+        <div class="col-lg-4 col-md-6">
+            <div class="card h-100 shadow-sm border-0 {% if plan_key == 'professional' %}border-top border-4 border-primary{% endif %}">
+                {% if plan_key == 'professional' %}
+                <div class="position-absolute top-0 end-0 mt-2 me-2">
+                    <span class="badge bg-primary">En Çok Tercih Edilen</span>
+                </div>
+                {% endif %}
+                <div class="card-body p-5 text-center">
+                    <h4 class="fw-bold text-uppercase text-muted mb-2">{{ plan.name }}</h4>
+                    <h2 class="display-4 fw-bold mb-4">
+                        {% if plan_key == 'starter' %}₺999{% elif plan_key == 'professional' %}₺2.499{% else %}Özel{% endif %}
+                        <span class="fs-6 text-muted fw-normal">/ ay</span>
+                    </h2>
+                    
+                    <ul class="list-unstyled text-start mb-5">
+                        <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i><strong>{{ plan.max_users }}</strong> Kullanıcı Lisansı</li>
+                        <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i><strong>{{ plan.max_branches }}</strong> Şube Kapasitesi</li>
+                        <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i>Aylık {% if plan.max_monthly_invoices == -1 %}Sınırsız{% else %}<strong>{{ plan.max_monthly_invoices }}</strong>{% endif %} Fatura</li>
+                        <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i>{{ (plan.max_storage_mb / 1024)|round(1) }} GB Bulut Depolama</li>
+                    </ul>
+
+                    <div class="d-grid mt-auto">
+                        <a href="{{ url_for('subscription.checkout', plan_id=plan_key) }}" 
+                           class="btn {% if plan_key == 'professional' %}btn-primary{% else %}btn-outline-primary{% endif %} btn-lg fw-bold">
+                            Hemen Başla
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+WMS (Depo Yönetim Sistemi) şovunu başlatıyoruz.
+
+Klasik sistemlerde kullanıcılar bilgisayar başına geçip 
+"Hangi üründen kaç tane, nereye geldi?" diye uzun uzun form doldururlar. 
+Biz ise "El Terminali" (Mobile Scanner) mantığı kuracağız. 
+Depocunun elinde bir tablet veya barkod okuyuculu bir telefon olduğunu düşün:
+
+Ürünü okutacak (Bip!).
+
+Koyduğu rafı okutacak (Bip!).
+
+Miktarı yazıp "Kaydet" diyecek. İşlem bu kadar basit olacak!
+
+Bunu hayata geçirmek için sistemimize bir "Barkod Çözümleme API'si" 
+ve mobil uyumlu devasa butonları olan bir "Terminal Ekranı" ekleyeceğiz.

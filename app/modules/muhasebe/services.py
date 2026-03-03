@@ -1,13 +1,17 @@
 # app/modules/muhasebe/services.py
 
+import logging
 from decimal import Decimal
 from datetime import datetime
 from sqlalchemy import func, case, cast, Integer, literal
 from flask_login import current_user
+from flask import session # ✨ EKLENDİ: Hayati import eksiği giderildi
+
 from app.araclar import numara_uret
+from app.extensions import get_tenant_db # GOLDEN RULE
 
 # Modeller
-from app.extensions import get_tenant_db # GOLDEN RULE
+from app.modules.banka.models import BankaHesap
 from app.modules.muhasebe.models import MuhasebeFisi, MuhasebeFisiDetay, HesapPlani
 from app.modules.fatura.models import Fatura
 from app.modules.firmalar.models import Firma, Donem
@@ -29,33 +33,97 @@ from app.enums import (
     BankaIslemTuru, FinansIslemTuru, MuhasebeFisTuru, 
     HesapSinifi, BakiyeTuru, OzelHesapTipi
 )
-from signals import fatura_olusturuldu, siparis_faturalandi
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
-# 1.MANUEL İŞLEMLER
+# 0. GÜVENLİK VE KİLİT MEKANİZMALARI
 # =============================================================================
+
+def tarih_kilidi_kontrol(tarih, donem_id, tenant_db=None):
+    """
+    Belirtilen tarihe kayıt atılıp atılamayacağını kontrol eder.
+    Eğer Resmi Defter (e-Defter) basıldıysa o tarihe hiçbir modülden işlem yapılamaz!
+    """
+    if tenant_db is None:
+        from app.extensions import get_tenant_db
+        tenant_db = get_tenant_db()
+        
+    from app.modules.firmalar.models import Donem
+    donem = tenant_db.get(Donem, str(donem_id))
+    
+    if not donem:
+        raise Exception("İlgili dönem bulunamadı!")
+
+    # Gelen tarih string ise date objesine çevir
+    if isinstance(tarih, str):
+        try:
+            islem_tarihi = datetime.strptime(tarih, '%Y-%m-%d').date()
+        except ValueError:
+            raise Exception("Geçersiz tarih formatı!")
+    else:
+        if hasattr(tarih, 'date'):
+            islem_tarihi = tarih.date()
+        else:
+            islem_tarihi = tarih
+
+    # 🔥 KİLİT KONTROLÜ
+    if donem.son_yevmiye_tarihi:
+        if islem_tarihi <= donem.son_yevmiye_tarihi:
+            kilit_tarihi_str = donem.son_yevmiye_tarihi.strftime('%d.%m.%Y')
+            raise Exception(
+                f"⛔ GÜVENLİK UYARISI: {kilit_tarihi_str} tarihine kadar e-Defter (Resmi Defter) onaylanmıştır! "
+                f"Bu tarihe veya öncesine ({islem_tarihi.strftime('%d.%m.%Y')}) fiş giremez, silemez veya fatura kesemezsiniz."
+            )
+    return True
+
+# =============================================================================
+# 1. MANUEL İŞLEMLER VE OPTİMİZE BAKİYE MOTORU
+# =============================================================================
+
+class MuhasebeHesapService:
+    
+    @staticmethod
+    def hedefli_bakiye_guncelle(firma_id: str, hesap_ids: list):
+        """
+        ✨ YENİ: Performans canavarı! 
+        Bütün hesap planını değil, sadece işlem gören hesapların bakiyesini anında günceller.
+        """
+        if not hesap_ids: return
+        
+        tenant_db = get_tenant_db()
+        benzersiz_hesaplar = set([h for h in hesap_ids if h])
+        
+        for h_id in benzersiz_hesaplar:
+            ozet = tenant_db.query(
+                func.sum(MuhasebeFisiDetay.borc),
+                func.sum(MuhasebeFisiDetay.alacak)
+            ).join(MuhasebeFisi).filter(
+                MuhasebeFisiDetay.hesap_id == str(h_id),
+                MuhasebeFisi.firma_id == firma_id
+            ).first()
+            
+            hesap = tenant_db.get(HesapPlani, str(h_id))
+            if hesap:
+                hesap.borc_bakiye = ozet[0] or Decimal('0.00')
+                hesap.alacak_bakiye = ozet[1] or Decimal('0.00')
+                
+        tenant_db.flush()
 
 def bakiye_guncelle(firma_id):
-    """Tüm hesap planını tarar ve bakiyeleri yeniden hesaplar (Tenant DB)."""
+    """(Geriye Dönük Uyumluluk İçin) Tüm bakiyeleri yeniden hesaplar"""
     tenant_db = get_tenant_db()
     hesaplar = tenant_db.query(HesapPlani).filter_by(firma_id=firma_id).all()
-    for h in hesaplar:
-        ozet = tenant_db.query(
-            func.sum(MuhasebeFisiDetay.borc),
-            func.sum(MuhasebeFisiDetay.alacak)
-        ).join(MuhasebeFisi).filter(
-            MuhasebeFisiDetay.hesap_id == h.id,
-            MuhasebeFisi.firma_id == firma_id
-        ).first()
-        h.borc_bakiye = ozet[0] or Decimal(0)
-        h.alacak_bakiye = ozet[1] or Decimal(0)
-        # tenant_db.add(h) demeye gerek yok, session track ediyor.
-    tenant_db.flush()
+    MuhasebeHesapService.hedefli_bakiye_guncelle(firma_id, [h.id for h in hesaplar])
+    tenant_db.commit()
 
 def fis_kaydet(data, kullanici_id, sube_id, donem_id, firma_id, fis_id=None):
     """Manuel Muhasebe Fişi Kaydı (Tenant DB)"""
     tenant_db = get_tenant_db()
     try:
+        # ✨ KİLİT KONTROLÜ BURADA ÇALIŞACAK
+        tarih_kilidi_kontrol(data.get('tarih') or datetime.now().date(), donem_id, tenant_db)
+        
         try:
             if isinstance(data['tarih'], str):
                 girilen_tarih = datetime.strptime(data['tarih'], '%Y-%m-%d').date()
@@ -81,13 +149,19 @@ def fis_kaydet(data, kullanici_id, sube_id, donem_id, firma_id, fis_id=None):
             fis.fis_no = numara_uret(firma_id, tur_kod, girilen_tarih.year, on_ek)
             tenant_db.add(fis)
 
-        fis.fis_turu = data['fis_turu']
+        # Enum Safety
+        if hasattr(MuhasebeFisTuru, str(data['fis_turu']).upper()):
+            fis.fis_turu = data['fis_turu']
+            
         fis.tarih = girilen_tarih
         fis.aciklama = data.get('aciklama')
         fis.e_defter_donemi = girilen_tarih.strftime('%Y%m')
         tenant_db.flush()
 
+        eski_hesap_ids = []
         if fis_id:
+            eski_detaylar = tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=fis.id).all()
+            eski_hesap_ids = [d.hesap_id for d in eski_detaylar]
             tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=fis.id).delete()
 
         hesap_ids = data.get('detaylar_hesap_id', [])
@@ -101,8 +175,9 @@ def fis_kaydet(data, kullanici_id, sube_id, donem_id, firma_id, fis_id=None):
         odeme_yontemleri = data.get('detaylar_odeme_yontemi', [])
         belge_aciklamalari = data.get('detaylar_belge_aciklamasi', [])
 
-        toplam_borc = Decimal(0)
-        toplam_alacak = Decimal(0)
+        toplam_borc = Decimal('0.00')
+        toplam_alacak = Decimal('0.00')
+        aktif_hesap_ids = []
 
         for i in range(len(hesap_ids)):
             if not hesap_ids[i]: continue
@@ -112,6 +187,7 @@ def fis_kaydet(data, kullanici_id, sube_id, donem_id, firma_id, fis_id=None):
 
             toplam_borc += b
             toplam_alacak += a
+            aktif_hesap_ids.append(hesap_ids[i])
             
             b_tarih = None
             if i < len(belge_tarihleri) and belge_tarihleri[i]:
@@ -136,8 +212,12 @@ def fis_kaydet(data, kullanici_id, sube_id, donem_id, firma_id, fis_id=None):
 
         fis.toplam_borc = toplam_borc
         fis.toplam_alacak = toplam_alacak
+        tenant_db.flush()
+        
+        # ✨ Yalnızca etkilenen hesapların bakiyesini güncelle
+        MuhasebeHesapService.hedefli_bakiye_guncelle(firma_id, eski_hesap_ids + aktif_hesap_ids)
+        
         tenant_db.commit()
-        bakiye_guncelle(firma_id)
         return True, "Fiş başarıyla kaydedildi."
 
     except Exception as e:
@@ -174,51 +254,53 @@ def resmi_defteri_kesinlestir(firma_id, donem_id, bitis_tarihi):
 
 
 # =============================================================================
-# 2.OTOMATİK ENTEGRASYON SINIFI (Tenant DB Uyumlu)
+# 2.OTOMATİK ENTEGRASYON SINIFI (Tenant DB Uyumlu + Gelişmiş Loglama)
 # =============================================================================
 
 class MuhasebeEntegrasyonService:
 
     @staticmethod
     def register_handlers():
-        """Signal handler'larını kaydeder"""
+        """
+        Sinyal handler'ları. Çift kayıt (Double-Entry) riskine karşı
+        doğrudan DB işlemi yapmazlar, sadece Audit/Log amaçlı dinlerler.
+        Ana modüller entegre_et_XXX metotlarını senkron çağırır.
+        """
+        from app.signals import fatura_olusturuldu, siparis_faturalandi
+        logger.info("📡 Muhasebe Sinyalleri (Audit Mode) dinlemeye başlandı...")
         
         @fatura_olusturuldu.connect_via(None)
-        def on_fatura_olusturuldu(sender, fatura, user, **extra):
-            try:
-                # Fatura ve User zaten Tenant Context'inde
-                MuhasebeEntegrasyonService.entegre_et_fatura(fatura.id)
-            except Exception as e:
-                # Loglama buraya
-                print(f"Muhasebe kaydı hatası: {e}")
-        
+        def on_fatura_olusturuldu(sender, **extra):
+            logger.info(f"🔔 SİNYAL: {sender.belge_no} nolu fatura muhasebe motoruna ulaştı.")
+            
         @siparis_faturalandi.connect_via(None)
-        def on_siparis_faturalandi(sender, siparis, olusan_fatura_id, **extra):
-            try:
-                MuhasebeEntegrasyonService.entegre_et_fatura(olusan_fatura_id)
-            except Exception as e: 
-                print(f"Sipariş->Fatura muhasebe kaydı hatası:  {e}")
+        def on_siparis_faturalandi(sender, fatura, **extra):
+            logger.info(f"🔔 SİNYAL: Sipariş faturalandı. Fatura ID: {fatura.id}")
 
     @staticmethod
     def _hesap_bul(firma_id, ozel_kod=None, cari_id=None, banka_id=None, kasa_id=None):
         tenant_db = get_tenant_db()
         if cari_id:
-            cari = tenant_db.get(CariHesap, cari_id)
-            return cari.satis_muhasebe_hesap_id or cari.alis_muhasebe_hesap_id if cari else None
+            cari = tenant_db.get(CariHesap, str(cari_id))
+            return str(cari.satis_muhasebe_hesap_id) if cari and cari.satis_muhasebe_hesap_id else (str(cari.alis_muhasebe_hesap_id) if cari else None)
         if banka_id:
-            bnk = tenant_db.get(BankaHesap, banka_id) # Model importu eksikse eklenmeli
-            return bnk.muhasebe_hesap_id if bnk else None
+            bnk = tenant_db.get(BankaHesap, str(banka_id)) 
+            return str(bnk.muhasebe_hesap_id) if bnk and bnk.muhasebe_hesap_id else None
         if kasa_id:
-            ksa = tenant_db.get(Kasa, kasa_id)
-            return ksa.muhasebe_hesap_id if ksa else None
+            ksa = tenant_db.get(Kasa, str(kasa_id))
+            return str(ksa.muhasebe_hesap_id) if ksa and ksa.muhasebe_hesap_id else None
         if ozel_kod:
             hesap = tenant_db.query(HesapPlani).filter_by(firma_id=firma_id, kod=ozel_kod).first()
-            return hesap.id if hesap else None
+            return str(hesap.id) if hesap else None
         return None
 
     @staticmethod
     def _fis_kaydet_generic(firma_id, donem_id, sube_id, tarih, aciklama, tur, satirlar, kaynak_modul, kaynak_id, belge_no_override=None):
         tenant_db = get_tenant_db()
+        
+        # ✨ OTOMATİK ENTEGRASYON KİLİDİ
+        tarih_kilidi_kontrol(tarih, donem_id, tenant_db)
+        
         prefix = "M-"
         if tur == MuhasebeFisTuru.TAHSIL: prefix = "T-"
         elif tur == MuhasebeFisTuru.TEDIYE: prefix = "TD-"
@@ -231,13 +313,14 @@ class MuhasebeEntegrasyonService:
             fis_turu=tur, fis_no=fis_no, tarih=tarih, aciklama=aciklama,
             kaynak_modul=kaynak_modul, kaynak_id=kaynak_id,
             e_defter_donemi=tarih.strftime('%Y%m'),
-            kaydeden_id=current_user.id if current_user else None
+            kaydeden_id=current_user.id if current_user and hasattr(current_user, 'id') else None
         )
         tenant_db.add(fis)
         tenant_db.flush()
 
-        toplam_borc = Decimal(0)
-        toplam_alacak = Decimal(0)
+        toplam_borc = Decimal('0.00')
+        toplam_alacak = Decimal('0.00')
+        kullanilan_hesap_ids = []
 
         for s in satirlar:
             if not s.get('hesap_id'): continue
@@ -254,12 +337,15 @@ class MuhasebeEntegrasyonService:
             tenant_db.add(detay)
             toplam_borc += borc
             toplam_alacak += alacak
+            kullanilan_hesap_ids.append(s['hesap_id'])
 
         fis.toplam_borc = toplam_borc
         fis.toplam_alacak = toplam_alacak
-        # Commit çağıran metoda bırakılabilir veya burada yapılabilir.
-        # Genelde transaction bütünlüğü için çağıran yer yapar ama bu atomik bir işlem.
-        tenant_db.commit() 
+        tenant_db.flush()
+        
+        # ✨ Otomatik fişlerde de hesap bakiyelerini güncelliyoruz
+        MuhasebeHesapService.hedefli_bakiye_guncelle(firma_id, kullanilan_hesap_ids)
+        
         return fis
 
     # --- MODÜL ENTEGRASYONLARI ---
@@ -267,69 +353,84 @@ class MuhasebeEntegrasyonService:
     @staticmethod
     def entegre_et_fatura(fatura_id):
         tenant_db = get_tenant_db()
-        fatura = tenant_db.get(Fatura, fatura_id)
-        if not fatura: return False
+        fatura = tenant_db.get(Fatura, str(fatura_id))
+        if not fatura: 
+            return False, "Fatura bulunamadı."
         
         # Eski fişi sil
         if fatura.muhasebe_fis_id:
-            old = tenant_db.get(MuhasebeFisi, fatura.muhasebe_fis_id)
+            old = tenant_db.get(MuhasebeFisi, str(fatura.muhasebe_fis_id))
             if old: 
-                if old.resmi_defter_basildi: return False, "Resmi defter basılmış!"
+                if old.resmi_defter_basildi: 
+                    return False, "Resmi defter basılmış!"
                 
                 fatura.muhasebe_fis_id = None
                 tenant_db.flush()
-
+                
+                eski_hesap_ids = [d.hesap_id for d in tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=old.id).all()]
                 tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=old.id).delete()
                 tenant_db.delete(old)
+                tenant_db.flush()
+                MuhasebeHesapService.hedefli_bakiye_guncelle(fatura.firma_id, eski_hesap_ids)
 
         satirlar = []
         
+        # ✨ TİP GÜVENLİ (Safe) ENUM KONTROLÜ
+        fatura_turu_str = str(fatura.fatura_turu.value).lower() if hasattr(fatura.fatura_turu, 'value') else str(fatura.fatura_turu).lower()
+        is_satis = 'satis' in fatura_turu_str and 'iade' not in fatura_turu_str
+        
         # 1.CARİ HESAP
-        cari_hesap_id = None
-        # İlişki lazy loading ise tenant_db session içinde erişilebilir
-        if fatura.fatura_turu == 'satis':
-            cari_hesap_id = fatura.cari.satis_muhasebe_hesap_id or fatura.cari.alis_muhasebe_hesap_id
+        cari_hesap_id = MuhasebeEntegrasyonService._hesap_bul(fatura.firma_id, cari_id=fatura.cari_id)
+        if not cari_hesap_id:
+            return False, "Cari muhasebe hesabı eksik."
+
+        if is_satis:
             satirlar.append({'hesap_id': cari_hesap_id, 'borc': fatura.genel_toplam, 'alacak': 0, 'aciklama': f"Fatura: {fatura.belge_no}"})
         else: # Alış
-            cari_hesap_id = fatura.cari.alis_muhasebe_hesap_id or fatura.cari.satis_muhasebe_hesap_id
             satirlar.append({'hesap_id': cari_hesap_id, 'borc': 0, 'alacak': fatura.genel_toplam, 'aciklama': f"Fatura: {fatura.belge_no}"})
 
         # 2.STOK VE KDV
         hesap_toplamlari = {}
         
         for kalem in fatura.kalemler:
-            stok = tenant_db.get(StokKart, kalem.stok_id)
-            if not stok or not stok.muhasebe_grubu: continue 
+            stok = tenant_db.get(StokKart, str(kalem.stok_id))
+            if not stok or not stok.muhasebe_grubu: 
+                return False, f"Stok muhasebe grubu eksik: {stok.ad if stok else 'Bilinmiyor'}"
             
-            tutar_kdv = kalem.kdv_tutari or 0  
+            tutar_kdv = kalem.kdv_tutari or Decimal('0.00')  
             matrah = kalem.satir_toplami - tutar_kdv
             
             # A) Mal Bedeli Hesabı
-            hesap_id = stok.muhasebe_grubu.satis_hesap_id if fatura.fatura_turu == 'satis' else stok.muhasebe_grubu.alis_hesap_id
-            if hesap_id: 
-                hesap_toplamlari[hesap_id] = hesap_toplamlari.get(hesap_id, 0) + matrah
+            hesap_id = stok.muhasebe_grubu.satis_hesap_id if is_satis else stok.muhasebe_grubu.alis_hesap_id
+            if not hesap_id:
+                return False, "Satış/Alış ana hesabı tanımlı değil."
+            
+            hesap_toplamlari[hesap_id] = hesap_toplamlari.get(hesap_id, Decimal('0.00')) + matrah
 
             # B) KDV Hesabı
             if stok.kdv_grubu:
-                kdv_hesap_id = stok.kdv_grubu.satis_kdv_hesap_id if fatura.fatura_turu == 'satis' else stok.kdv_grubu.alis_kdv_hesap_id
+                kdv_hesap_id = stok.kdv_grubu.satis_kdv_hesap_id if is_satis else stok.kdv_grubu.alis_kdv_hesap_id
                 
+                if not kdv_hesap_id and tutar_kdv > 0:
+                    return False, "KDV ana hesabı tanımlı değil."
+                    
                 if kdv_hesap_id: 
-                    hesap_toplamlari[kdv_hesap_id] = hesap_toplamlari.get(kdv_hesap_id, 0) + tutar_kdv
+                    hesap_toplamlari[kdv_hesap_id] = hesap_toplamlari.get(kdv_hesap_id, Decimal('0.00')) + tutar_kdv
 
         for h_id, tutar in hesap_toplamlari.items():
             if tutar == 0: continue
             
-            if fatura.fatura_turu == 'satis':
-                satirlar.append({'hesap_id': h_id, 'borc': 0, 'alacak': tutar, 'aciklama': f'Mal Satışı / {fatura.belge_no}'})
+            if is_satis:
+                satirlar.append({'hesap_id': str(h_id), 'borc': 0, 'alacak': tutar, 'aciklama': f'Mal Satışı / {fatura.belge_no}'})
             else:
-                satirlar.append({'hesap_id': h_id, 'borc': tutar, 'alacak': 0, 'aciklama': f'Mal Alışı / {fatura.belge_no}'})
+                satirlar.append({'hesap_id': str(h_id), 'borc': tutar, 'alacak': 0, 'aciklama': f'Mal Alışı / {fatura.belge_no}'})
 
         fis = MuhasebeEntegrasyonService._fis_kaydet_generic(
             fatura.firma_id, fatura.donem_id, fatura.sube_id, fatura.tarih,
-            f"Fatura: {fatura.belge_no}", MuhasebeFisTuru.MAHSUP, satirlar, 'fatura', fatura.id,
+            f"Fatura: {fatura.belge_no}", MuhasebeFisTuru.MAHSUP, satirlar, 'fatura', str(fatura.id),
             belge_no_override=f"FAT-{fatura.belge_no}"
         )
-        fatura.muhasebe_fis_id = fis.id
+        fatura.muhasebe_fis_id = str(fis.id)
         tenant_db.commit()
         
         return True, "Fatura muhasebeleştirildi."
@@ -337,117 +438,132 @@ class MuhasebeEntegrasyonService:
     @staticmethod
     def entegre_et_kasa(hareket_id):
         tenant_db = get_tenant_db()
-        hareket = tenant_db.get(KasaHareket, hareket_id)
-        if not hareket: return False, "Hareket yok"
+        hareket = tenant_db.get(KasaHareket, str(hareket_id))
+        if not hareket: return False, "Hareket bulunamadı"
         
         if hareket.muhasebe_fisi_id:
-            old = tenant_db.get(MuhasebeFisi, hareket.muhasebe_fisi_id)
+            old = tenant_db.get(MuhasebeFisi, str(hareket.muhasebe_fisi_id))
             if old: 
+                if old.resmi_defter_basildi: 
+                    return False, "Resmi defter basılmış!"
                 hareket.muhasebe_fisi_id = None
                 tenant_db.flush()
-                tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=old.id).delete()
+                eski_hesap_ids = [d.hesap_id for d in tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=old.id).all()]
+                tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=str(old.id)).delete()
                 tenant_db.delete(old)
+                tenant_db.flush()
+                MuhasebeHesapService.hedefli_bakiye_guncelle(hareket.firma_id, eski_hesap_ids)
 
-        ana_hesap = hareket.kasa.muhasebe_hesap_id
-        if not ana_hesap: return False, "Hesaplar eksik"
+        ana_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, kasa_id=hareket.kasa_id)
+        if not ana_hesap: return False, "Kasa muhasebe hesabı tanımlı değil."
 
-        tur_val = str(hareket.islem_turu.value) if hasattr(hareket.islem_turu, 'value') else str(hareket.islem_turu)
-        tahsilat_val = str(BankaIslemTuru.TAHSILAT.value)
-        virman_giris_val = str(BankaIslemTuru.VIRMAN_GIRIS.value)
+        # Enum Safety
+        tur_val = str(hareket.islem_turu.value).lower() if hasattr(hareket.islem_turu, 'value') else str(hareket.islem_turu).lower()
+        is_giris = 'tahsilat' in tur_val or 'giris' in tur_val
 
         karsi_hesap = None
-        if hareket.cari:
-            if tur_val == tahsilat_val:
-                karsi_hesap = hareket.cari.satis_muhasebe_hesap_id or hareket.cari.alis_muhasebe_hesap_id
-            else:
-                karsi_hesap = hareket.cari.alis_muhasebe_hesap_id or hareket.cari.satis_muhasebe_hesap_id
-        elif hareket.banka: 
-            karsi_hesap = hareket.banka.muhasebe_hesap_id
-        elif hareket.karsi_kasa: 
-            karsi_hesap = hareket.karsi_kasa.muhasebe_hesap_id
+        if hareket.cari_id:
+            karsi_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, cari_id=hareket.cari_id)
+        elif getattr(hareket, 'banka_id', None): 
+            karsi_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, banka_id=hareket.banka_id)
+        elif getattr(hareket, 'karsi_kasa_id', None): 
+            karsi_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, kasa_id=hareket.karsi_kasa_id)
+        else:
+            return False, "Karşı hesap (Cari/Banka/Kasa) belirlenemedi."
         
-        if not karsi_hesap: return False, "Karşı hesap eksik"
-
-        is_giris = tur_val in [tahsilat_val, virman_giris_val]
+        if not karsi_hesap: return False, "Karşı muhasebe hesabı tanımlı değil."
         
         satirlar = [
-            {'hesap_id': ana_hesap, 'borc': hareket.tutar if is_giris else 0, 'alacak': hareket.tutar if not is_giris else 0, 'aciklama': f"Kasa: {hareket.aciklama}"},
-            {'hesap_id': karsi_hesap, 'borc': hareket.tutar if not is_giris else 0, 'alacak': hareket.tutar if is_giris else 0, 'aciklama': f"Karşı Hesap: {hareket.aciklama}"}
+            {'hesap_id': str(ana_hesap), 'borc': hareket.tutar if is_giris else 0, 'alacak': hareket.tutar if not is_giris else 0, 'aciklama': f"Kasa: {hareket.aciklama}"},
+            {'hesap_id': str(karsi_hesap), 'borc': hareket.tutar if not is_giris else 0, 'alacak': hareket.tutar if is_giris else 0, 'aciklama': f"Karşı Hesap: {hareket.aciklama}"}
         ]
 
+        donem_id = getattr(hareket, 'donem_id', None) or session.get('aktif_donem_id') or '1'
+        sube_id = getattr(hareket.kasa, 'sube_id', None) or session.get('aktif_sube_id') or '1'
+
         fis = MuhasebeEntegrasyonService._fis_kaydet_generic(
-            hareket.firma_id, hareket.donem_id, hareket.kasa.sube_id, hareket.tarih,
+            hareket.firma_id, donem_id, sube_id, hareket.tarih,
             f"Kasa İşlemi: {hareket.belge_no}", MuhasebeFisTuru.TAHSIL if is_giris else MuhasebeFisTuru.TEDIYE,
-            satirlar, 'kasa', hareket.id, belge_no_override=f"KASA-{hareket.id}"
+            satirlar, 'kasa', str(hareket.id), belge_no_override=f"KAS-{str(hareket.id)[:8]}"
         )
-        hareket.muhasebe_fisi_id = fis.id
+        hareket.muhasebe_fisi_id = str(fis.id)
         tenant_db.commit()
-        return True, "Kasa muhasebeleştirildi."
+        return True, "Kasa işlemi muhasebeleştirildi."
 
     @staticmethod
     def entegre_et_banka(hareket_id):
         tenant_db = get_tenant_db()
-        hareket = tenant_db.get(BankaHareket, hareket_id)
-        if not hareket: return False, "Hareket yok"
+        hareket = tenant_db.get(BankaHareket, str(hareket_id))
+        if not hareket: return False, "Banka Hareketi bulunamadı"
         
         if hareket.muhasebe_fisi_id:
-            old = tenant_db.get(MuhasebeFisi, hareket.muhasebe_fisi_id)
+            old = tenant_db.get(MuhasebeFisi, str(hareket.muhasebe_fisi_id))
             if old: 
+                if old.resmi_defter_basildi: 
+                    return False, "Resmi defter basılmış!"
                 hareket.muhasebe_fisi_id = None
                 tenant_db.flush()
-                tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=old.id).delete()
+                eski_hesap_ids = [d.hesap_id for d in tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=old.id).all()]
+                tenant_db.query(MuhasebeFisiDetay).filter_by(fis_id=str(old.id)).delete()
                 tenant_db.delete(old)
+                tenant_db.flush()
+                MuhasebeHesapService.hedefli_bakiye_guncelle(hareket.firma_id, eski_hesap_ids)
 
-        if not hareket.banka.muhasebe_hesap_id: return False, "Banka hesabı yok"
+        ana_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, banka_id=hareket.banka_id)
+        if not ana_hesap: return False, "Banka muhase hesabı tanımlı değil."
 
-        tur_val = str(hareket.islem_turu.value) if hasattr(hareket.islem_turu, 'value') else str(hareket.islem_turu)
-        tahsilat_val = str(BankaIslemTuru.TAHSILAT.value)
-        virman_giris_val = str(BankaIslemTuru.VIRMAN_GIRIS.value)
+        # Enum Safety
+        tur_val = str(hareket.islem_turu.value).lower() if hasattr(hareket.islem_turu, 'value') else str(hareket.islem_turu).lower()
+        is_giris = 'tahsilat' in tur_val or 'giris' in tur_val
 
         karsi_hesap = None
-        if hareket.cari:
-            if tur_val == tahsilat_val: # Giriş
-                karsi_hesap = hareket.cari.satis_muhasebe_hesap_id or hareket.cari.alis_muhasebe_hesap_id
-            else: # Çıkış
-                karsi_hesap = hareket.cari.alis_muhasebe_hesap_id or hareket.cari.satis_muhasebe_hesap_id
-        elif hareket.kasa: karsi_hesap = hareket.kasa.muhasebe_hesap_id
-        elif hareket.karsi_banka: karsi_hesap = hareket.karsi_banka.muhasebe_hesap_id
-        
-        if not karsi_hesap: return False, "Karşı hesap yok"
+        if hareket.cari_id:
+            karsi_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, cari_id=hareket.cari_id)
+        elif getattr(hareket, 'kasa_id', None): 
+            karsi_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, kasa_id=hareket.kasa_id)
+        elif getattr(hareket, 'karsi_banka_id', None): 
+            karsi_hesap = MuhasebeEntegrasyonService._hesap_bul(hareket.firma_id, banka_id=hareket.karsi_banka_id)
+        else:
+            return False, "Karşı hesap (Cari/Kasa/Banka) belirlenemedi."
+            
+        if not karsi_hesap: return False, "Karşı muhasebe hesabı tanımlı değil."
 
-        is_giris = tur_val in [tahsilat_val, virman_giris_val]
-        alacak_tutar = hareket.brut_tutar if (hareket.brut_tutar and hareket.brut_tutar > 0) else hareket.tutar
+        alacak_tutar = getattr(hareket, 'brut_tutar', hareket.tutar) if (getattr(hareket, 'brut_tutar', 0) and getattr(hareket, 'brut_tutar', 0) > 0) else hareket.tutar
 
         satirlar = [
-            {'hesap_id': hareket.banka.muhasebe_hesap_id, 'borc': hareket.tutar if is_giris else 0, 'alacak': hareket.tutar if not is_giris else 0, 'aciklama': f"Banka: {hareket.aciklama}"},
-            {'hesap_id': karsi_hesap, 'borc': alacak_tutar if not is_giris else 0, 'alacak': alacak_tutar if is_giris else 0, 'aciklama': f"İşlem: {hareket.aciklama}"}
+            {'hesap_id': str(ana_hesap), 'borc': hareket.tutar if is_giris else 0, 'alacak': hareket.tutar if not is_giris else 0, 'aciklama': f"Banka: {hareket.aciklama}"},
+            {'hesap_id': str(karsi_hesap), 'borc': alacak_tutar if not is_giris else 0, 'alacak': alacak_tutar if is_giris else 0, 'aciklama': f"İşlem: {hareket.aciklama}"}
         ]
         
-        if is_giris and hareket.komisyon_tutari > 0 and hareket.komisyon_hesap_id:
-            satirlar.append({'hesap_id': hareket.komisyon_hesap_id, 'borc': hareket.komisyon_tutari, 'alacak': 0, 'aciklama': 'Komisyon'})
+        komisyon_tutari = getattr(hareket, 'komisyon_tutari', 0)
+        komisyon_hesap_id = getattr(hareket, 'komisyon_hesap_id', None)
+        
+        if is_giris and komisyon_tutari > 0 and komisyon_hesap_id:
+            satirlar.append({'hesap_id': str(komisyon_hesap_id), 'borc': komisyon_tutari, 'alacak': 0, 'aciklama': 'Komisyon'})
+
+        donem_id = getattr(hareket, 'donem_id', None) or session.get('aktif_donem_id') or '1'
+        sube_id = getattr(hareket.banka, 'sube_id', None) or session.get('aktif_sube_id') or '1'
 
         fis = MuhasebeEntegrasyonService._fis_kaydet_generic(
-            hareket.firma_id, hareket.donem_id, hareket.banka.sube_id, hareket.tarih,
-            f"Banka: {hareket.belge_no}", MuhasebeFisTuru.MAHSUP, satirlar, 'banka', hareket.id, belge_no_override=f"BNK-{hareket.id}"
+            hareket.firma_id, donem_id, sube_id, hareket.tarih,
+            f"Banka İşlemi: {hareket.belge_no}", MuhasebeFisTuru.MAHSUP, satirlar, 'banka', str(hareket.id), belge_no_override=f"BNK-{str(hareket.id)[:8]}"
         )
-        hareket.muhasebe_fisi_id = fis.id
+        hareket.muhasebe_fisi_id = str(fis.id)
         tenant_db.commit()
-        return True, "Banka muhasebeleştirildi."
+        return True, "Banka işlemi muhasebeleştirildi."
 
     @staticmethod
     def entegre_et_cek(cek_id, islem_tipi, hedef_id=None):
         tenant_db = get_tenant_db()
-        from modules.cek.models import CekSenet
-        cek = tenant_db.get(CekSenet, cek_id)
-        if not cek: return False
+        from app.modules.cek.models import CekSenet 
+        cek = tenant_db.get(CekSenet, str(cek_id))
+        if not cek: return False, "Çek bulunamadı."
 
         h_portfoy = MuhasebeEntegrasyonService._hesap_bul(cek.firma_id, ozel_kod='101.01')
+        if not h_portfoy: return False, "101.01 Çek Portföy hesabı bulunamadı."
         
-        h_cari = None
-        if cek.portfoy_tipi == 'alinan': 
-            h_cari = cek.cari.satis_muhasebe_hesap_id or cek.cari.alis_muhasebe_hesap_id
-        else: 
-            h_cari = cek.cari.alis_muhasebe_hesap_id or cek.cari.satis_muhasebe_hesap_id
+        h_cari = MuhasebeEntegrasyonService._hesap_bul(cek.firma_id, cari_id=cek.cari_id)
+        if not h_cari: return False, "Cari muhasebe hesabı tanımlı değil."
 
         satirlar = []
         aciklama = f"Çek: {cek.cek_no}"
@@ -456,17 +572,25 @@ class MuhasebeEntegrasyonService:
             satirlar.append({'hesap_id': h_portfoy, 'borc': cek.tutar, 'alacak': 0, 'aciklama': aciklama})
             satirlar.append({'hesap_id': h_cari, 'borc': 0, 'alacak': cek.tutar, 'aciklama': aciklama})
         elif islem_tipi == 'ciro':
-            hedef_cari = tenant_db.get(CariHesap, hedef_id)
-            h_satici = hedef_cari.alis_muhasebe_hesap_id or hedef_cari.satis_muhasebe_hesap_id
+            h_satici = MuhasebeEntegrasyonService._hesap_bul(cek.firma_id, cari_id=hedef_id)
+            if not h_satici: return False, "Hedef cari muhasebe hesabı tanımlı değil."
+            
             satirlar.append({'hesap_id': h_satici, 'borc': cek.tutar, 'alacak': 0, 'aciklama': f"Ciro: {aciklama}"})
             satirlar.append({'hesap_id': h_portfoy, 'borc': 0, 'alacak': cek.tutar, 'aciklama': f"Ciro: {aciklama}"})
         elif islem_tipi == 'tahsil':
-            h_kasa_banka = MuhasebeEntegrasyonService._hesap_bul(cek.firma_id, ozel_kod='100.01' if 'kasa' in str(cek.cek_durumu) else '102.01')
+            kasa_banka_kod = '100.01' if 'kasa' in str(cek.cek_durumu).lower() else '102.01'
+            h_kasa_banka = MuhasebeEntegrasyonService._hesap_bul(cek.firma_id, ozel_kod=kasa_banka_kod)
+            if not h_kasa_banka: return False, f"{kasa_banka_kod} hesabı bulunamadı."
+            
             satirlar.append({'hesap_id': h_kasa_banka, 'borc': cek.tutar, 'alacak': 0, 'aciklama': f"Tahsil: {aciklama}"})
             satirlar.append({'hesap_id': h_portfoy, 'borc': 0, 'alacak': cek.tutar, 'aciklama': f"Tahsil: {aciklama}"})
 
+        donem_id = getattr(cek, 'donem_id', None) or session.get('aktif_donem_id') or '1'
+        sube_id = getattr(cek, 'sube_id', None) or session.get('aktif_sube_id') or '1'
+
         MuhasebeEntegrasyonService._fis_kaydet_generic(
-            cek.firma_id, 1, 1, datetime.now().date(),
-            aciklama, MuhasebeFisTuru.MAHSUP, satirlar, 'cek', cek.id
+            cek.firma_id, donem_id, sube_id, datetime.now().date(),
+            aciklama, MuhasebeFisTuru.MAHSUP, satirlar, 'cek', str(cek.id), belge_no_override=f"CEK-{str(cek.id)[:8]}"
         )
-        return True, "Çek muhasebeleştirildi."
+        tenant_db.commit()
+        return True, "Çek işlemi muhasebeleştirildi."

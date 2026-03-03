@@ -1,4 +1,4 @@
-# models/base.py - TAMAMEN DÜZELTİLMİŞ VERSİYON
+# models/base.py - MYSQL/POSTGRESQL OPTİMİZE EDİLMİŞ TEMİZ VERSİYON
 
 import sys
 import os
@@ -6,7 +6,6 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-#from flask_sqlalchemy import SQLAlchemy
 from flask_sqlalchemy.pagination import Pagination
 from sqlalchemy.orm import Query
 from sqlalchemy.types import TypeDecorator, Text
@@ -23,14 +22,14 @@ logger = logging.getLogger(__name__)
 # ========================================
 from app.extensions import db, get_tenant_db
 
-
 # ========================================
-# JSON TYPE (SENİNKİ)
+# JSON TYPE (Veritabanı Bağımsız)
 # ========================================
 class JSONText(TypeDecorator):
     """
     Python tarafında Dict (Sözlük) olarak çalışır,
-    Veritabanına (Firebird) kaydederken String (Text) formatına çevirir.
+    Veritabanına kaydederken String (Text) formatına çevirir.
+    (MySQL/PostgreSQL Native JSON desteklese de bu yapı uyumluluk sağlar)
     """
     impl = Text
 
@@ -48,7 +47,7 @@ class JSONText(TypeDecorator):
             return {}
 
 # ========================================
-# ROLES & PERMISSIONS (SENİNKİ)
+# ROLES & PERMISSIONS
 # ========================================
 ROLES_PERMISSIONS = {
     'admin': ['all'],
@@ -102,7 +101,7 @@ ROLES_PERMISSIONS = {
 }
 
 # ========================================
-# PAGINATION (YENİ EKLENEN)
+# PAGINATION 
 # ========================================
 class PaginationResult: 
     def __init__(self, items, page, per_page, total, pages):
@@ -149,7 +148,7 @@ class PaginationResult:
             last = num
 
 # ========================================
-# CUSTOM QUERY (SENİNKİ + PAGINATION)
+# CUSTOM QUERY (SaaS İzolasyon ve Güvenlik Motoru)
 # ========================================
 class FirmaFilteredQuery(Query):
     """
@@ -157,7 +156,6 @@ class FirmaFilteredQuery(Query):
     1.Firma Filtresi: A firması B firmasını göremez (SaaS Güvenliği).
     2.Şube Filtresi: Şube müdürü sadece kendi şubesini görür.
     3.Bölge Filtresi: Bölge müdürü sadece kendine bağlı şubeleri ve verileri görür.
-    4.Zimmet Filtresi: Kasiyer sadece kendisine zimmetli kasayı görür.
     """
 
     def get(self, ident):
@@ -188,14 +186,14 @@ class FirmaFilteredQuery(Query):
                 aktif_bolge_id = session.get('aktif_bolge_id')
                 
                 if hasattr(obj, 'bolge_id') and obj.bolge_id is not None:
-                    if aktif_bolge_id and obj.bolge_id != int(aktif_bolge_id):
+                    if aktif_bolge_id and obj.bolge_id != str(aktif_bolge_id): # UUID Düzeltmesi (str)
                         return False
 
             else:
                 aktif_sube_id = session.get('aktif_sube_id')
                 
                 if hasattr(obj, 'sube_id') and obj.sube_id is not None:
-                    if aktif_sube_id and obj.sube_id != int(aktif_sube_id):
+                    if aktif_sube_id and obj.sube_id != str(aktif_sube_id): # UUID Düzeltmesi (str)
                         return False
 
                 if current_user.rol in ['kasiyer', 'tezgahtar'] and hasattr(obj, 'kullanici_id'):
@@ -231,7 +229,7 @@ class FirmaFilteredQuery(Query):
                         
                         elif hasattr(model_class, 'sube_id'):
                             try:
-                                from models import Sube
+                                from app.models import Sube # Import yolu düzeltildi
                             except ImportError:
                                 Sube = globals().get('Sube')
 
@@ -244,7 +242,7 @@ class FirmaFilteredQuery(Query):
                                 sube_ids = [s.id for s in bagli_subeler]
                                 
                                 if not sube_ids:
-                                    sube_ids = [-1]
+                                    sube_ids = ['-1'] # UUID için -1 string
                                     
                                 query = query.filter(model_class.sube_id.in_(sube_ids))
 
@@ -259,9 +257,6 @@ class FirmaFilteredQuery(Query):
         
         return query
     
-    # ========================================
-    # YENİ EKLENEN:  PAGINATION
-    # ========================================
     def paginate(self, page=None, per_page=None, error_out=False, max_per_page=None, **kwargs):
         """Pagination desteği"""
         if page is None: 
@@ -271,30 +266,18 @@ class FirmaFilteredQuery(Query):
                 page = 1
         
         per_page = per_page or 20
+        if page < 1: page = 1
         
-        if page < 1:
-            page = 1
-        
-        # Filtreleri uygula
         query = self._apply_filters()
-        
-        # Manuel pagination
         total = query.count()
         pages = (total + per_page - 1) // per_page if per_page > 0 else 0
         
-        if page > pages > 0:
-            page = pages
+        if page > pages > 0: page = pages
         
         offset = (page - 1) * per_page
         items = query.limit(per_page).offset(offset).all()
         
-        return PaginationResult(
-            items=items,
-            page=page,
-            per_page=per_page,
-            total=total,
-            pages=pages
-        )
+        return PaginationResult(items=items, page=page, per_page=per_page, total=total, pages=pages)
     
     def first_or_404(self, description=None):
         obj = self._apply_filters().first()
@@ -318,7 +301,6 @@ class TimestampMixin:
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
-
 class SoftDeleteMixin:
     """Soft delete (mantıksal silme)"""
     deleted_at = db.Column(db.DateTime, nullable=True, index=True)
@@ -333,92 +315,6 @@ class SoftDeleteMixin:
     def restore(self):
         self.deleted_at = None
 
-
 class FirmaOwnedMixin: 
     """Firmaya ait kayıtlar için"""
     firma_id = db.Column(db.String(36), db.ForeignKey('firmalar.id'), nullable=False, index=True)
-
-
-# ========================================
-# HELPER FUNCTIONS
-# ========================================
-def ensure_firebird_database(custom_path=None):
-    """Firebird veritabanı dosyasını (.fdb) fiziksel olarak oluşturur"""
-    import os
-    
-    db_path = custom_path or r'd:/Firebird/Data/Muhasebe/MuhasebeDB.fdb'
-    db_dir = os.path.dirname(db_path)
-    
-    if not os.path.exists(db_dir):
-        try:
-            os.makedirs(db_dir)
-            logger.info(f"📁 Klasör oluşturuldu: {db_dir}")
-        except OSError as e:
-            logger.error(f"❌ Klasör oluşturma hatası: {e}")
-            return
-
-    if os.path.exists(db_path):
-        logger.info(f"✅ Veritabanı dosyası mevcut: {db_path}")
-        return
-    
-    logger.info(f"⚙️ Veritabanı oluşturuluyor: {db_path}")
-    
-    try:
-        import fdb
-        
-        con = fdb.create_database(
-            dsn=f"localhost:{db_path}",
-            user='SYSDBA',
-            password='masterkey',
-            page_size=16384,
-            charset='UTF8'
-        )
-        con.close()
-        
-        logger.info("✅ Firebird veritabanı başarıyla oluşturuldu")
-        
-    except ImportError:
-        logger.error("❌ fdb paketi yüklü değil:  pip install fdb")
-    except Exception as e:
-        logger.error(f"❌ Veritabanı oluşturma hatası: {e}")   
-
-
-# ÇOK FİRMALI KAYIT İÇİN
-from flask import g
-
-class TenantQueryMixin:
-    """
-    Firebird modellerine eklenecek mixin
-    Otomatik olarak tenant_db üzerinden sorgu yapar
-    """
-    
-    @classmethod
-    def query_tenant(cls):
-        """Tenant DB üzerinden sorgu döner"""
-        if g.tenant_db:
-            return g.tenant_db.query(cls)
-        else:
-            raise RuntimeError("Tenant DB bağlantısı yok.Lütfen giriş yapın.")
-
-# ========================================
-# MANY-TO-MANY İLİŞKİ TABLOLARI
-# ========================================
-
-# Kullanıcı - Şube Yetkilendirme
-kullanici_sube_yetki = db.Table('kullanici_sube_yetki',
-    db.Column('kullanici_id', db.String(36), db.ForeignKey('kullanicilar.id'), primary_key=True),
-    db.Column('sube_id', db.Integer, db.ForeignKey('subeler.id'), primary_key=True),
-    extend_existing=True
-)
-
-
-class FirebirdModelMixin:
-    """Ticari modeller (Cari, Stok vb.) için sorgu yöneticisi."""
-    
-    @classmethod
-    def query_fb(cls):
-        """Bu model için Firebird session'ı üzerinden sorgu başlatır."""
-        session = get_tenant_db()
-        if not session:
-            return None
-        return session.query(cls)

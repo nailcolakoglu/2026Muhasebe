@@ -1021,14 +1021,18 @@ function t(key, defaultText) {
                         };
                     },
                     processResults: function (data, params) {
-                        params.page = params.page || 1;
-                        return {
-                            results: data.results,
-                            pagination: {
-                                more: data.pagination.more
-                            }
-                        };
-                    },
+						params.page = params.page || 1;
+						
+						// Güvenlik kontrolü: API pagination göndermediyse false say
+						var hasMore = (data.pagination && data.pagination.more) ? data.pagination.more : false;
+						
+						return {
+							results: data.results,
+							pagination: {
+								more: hasMore
+							}
+						};
+					},
                     cache: true
                 };
                 // En az 1 karakter girince aramaya başla (0 yaparsanız tıklar tıklamaz getirir)

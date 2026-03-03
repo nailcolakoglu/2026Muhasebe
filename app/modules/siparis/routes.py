@@ -9,6 +9,7 @@ from app.modules.siparis.models import Siparis
 from app.modules.doviz.models import DovizKuru
 from app.modules.stok.models import StokKart
 from app.modules.cari.models import CariHesap
+from app.modules.kullanici.models import Kullanici
 from app.modules.fiyat.models import FiyatListesi, FiyatListesiDetay
 from app.form_builder import DataGrid
 from .forms import create_siparis_form
@@ -53,13 +54,26 @@ def index():
     grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'siparis.duzenle')
     grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'siparis.sil')
 
-    # 👈 DÜZELTME: MySQL (Siparis.query) yerine Firebird (tenant_db)
-    query = tenant_db.query(Siparis).filter_by(firma_id=1).order_by(Siparis.tarih.desc()) # Firma ID=1 (Tenant)
+    #query = tenant_db.query(Siparis).order_by(Siparis.tarih.desc())
+    query = tenant_db.query(Siparis).filter_by(firma_id=str(current_user.firma_id))
+    
+    # Plasiyer sadece kendi siparişlerini listede görsün
+    if current_user.rol == 'plasiyer':
+        query = query.filter_by(plasiyer_id=str(current_user.id))
+        
     
     if not request.args.get('show_all'):
         query = query.filter(Siparis.durum != SiparisDurumu.FATURALANDI.value)
 
-    grid.hide_column('id').hide_column('firma_id').hide_column('donem_id').hide_column('sube_id').hide_column('plasiyer_id')
+    # Gizlenecek kolonlar
+    hidden_cols = [
+        'id', 'firma_id', 'plasiyer_id', 'created_at', 
+        'donem_id', 'sube_id', 'updated_at', 'deleted_at'
+    ]
+    
+    for col in hidden_cols:
+        grid.hide_column(col)
+
     grid.hide_column('fiyat_listesi_id').hide_column('odeme_plani_id').hide_column('sevk_adresi').hide_column('onaylayan_id').hide_column('onay_tarihi')
     grid.hide_column('depo_id').hide_column('cari_id').hide_column('doviz_turu').hide_column('doviz_kuru').hide_column('kayip_nedeni')
     grid.hide_column('ara_toplam').hide_column('iskonto_toplam').hide_column('kdv_toplam').hide_column('genel_toplam').hide_column('dovizli_toplam')
@@ -84,7 +98,7 @@ def ekle():
             
     return render_template('siparis/form.html', form=form)
 
-@siparis_bp.route('/duzenle/<int:id>', methods=['GET', 'POST'])
+@siparis_bp.route('/duzenle/<string:id>', methods=['GET', 'POST'])
 @login_required
 def duzenle(id):
     tenant_db = get_tenant_db()
@@ -94,9 +108,13 @@ def duzenle(id):
     siparis = tenant_db.query(Siparis).get(id)
     if not siparis: abort(404)
 
-    # 1.YETKİ KONTROLÜ (Tenant Yapısı gereği zaten kendi DB'sinde ama yine de check)
-    if siparis.firma_id != 1: # Tenant ID sabiti
-        abort(403)
+    # ✨ 2. YENİ: Başkasının siparişini düzenleme engeli!
+    if current_user.rol == 'plasiyer' and str(siparis.plasiyer_id) != str(current_user.id):
+        if request.method == 'POST':
+            return jsonify({'success': False, 'message': 'Yetki Hatası: Sadece kendi girdiğiniz siparişleri değiştirebilirsiniz!'}), 403
+        else:
+            flash("Yetki Hatası: Sadece kendi girdiğiniz siparişleri düzenleyebilirsiniz.", "danger")
+            return redirect(url_for('siparis.index'))
 
     kilitli_durumlar = [
         SiparisDurumu.FATURALANDI.value, 
@@ -122,13 +140,21 @@ def duzenle(id):
                 
     return render_template('siparis/form.html', form=form)
 
-@siparis_bp.route('/sevk-et/<int:id>', methods=['GET', 'POST'])
+@siparis_bp.route('/sevk-et/<string:id>', methods=['GET', 'POST'])
 @login_required
 def sevk_et(id):
     tenant_db = get_tenant_db()
-    siparis = tenant_db.query(Siparis).get(id)
-    if not siparis: abort(404)
-
+    
+    try:
+        siparis = tenant_db.query(Siparis).get(str(id))
+        if not siparis: 
+            return jsonify({'success': False, 'message': 'Kayıt bulunamadı'}), 404
+            
+        # ✨ 3. YENİ: Başkasının siparişini silme engeli!
+        if current_user.rol == 'plasiyer' and str(siparis.plasiyer_id) != str(current_user.id):
+            return jsonify({'success': False, 'message': 'Yetki Hatası: Sadece kendi girdiğiniz siparişleri silebilirsiniz!'}), 403
+    except:
+        pass
     yasakli_durumlar = [SiparisDurumu.BEKLIYOR.value, SiparisDurumu.TAMAMLANDI.value, SiparisDurumu.FATURALANDI.value]
     sevkiyat_var_mi = any(d.teslim_edilen_miktar > 0 for d in siparis.detaylar)
     
@@ -155,7 +181,7 @@ def sevk_et(id):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@siparis_bp.route('/sil/<int:id>', methods=['POST'])
+@siparis_bp.route('/sil/<string:id>', methods=['POST'])
 @login_required
 def sil(id):
     tenant_db = get_tenant_db()
@@ -184,30 +210,31 @@ def api_siradaki_no():
     tenant_db = get_tenant_db()
     if not tenant_db: return jsonify({'code': ''})
     
-    count = tenant_db.query(Siparis).filter_by(firma_id=1).count()
+    count = tenant_db.query(Siparis).count()
     return jsonify({'code': f"SIP-{datetime.now().year}-{str(count+1).zfill(4)}"})
 
-@siparis_bp.route('/onayla/<int:id>', methods=['POST'])
+@siparis_bp.route('/onayla/<string:id>', methods=['POST'])
 @login_required
 def onayla(id):
     tenant_db = get_tenant_db()
     siparis = tenant_db.query(Siparis).get(id)
     if not siparis: return jsonify({'success': False, 'message': 'Kayıt yok'}), 404
     
-    if siparis.durum != SiparisDurumu.BEKLIYOR.value:
+    # DÜZELTME: Her iki tarafı da .lower() ile küçülterek harf uyuşmazlığını eziyoruz
+    if siparis.durum.lower() != SiparisDurumu.BEKLIYOR.value.lower():
         return jsonify({'success': False, 'message': f'Sadece BEKLIYOR durumundakiler onaylanabilir.'}), 400
 
     try:
         siparis.durum = SiparisDurumu.ONAYLANDI.value
-        # siparis.onaylayan_id = current_user.id # (Opsiyonel, Kullanici tablosu ID string ise)
         siparis.onay_tarihi = datetime.now()
         tenant_db.commit()
-        return jsonify({'success': True, 'message': 'Sipariş onaylandı.'})
+        return jsonify({'success': True, 'message': 'Sipariş başarıyla onaylandı.'})
     except Exception as e:
         tenant_db.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@siparis_bp.route('/faturala/<int:id>', methods=['POST'])
+
+@siparis_bp.route('/faturala/<string:id>', methods=['POST'])
 @login_required
 def faturala(id):
     tenant_db = get_tenant_db()
@@ -298,7 +325,7 @@ def api_get_urun_detay():
         'stok_bakiye': 0
     })
 
-@siparis_bp.route('/api/get-cari-detay/<int:id>')
+@siparis_bp.route('/api/get-cari-detay/<string:id>')
 @login_required
 def api_get_cari_detay(id):
     tenant_db = get_tenant_db()
@@ -311,7 +338,7 @@ def api_get_cari_detay(id):
         'bakiye': float(cari.bakiye)
     })
 
-@siparis_bp.route('/iptal-et/<int:id>', methods=['POST'])
+@siparis_bp.route('/iptal-et/<string:id>', methods=['POST'])
 @login_required
 def iptal_et(id):
     tenant_db = get_tenant_db()
@@ -345,7 +372,7 @@ def api_stok_ara():
     page = request.args.get('page', 1, type=int)
     per_page = 20
     
-    query = tenant_db.query(StokKart).filter_by(firma_id=1, aktif=True)
+    query = tenant_db.query(StokKart).filter_by(aktif=True)
     
     if search:
         query = query.filter(
@@ -370,7 +397,7 @@ def api_stok_ara():
         'pagination': {'more': (page * per_page) < total}
     })
 
-@siparis_bp.route('/yazdir/<int:id>')
+@siparis_bp.route('/yazdir/<string:id>')
 @login_required
 def yazdir(id):
     tenant_db = get_tenant_db()
@@ -378,7 +405,8 @@ def yazdir(id):
     if not siparis: return redirect(url_for('siparis.index'))
     
     try:
-        doc_gen = DocumentGenerator(1) # Firma ID 1
+        # DÜZELTME: Firma ID 1 yerine dinamik current_user.firma_id kullanıyoruz
+        doc_gen = DocumentGenerator(current_user.firma_id) 
         html_content = doc_gen.render_html('siparis', siparis)
         return html_content
     except Exception as e:

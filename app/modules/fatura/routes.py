@@ -32,7 +32,7 @@ from .forms import create_fatura_form
 from .services import FaturaService, FiyatHesaplamaService, FaturaDTO
 from .listeners import fatura_onayla_handler, fatura_iptal_et_handler
 from app.enums import FaturaTuru, FaturaDurumu, ParaBirimi
-from app.decorators import role_required, permission_required, audit_log
+from app.decorators import role_required, permission_required, audit_log, tenant_route
 from app.araclar import get_doviz_kuru, siradaki_kod_uret, para_cevir
 from flask_babel import gettext as _, lazy_gettext
 
@@ -134,10 +134,50 @@ def index():
         'IPTAL': 'danger'
     })
     
+    # GİB Durumunu Renkli Badge Olarak Göster
+    # Kendi badge mimarine birebir uygun GİB Durum Kolonu
+    grid.add_column('gib_durum_metni', _('GİB Durumu'), type='badge', width='120px', badge_colors={
+        'ONAYLANDI': 'success',
+        'KUYRUKTA': 'warning',
+        'ISLENIYOR': 'info',
+        'GONDERILMEDI': 'secondary'
+    })
+    
     # Aksiyonlar
     grid.add_action('view', _('Görüntüle'), 'bi bi-eye', 'btn-info btn-sm', 'route', 'fatura.goruntule')
     grid.add_action('edit', _('Düzenle'), 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'fatura.duzenle')
     grid.add_action('delete', _('Sil'), 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'fatura.sil')
+    grid.add_action('goruntule', 'Görüntüle', 'bi bi-eye', 'btn-outline-primary btn-sm', 'url', lambda row: url_for('efatura.goruntule', id=row.id), html_attributes={'target': '_blank'})
+    grid.add_action('gonder', 'GİB\'e Gönder', 'bi bi-send-check', 'btn-outline-success btn-sm', 'ajax', 'efatura.gonder')
+    grid.add_action('sorgula', 'Durum Sorgula', 'bi bi-arrow-repeat', 'btn-outline-info btn-sm', 'ajax', 'efatura.durum')
+
+    # Gizlenecek kolonlar
+    hidden_cols = [
+        'id', 'firma_id', 'created_at', 'updated_at', 'deleted_at',
+        'donem_id', 'sube_id','depo_id', 'gun_adi', 'fiyat_listesi_id','ara_toplam',
+        'plasiyer_id', 'dovizli_toplam', 'kaydeden_id', 'duzenleyen_id', 'maksimum_iskonto_orani',
+        'fatura_saati', 'kaynak_siparis_id', 'musteri_puani', 'e-fatura_tipi', 'gib_durum_aciklama',
+        'zarf_uuid', 'xml_path', 'alici_etiket_pk', 'gonderen_etiket_gb',
+        'muhasebe_fis_id', 'e_fatura_senaryo', 'gib_gonderim_tarihi', 'gib_yanit_tarihi', 'iade_edilen_fatura_id',
+        'iade_edilen_fatura_tarihi', 'dis_belge_no', 'iptal_nedeni', 'satis_kanali',
+        'sevk_adresi', 'odeme_durumu', 'iptal_mi', 'iptal_tarihi', 'odeme_sekli_detay', 'odeme_plani_id',
+        'internet_satisi_mi', 'web_sitesi_adresi', 'iptal_eden_id', 'e-fatura_tipi', 'tasiyici_unvan',
+        'iade_edilen_fatura_no', 'ai_kategori', 'ai_anamoli_skoru', 'gonderim_tarihi_saati', 'ai_metadata',
+        'e_fatura_tipi', 'tasiyici_vkn_tckn', 'tasiyici_adres', 'doviz_kuru', 'kdv_toplam', 'iskonto_toplam', 'doviz_turu',
+        'ai_tahsilat_tahmini_tarih', 'ai_tahsilat_olasiligi', 'ai_anomali_skoru', 'vade_tarihi'
+        
+    ]
+    
+    for col in hidden_cols:
+        grid.hide_column(col)
+    # Gizlenecek Sütunlar
+    grid.hide_column('id').hide_column('firma_id').hide_column('donem_id').hide_column('depo_id')
+    grid.hide_column('cari_id').hide_column('aciklama').hide_column('fatura_id').hide_column('faturalasti_mi')
+    grid.hide_column('ettn').hide_column('gib_durum_kodu').hide_column('sofor_soyad').hide_column('sofor_tc')
+    grid.hide_column('plaka_dorse').hide_column('tasiyici_firma_vkn').hide_column('tasiyici_firma_unvan')
+    grid.hide_column('irsaliye_turu')
+
+
     
     # ✅ MySQL Optimized Query (Index: idx_fatura_firma_tarih)
     # query = tenant_db.query(Fatura).options(
@@ -277,7 +317,7 @@ def ekle():
 # ========================================
 # DÜZENLEME (UPDATE) - MySQL Optimized
 # ========================================
-@fatura_bp.route('/duzenle/<uuid:id>', methods=['GET', 'POST'])
+@fatura_bp.route('/duzenle/<string:id>', methods=['GET', 'POST'])
 @login_required
 @permission_required('fatura_duzenle')
 @audit_log('fatura', 'update')
@@ -296,12 +336,12 @@ def duzenle(id):
         flash('Veritabanı bağlantısı yok', 'danger')
         return redirect(url_for('main.index'))
     
-    # ✅ MySQL Native UUID Query (CAST gerekmez)
-    fatura = FaturaService.get_by_id(
-        str(id),
-        current_user.firma_id,
-        tenant_db
-    )
+    # 1. Faturayı getir (Servis aracılığıyla veya doğrudan sorguyla)
+    fatura = tenant_db.query(Fatura).filter(
+        Fatura.id == str(id),
+        Fatura.firma_id == current_user.firma_id,
+        Fatura.deleted_at.is_(None)
+    ).first()
     
     if not fatura:
         flash(_("Fatura bulunamadı veya erişim yetkiniz yok."), "error")
@@ -353,7 +393,7 @@ def duzenle(id):
 # ========================================
 # SİLME (DELETE) - MySQL Optimized
 # ========================================
-@fatura_bp.route('/sil/<uuid:id>', methods=['POST'])
+@fatura_bp.route('/sil/<string:id>', methods=['POST'])
 @login_required
 @permission_required('fatura_sil')
 @audit_log('fatura', 'delete')
@@ -407,42 +447,91 @@ def sil(id):
 # ========================================
 # GÖRÜNTÜLEME (VIEW) - MySQL Optimized
 # ========================================
-@fatura_bp.route('/goruntule/<uuid:id>')
+@fatura_bp.route('/goruntule/<string:id>', methods=['GET'])
 @login_required
-@permission_required('fatura_listele')
 def goruntule(id):
-    """
-    Fatura Detay Görüntüleme
-    
-    Permissions: fatura_listele
-    Args:
-        id: Fatura ID (UUID)
-    """
-    
     tenant_db = get_tenant_db()
     
-    if not tenant_db:
-        flash('Veritabanı bağlantısı yok', 'danger')
-        return redirect(url_for('main.index'))
-    
-    # ✅ Eager loading (tüm ilişkiler)
-    fatura = FaturaService.get_by_id(
-        str(id),
-        current_user.firma_id,
-        tenant_db
-    )
+    # 1. Faturayı çekiyoruz
+    fatura = tenant_db.query(Fatura).filter(
+        Fatura.id == str(id),
+        Fatura.firma_id == current_user.firma_id,
+        Fatura.deleted_at.is_(None)
+    ).first()
     
     if not fatura:
-        flash(_("Fatura bulunamadı"), "error")
+        flash("Fatura bulunamadı!", "danger")
         return redirect(url_for('fatura.index'))
+        
+    # ✨ DÜZELTME 1: Satıcı Firma bilgisini ana veritabanından çekiyoruz
+    from app.modules.firmalar.models import Firma
+    firma = tenant_db.query(Firma).filter(Firma.id == str(current_user.firma_id)).first()
+        
+    # ==========================================
+    # 2. SAYFALAMA VE NAKLİ YEKÜN HESAPLAMASI
+    # ==========================================
+    sayfalar = []
     
-    return render_template('fatura/detay.html', fatura=fatura)
-
+    if hasattr(fatura.kalemler, 'all'):
+        kalemler = fatura.kalemler.all()
+    else:
+        kalemler = fatura.kalemler or []
+        
+    sayfa_basina_satir = 18 
+    
+    toplam_sayfa = (len(kalemler) // sayfa_basina_satir) + (1 if len(kalemler) % sayfa_basina_satir > 0 else 0)
+    if toplam_sayfa == 0: toplam_sayfa = 1
+    
+    yuruyen_toplam = 0.0
+    
+    for i in range(toplam_sayfa):
+        baslangic = i * sayfa_basina_satir
+        bitis = baslangic + sayfa_basina_satir
+        sayfa_kalemleri = kalemler[baslangic:bitis]
+        
+        devreden = yuruyen_toplam
+        
+        sayfa_tutar = sum(float(k.satir_toplami or 0) for k in sayfa_kalemleri)
+        yuruyen_toplam += sayfa_tutar
+        
+        sayfalar.append({
+            'sayfa_no': i + 1,
+            'kalemler': sayfa_kalemleri,
+            'devreden': devreden,
+            'nakli_yekun': yuruyen_toplam,
+            'son_sayfa_mi': (i + 1 == toplam_sayfa)
+        })
+        
+    # ✨ DÜZELTME 2: firma değişkenini de sayfaya render_template ile gönderiyoruz
+    #return render_template('fatura/print.html', fatura=fatura, sayfalar=sayfalar, firma=firma)
+    
+    # ==========================================
+    # 3. DİNAMİK ŞABLON MOTORU (DocumentGenerator)
+    # ==========================================
+    from app.modules.rapor.doc_engine import DocumentGenerator
+    
+    try:
+        doc_gen = DocumentGenerator(current_user.firma_id)
+        
+        # doc_engine.py içindeki render_html'e sayfalar verisini 'ekstra_context' ile yolluyoruz
+        html_cikti = doc_gen.render_html(
+            belge_turu='fatura', 
+            veri_objesi=fatura, 
+            ekstra_context={'sayfalar': sayfalar} 
+        )
+        
+        return html_cikti
+        
+    except Exception as e:
+        # Eğer veritabanında "fatura" türünde bir şablon bulunamazsa veya hata olursa
+        # Sistem çökmesin, standart sabit şablona (print.html) fallback (geri dönüş) yapsın
+        logger.warning(f"Dinamik şablon hatası/eksikliği: {e}")
+        return render_template('fatura/print.html', fatura=fatura, sayfalar=sayfalar, firma=firma)
 
 # ========================================
 # FATURA ONAYLA
 # ========================================
-@fatura_bp.route('/onayla/<uuid:id>', methods=['POST'])
+@fatura_bp.route('/onayla/<string:id>', methods=['POST'])
 @login_required
 @permission_required('fatura_onayla')
 @audit_log('fatura', 'onayla')
@@ -464,11 +553,7 @@ def onayla(id):
         }), 500
     
     try:
-        fatura = tenant_db.query(Fatura).filter_by(
-            id=str(id),
-            firma_id=current_user.firma_id
-        ).first()
-        
+        fatura = tenant_db.query(Fatura).filter(Fatura.id == str(id)).first()
         if not fatura:
             return jsonify({
                 'success': False,
@@ -511,7 +596,7 @@ def onayla(id):
 # ========================================
 # FATURA İPTAL ET
 # ========================================
-@fatura_bp.route('/iptal-et/<uuid:id>', methods=['POST'])
+@fatura_bp.route('/iptal-et/<string:id>', methods=['POST'])
 @login_required
 @permission_required('fatura_iptal')
 @audit_log('fatura', 'iptal')
@@ -583,95 +668,79 @@ def iptal_et(id):
 # ========================================
 # API: STOK ARAMA (AJAX SELECT2) - MySQL Optimized
 # ========================================
-@fatura_bp.route('/api/stok-ara')
+@fatura_bp.route('/api/stok-ara', methods=['GET'])
 @login_required
 def api_stok_ara():
     """
-    Stok kartları için AJAX arama endpoint'i
-    
-    Query Params:
-        term: Arama kelimesi
-        page: Sayfa numarası (default: 1)
-    
-    Returns:
-        JSON: Select2 formatında sonuçlar
+    Stok kartları için AJAX arama endpoint'i (Yüksek Performanslı JOIN + LIKE Sorgusu)
     """
-    
     tenant_db = get_tenant_db()
     
     if not tenant_db:
-        return jsonify({
-            'results': [],
-            'pagination': {'more': False}
-        })
+        return jsonify({'results': [], 'pagination': {'more': False}})
     
-    term = request.args.get('term', '').strip()
+    term = request.args.get('term') or request.args.get('q', '')
+    term = term.strip()
     page = request.args.get('page', 1, type=int)
     limit = 20
     
     try:
-        # ✅ MySQL Full-Text Search (Index: idx_stok_fulltext)
-        # Eğer full-text index varsa
-        if term and len(term) >= 2:
-            # Full-text search
-            query = tenant_db.execute(text("""
-                SELECT id, kod, ad, birim
-                FROM stok_kartlari
-                WHERE firma_id = :firma_id
-                AND aktif = 1
-                AND deleted_at IS NULL
-                AND MATCH(kod, ad) AGAINST(:term IN NATURAL LANGUAGE MODE)
-                LIMIT :limit OFFSET :offset
-            """), {
-                'firma_id': current_user.firma_id,
-                'term': term,
-                'limit': limit,
-                'offset': (page - 1) * limit
-            })
-            
-            results = []
-            for row in query:
-                results.append({
-                    'id': str(row[0]),
-                    'text': f"{row[1]} - {row[2]} ({row[3] or 'Adet'})"
-                })
-            
-            # Sayfa kontrolü
-            has_more = len(results) == limit
-            
-            return jsonify({
-                'results': results,
-                'pagination': {'more': has_more}
-            })
+        # 🚀 DÜZELTME: LEFT JOIN eklendi. Tablolara 's' ve 'k' takma adları (alias) verildi.
+        # COALESCE kullanarak, eğer KDV grubu seçilmemişse boş dönmek yerine 0 dönmesini sağladık.
+        sql_query = """
+            SELECT 
+                s.id, 
+                s.kod, 
+                s.ad, 
+                s.birim, 
+                s.satis_fiyati, 
+                COALESCE(k.satis_kdv_orani, 0) as kdv_orani
+            FROM stok_kartlari s
+            LEFT JOIN stok_kdv_gruplari k ON s.kdv_kod_id = k.id
+            WHERE s.firma_id = :firma_id
+            AND s.aktif = 1
+            AND s.deleted_at IS NULL
+        """
         
-        else:
-            # Term yoksa veya kısa ise, ilk 20 kaydı getir
-            query = tenant_db.query(StokKart).filter(
-                StokKart.firma_id == current_user.firma_id,
-                StokKart.aktif == True,
-                StokKart.deleted_at.is_(None)
-            ).order_by(StokKart.kod).limit(limit).offset((page - 1) * limit)
+        params = {
+            'firma_id': current_user.firma_id,
+            'limit': limit,
+            'offset': (page - 1) * limit
+        }
+        
+        # Eğer arama yapılıyorsa
+        if term:
+            sql_query += " AND (s.kod LIKE :term OR s.ad LIKE :term)"
+            params['term'] = f"%{term}%"
             
-            results = [
-                {
-                    'id': str(s.id),
-                    'text': f"{s.kod} - {s.ad} ({s.birim or 'Adet'})"
-                }
-                for s in query.all()
-            ]
-            
-            return jsonify({
-                'results': results,
-                'pagination': {'more': len(results) == limit}
+        # Sıralama ve Sayfalama (Pagination)
+        sql_query += " ORDER BY s.ad ASC LIMIT :limit OFFSET :offset"
+        
+        # Sorguyu Çalıştır
+        rows = tenant_db.execute(text(sql_query), params).fetchall()
+        
+        results = []
+        for row in rows:
+            results.append({
+                'id': str(row[0]),
+                'text': f"{row[1]} - {row[2]} ({row[3] or 'Adet'})",
+                'kod': row[1],
+                'ad': row[2],
+                'birim': row[3] or 'Adet',
+                'fiyat': float(row[4] or 0),
+                'kdv': float(row[5] or 0) # ✅ Artık stok_kdv_gruplari tablosundan geliyor!
             })
-    
+            
+        has_more = len(results) == limit
+        
+        return jsonify({
+            'results': results,
+            'pagination': {'more': has_more}
+        })
+        
     except Exception as e:
         logger.error(f"❌ Stok arama hatası: {e}")
-        return jsonify({
-            'results': [],
-            'pagination': {'more': False}
-        })
-
+        return jsonify({'results': [], 'pagination': {'more': False}})
 
 # ========================================
 # API: SIRADAKİ BELGE NUMARASI - MySQL Optimized
@@ -1158,4 +1227,97 @@ def api_ozet_istatistikler():
     
     except Exception as e:
         logger.error(f"❌ İstatistik hatası: {e}")
+        
+        
         return jsonify({})
+        
+@fatura_bp.route('/api/get-cari-by-vkn/<string:vkn>')
+@login_required
+def api_get_cari_by_vkn(vkn):
+    tenant_db = get_tenant_db()
+    cari = tenant_db.query(CariHesap).filter(
+        (CariHesap.vergi_no == vkn) | (CariHesap.tc_kimlik_no == vkn),
+        CariHesap.firma_id == current_user.firma_id
+    ).first()
+    
+    if cari:
+        return jsonify({'id': str(cari.id), 'text': f"{cari.unvan} ({cari.kod})"})
+        
+@fatura_bp.route('/api/karlilik-analizi/<string:fatura_id>', methods=['GET'])
+@login_required
+@tenant_route
+def api_karlilik_analizi(fatura_id):
+    """
+    Faturadaki satılan ürünlerin maliyetini bulup, satış fiyatıyla kıyaslayarak
+    net kâr tutarını ve kâr marjını döndürür.
+    """
+    print("KARLILIK ANALİZİ")
+    tenant_db = get_tenant_db()
+    fatura = tenant_db.get(Fatura, str(fatura_id))
+    
+    if not fatura or fatura.firma_id != current_user.firma_id:
+        return jsonify({'success': False, 'message': 'Fatura bulunamadı.'}), 404
+
+    try:
+        # Costing motorunu içe aktarıyoruz
+        from app.modules.stok.costing import MaliyetMotoru
+        from decimal import Decimal
+
+        toplam_satis_geliri = Decimal('0.0')
+        toplam_maliyet = Decimal('0.0')
+        kalem_detaylari = []
+
+        for kalem in fatura.kalemler:
+            miktar = Decimal(str(kalem.miktar or 0))
+            satis_fiyati = Decimal(str(kalem.birim_fiyat or 0))
+            iskonto_orani = Decimal(str(kalem.iskonto_orani or 0))
+            
+            # İskontolu gerçek net satış fiyatını buluyoruz (KDV hariç)
+            net_satis_fiyati = satis_fiyati * (1 - (iskonto_orani / 100))
+            kalem_satis_geliri = miktar * net_satis_fiyati
+            
+            # Motorumuzdan bu ürünün ortalama maliyetini çekiyoruz
+            birim_maliyet = MaliyetMotoru.ortalama_maliyet_hesapla(kalem.stok_id, fatura.tarih, fatura.firma_id)
+            kalem_toplam_maliyet = miktar * birim_maliyet
+
+            toplam_satis_geliri += kalem_satis_geliri
+            toplam_maliyet += kalem_toplam_maliyet
+            
+            kalem_detaylari.append({
+                'urun': kalem.stok.ad,
+                'miktar': float(miktar),
+                'net_satis_tutari': float(kalem_satis_geliri),
+                'maliyet_tutari': float(kalem_toplam_maliyet),
+                'kar': float(kalem_satis_geliri - kalem_toplam_maliyet)
+            })
+
+        net_kar = toplam_satis_geliri - toplam_maliyet
+        kar_marji = (net_kar / toplam_satis_geliri * 100) if toplam_satis_geliri > 0 else 0
+
+        return jsonify({
+            'success': True,
+            'toplam_gelir': float(toplam_satis_geliri),
+            'toplam_maliyet': float(toplam_maliyet),
+            'net_kar': float(net_kar),
+            'kar_marji': round(float(kar_marji), 2),
+            'detaylar': kalem_detaylari
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Hesaplama hatası: {str(e)}'}), 500
+    return jsonify({'id': None})
+    
+@fatura_bp.route('/api/get-depolar', methods=['GET'])
+@login_required
+def api_get_depolar():
+    """Şube ID'ye göre depoları getirir (Cascading Select için)"""
+    sube_id = request.args.get('sube_id')
+    if not sube_id:
+        return jsonify([])
+
+    tenant_db = get_tenant_db()
+    depos = tenant_db.query(Depo).filter_by(sube_id=sube_id, aktif=True).order_by(Depo.ad).all()
+    
+    # Select2 ve JS dosyanın beklediği format: [{'id': '...', 'text': '...'}]
+    result = [{'id': str(d.id), 'text': d.ad} for d in depos]
+    return jsonify(result)

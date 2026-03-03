@@ -18,11 +18,18 @@ def index():
     grid = DataGrid("kategori_list", StokKategori, "Stok Kategorileri")
     grid.add_column('ad', 'Kategori Adı')
     grid.add_column('ust_kategori.ad', 'Üst Kategori') # İlişkisel alan
-    
-    grid.hide_column('id').hide_column('firma_id').hide_column('ust_kategori_id')
 
     grid.add_action('edit', 'Düzenle', 'bi bi-pencil', 'btn-outline-primary btn-sm', 'route', 'kategori.duzenle')
     grid.add_action('delete', 'Sil', 'bi bi-trash', 'btn-outline-danger btn-sm', 'ajax', 'kategori.sil')
+    
+    # Gizlenecek kolonlar
+    hidden_cols = [
+        'id', 'firma_id', 'ust_kategori_id',
+        'created_at', 'updated_at', 'deleted_at', 
+    ]
+    
+    for col in hidden_cols:
+        grid.hide_column(col)
     
     # SORGULARDA GOLDEN RULE: tenant_db.query()
     # Not: DataGrid'in process_query metodu SQLAlchemy Query objesi bekler.

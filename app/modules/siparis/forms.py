@@ -3,11 +3,13 @@
 from app.form_builder import Form, FormField, FieldType, FormLayout
 from flask_babel import gettext as _
 from flask_login import current_user
+from flask import session
 from datetime import datetime
-from app.extensions import get_tenant_db # 👈 Firebird Bağlantısı
-# Modeller
+from app.extensions import get_tenant_db 
+
 from app.modules.cari.models import CariHesap
 from app.modules.depo.models import Depo
+from app.modules.sube.models import Sube
 from app.modules.stok.models import StokKart
 from app.modules.fiyat.models import FiyatListesi
 from app.modules.siparis.models import Siparis, OdemePlani
@@ -22,83 +24,109 @@ def create_siparis_form(siparis=None):
     form = Form(name="siparis_form", title='', action=action_url, method="POST", submit_text=_("Kaydet"), ajax=True)
     layout = FormLayout()
 
+    # ✨ DÜZELTME: UI Tema Ayarları (Formun düzgün görünmesini sağlayan CSS motoru)
+    theme = {'colorfocus': '#e3f2fd', 'textfocus': '#1565c0', 'borderfocus': '#2196f3'}
+    
     tenant_db = get_tenant_db()
     
-    # Varsayılan boş listeler
-    cariler = []
-    depolar = []
+    # Varsayılan boş listeler (AJAX İçin)
+    cari_opts = []
+    depo_opts = []
     stok_opts = []
-    liste_opts = []
-    odeme_opts = []
+    liste_opts = [(0, "Varsayılan (Stok Kartı)")]
+    odeme_opts = [(0, "Peşin")]
 
     if tenant_db:
-        # --- 1.SEÇENEKLER (FIREBIRD) ---
-        try:
-            cariler = [(c.id, c.unvan) for c in tenant_db.query(CariHesap).filter_by(firma_id=1).all()]
-            depolar = [(d.id, d.ad) for d in tenant_db.query(Depo).filter_by(firma_id=1).all()]
+        # ==========================================
+        # 1. AKILLI DEPO LİSTESİ (Data Scoping)
+        # ==========================================
+        aktif_sube_id = session.get('aktif_sube_id')
+        aktif_bolge_id = session.get('aktif_bolge_id')
 
-            # Stoklar (İlk 50 tane)
-            stok_query = tenant_db.query(StokKart).filter_by(firma_id=1)
-            # Eğer düzenleme modundaysak ve detaylarda stok varsa onları da çek
-            mevcut_stok_ids = [d.stok_id for d in siparis.detaylar] if (is_edit and siparis.detaylar) else []
+        depo_query = tenant_db.query(Depo).filter_by(firma_id=str(current_user.firma_id), aktif=True)
+        
+        if current_user.rol not in ['admin', 'patron', 'muhasebe_muduru', 'satis_muduru']:
+            if aktif_bolge_id: depo_query = depo_query.join(Sube).filter(Sube.bolge_id == aktif_bolge_id)
+            elif aktif_sube_id: depo_query = depo_query.filter_by(sube_id=aktif_sube_id)
+        else:
+            if aktif_sube_id: depo_query = depo_query.filter_by(sube_id=aktif_sube_id)
             
-            ilk_stoklar = stok_query.limit(50).all()
-            
-            # Eksik olan (listede olmayan ama siparişte olan) stokları ekle
-            yuklenen_ids = [s.id for s in ilk_stoklar]
-            eksik_ids = set(mevcut_stok_ids) - set(yuklenen_ids)
-            
-            if eksik_ids:
-                ekstra_stoklar = stok_query.filter(StokKart.id.in_(eksik_ids)).all()
-                ilk_stoklar.extend(ekstra_stoklar)
-                
-            stok_opts = [(s.id, f"{s.kod} - {s.ad} ({s.birim or 'Adet'})") for s in ilk_stoklar]
+        depo_opts = [(str(d.id), d.ad) for d in depo_query.order_by(Depo.ad).all()]
 
-            # Fiyat Listeleri
-            fiyat_listeleri = tenant_db.query(FiyatListesi).filter_by(firma_id=1, aktif=True).all()
-            liste_opts = [(fl.id, fl.ad) for fl in fiyat_listeleri]
-            liste_opts.insert(0, (0, "Varsayılan (Stok Kartı)"))
-            
-            # Ödeme Planları
-            odeme_planlari = tenant_db.query(OdemePlani).filter_by(firma_id=1).all()
-            odeme_opts = [(op.id, op.ad) for op in odeme_planlari]
-            odeme_opts.insert(0, (0, "Peşin"))
+        # ==========================================
+        # 2. CARİ HESAPLAR (AJAX Lazy Load)
+        # ==========================================
+        if is_edit and getattr(siparis, 'cari_id', None):
+            try:
+                secili_cari = tenant_db.query(CariHesap).get(str(siparis.cari_id))
+                if secili_cari:
+                    cari_opts = [(str(secili_cari.id), f"{secili_cari.unvan} ({secili_cari.kod})")]
+            except: pass
 
-        except Exception as e:
-            print(f"Form Seçenekleri Hatası: {e}")
+        # ==========================================
+        # 3. STOKLAR (AJAX Lazy Load)
+        # ==========================================
+        if is_edit and getattr(siparis, 'detaylar', None):
+            stok_id_list = [d.stok_id for d in siparis.detaylar if d.stok_id]
+            if stok_id_list:
+                secili_stoklar = tenant_db.query(StokKart).filter(StokKart.id.in_(stok_id_list)).all()
+                stok_opts = [(str(s.id), f"{s.kod} - {s.ad} ({s.birim or 'Adet'})") for s in secili_stoklar]
+
+        # ==========================================
+        # 4. DİĞER KÜÇÜK TABLOLAR
+        # ==========================================
+        fiyat_listeleri = tenant_db.query(FiyatListesi).filter_by(aktif=True).all()
+        liste_opts.extend([(str(fl.id), fl.ad) for fl in fiyat_listeleri])
+        
+        odeme_planlari = tenant_db.query(OdemePlani).all()
+        odeme_opts.extend([(str(op.id), op.ad) for op in odeme_planlari])
 
     doviz_opts = [(pb.name, pb.value) for pb in ParaBirimi]
     durum_opts = SiparisDurumu.choices()
 
-    # --- 2.DEĞER ATAMALARI (VALUES) ---
-    val_doviz = siparis.doviz_turu if (siparis and hasattr(siparis, 'doviz_turu')) else ParaBirimi.TL.name
-    val_fiyat_list = siparis.fiyat_listesi_id if (siparis and siparis.fiyat_listesi_id) else 0
-    val_odeme = siparis.odeme_plani_id if (siparis and siparis.odeme_plani_id) else 0
-    val_durum = siparis.durum if siparis else SiparisDurumu.BEKLIYOR.value
-    val_depo = siparis.depo_id if siparis else (depolar[0][0] if depolar else '')
-
-    # --- 3.FORM ALANLARI ---
-    belge_no = FormField('belge_no', FieldType.AUTO_NUMBER, _('Belge No'), required=True, value=siparis.belge_no if siparis else '', endpoint='/siparis/api/siradaki-no', icon='bi bi-receipt')
-    tarih = FormField('tarih', FieldType.DATE, 'Tarih', required=True, value=siparis.tarih if siparis else datetime.now().strftime('%Y-%m-%d'))
-    teslim_tarihi = FormField('teslim_tarihi', FieldType.DATE, 'Teslim Tarihi', value=siparis.teslim_tarihi if siparis else '')
+    # ==========================================
+    # 5. DEĞER ATAMALARI & TARİH FORMATLARI
+    # ==========================================
+    val_doviz = siparis.doviz_turu.name if (siparis and hasattr(siparis.doviz_turu, 'name')) else str(siparis.doviz_turu) if siparis else ParaBirimi.TL.name
+    val_fiyat_list = str(siparis.fiyat_listesi_id) if (siparis and siparis.fiyat_listesi_id) else '0'
+    val_odeme = str(siparis.odeme_plani_id) if (siparis and siparis.odeme_plani_id) else '0'
+    val_durum = siparis.durum.value if (siparis and hasattr(siparis.durum, 'value')) else str(siparis.durum) if siparis else SiparisDurumu.BEKLIYOR.value
+    val_depo = str(siparis.depo_id) if siparis else (depo_opts[0][0] if depo_opts else '')
     
+    bugun_str = datetime.now().strftime('%Y-%m-%d')
+    val_tarih = siparis.tarih.strftime('%Y-%m-%d') if siparis and getattr(siparis, 'tarih', None) else bugun_str
+    val_teslim = siparis.teslim_tarihi.strftime('%Y-%m-%d') if siparis and getattr(siparis, 'teslim_tarihi', None) else ''
+
+    # ==========================================
+    # 6. FORM ALANLARI (Bootstrap Hizalaması ve THEME Eklendi)
+    # ==========================================
+    belge_no = FormField('belge_no', FieldType.AUTO_NUMBER, _('Belge No'), required=True, 
+                        value=siparis.belge_no if siparis else '', endpoint='/siparis/api/siradaki-no', icon='bi bi-receipt')
+    tarih = FormField('tarih', FieldType.DATE, 'Tarih', required=True, value=val_tarih)
+    teslim_tarihi = FormField('teslim_tarihi', FieldType.DATE, 'Teslim Tarihi', value=val_teslim)
     durum = FormField('durum', FieldType.SELECT, 'Durum', options=durum_opts, required=True, value=val_durum)
-    cari_id = FormField('cari_id', FieldType.SELECT, 'Müşteri', options=cariler, required=True, select2_config={'search': True, 'placeholder': 'Müşteri Seçiniz...'}, value=siparis.cari_id if siparis else '')
-    depo_id = FormField('depo_id', FieldType.SELECT, 'Çıkış Deposu', options=depolar, required=True, value=val_depo)
+    
+    cari_id = FormField('cari_id', FieldType.SELECT, 'Müşteri', options=cari_opts, required=True, 
+                        select2_config={'search': True, 'placeholder': 'Aramak için yazın...'}, 
+                        html_attributes={'data-ajax-url': '/cari/api/ara'}, 
+                        value=str(siparis.cari_id) if siparis else '')
+                        
+    depo_id = FormField('depo_id', FieldType.SELECT, 'Çıkış Deposu', options=depo_opts, required=True, value=val_depo)
     
     doviz_turu = FormField('doviz_turu', FieldType.SELECT, 'Döviz', options=doviz_opts, value=val_doviz)
-    doviz_kuru = FormField('doviz_kuru', FieldType.CURRENCY, 'Döviz Kuru', value=siparis.doviz_kuru if siparis else 1, html_attributes={'style': 'width: 100px;'})
-    
+    doviz_kuru = FormField('doviz_kuru', FieldType.CURRENCY, 'Döviz Kuru', value=siparis.doviz_kuru if siparis else 1)
     fiyat_listesi_id = FormField('fiyat_listesi_id', FieldType.SELECT, 'Fiyat Listesi', options=liste_opts, value=val_fiyat_list)
     odeme_plani_id = FormField('odeme_plani_id', FieldType.SELECT, 'Ödeme Planı', options=odeme_opts, value=val_odeme)
 
     sevk_adresi = FormField('sevk_adresi', FieldType.TEXTAREA, 'Sevk Adresi', value=siparis.sevk_adresi if siparis else '', html_attributes={'rows': 2})
     aciklama = FormField('aciklama', FieldType.TEXTAREA, 'Notlar', value=siparis.aciklama if siparis else '', html_attributes={'rows': 2})
 
-    # --- 4.MASTER-DETAIL ---
+    # ==========================================
+    # 7. MASTER-DETAIL (Ürünler)
+    # ==========================================
     detaylar = FormField('detaylar', FieldType.MASTER_DETAIL, 'Ürünler')
     detaylar.columns = [
-        FormField('id', FieldType.HIDDEN, 'ID', default_value=0,html_attributes={'style': 'width: 0px;'}),
+        FormField('id', FieldType.HIDDEN, 'ID', default_value=0, html_attributes={'style': 'width: 0px;'}),
         
         FormField('stok_id', FieldType.SELECT, 'Ürün', 
                   options=stok_opts, 
@@ -120,10 +148,10 @@ def create_siparis_form(siparis=None):
         row_data = []
         for d in siparis.detaylar:
             row_data.append({
-                'id': d.id,
-                'stok_id': d.stok_id,
+                'id': str(d.id),
+                'stok_id': str(d.stok_id),
                 'miktar': float(d.miktar), 
-                'birim': d.birim or 'Adet',
+                'birim': d.birim.value if hasattr(d.birim, 'value') else d.birim or 'Adet',
                 'birim_fiyat': sayi_formatla(d.birim_fiyat), 
                 'iskonto_orani': (d.iskonto_orani), 
                 'kdv_orani': (d.kdv_orani), 
@@ -131,6 +159,7 @@ def create_siparis_form(siparis=None):
             })
         detaylar.value = row_data
 
+    # --- LAYOUT OLUŞTURMA (Satırlar birleştirildi) ---
     layout.add_row(belge_no, tarih, teslim_tarihi, durum)
     layout.add_row(cari_id, depo_id)
     layout.add_row(doviz_turu, doviz_kuru, fiyat_listesi_id, odeme_plani_id)

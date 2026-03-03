@@ -21,17 +21,29 @@
                     </button>
 
                     {% if request.endpoint.endswith('duzenle') %}
-                        <button type="button" onclick="eIrsaliyeGonder()" class="btn btn-success shadow-sm">
+						{% if not irsaliye.faturalasti_mi %}
+                            <button type="button" onclick="faturayaCevir('{{ request.view_args.get('id') }}')" class="btn btn-warning text-dark shadow-sm">
+                                <i class="bi bi-magic me-1"></i> Faturaya Dönüştür
+                            </button>
+                        {% else %}
+                            <a href="{{ url_for('fatura.duzenle', id=irsaliye.fatura_id) }}" class="btn btn-info text-white shadow-sm">
+                                <i class="bi bi-eye me-1"></i> Faturayı Gör
+                            </a>
+                        {% endif %}
+                        <button type="button" onclick="eIrsaliyeGonder('{{ request.view_args.get('id') }}')" class="btn btn-success shadow-sm">
                             <i class="bi bi-cloud-upload me-1"></i> GİB'e Gönder
                         </button>
                         
                         <div class="btn-group">
                             <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                                <i class="bi bi-printer"></i>
+                                <i class="bi bi-printer"></i> Yazdır
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="{{ url_for('rapor.calistir', tur='irsaliye', id=form.instance_id, format='html') }}" target="_blank">Önizle</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('rapor.calistir', tur='irsaliye', id=form.instance_id, format='pdf') }}">PDF İndir</a></li>
+                                <li>
+                                    <a href="{{ url_for('irsaliye.yazdir', id=request.view_args.get('id')) }}" target="_blank" class="dropdown-item">
+                                        <i class="bi bi-printer me-2"></i> İrsaliyeyi Yazdır
+                                    </a>
+                                </li>
                             </ul>
                         </div>
                     {% endif %}
@@ -70,24 +82,30 @@
 {% block scripts %}
 {{ super() }}
 <script>
-    /**
+/**
      * AI Analiz Fonksiyonu
      * Form verilerini toplar ve backend'e gönderir.
      */
     function aiAnalizBaslat() {
-        // 1.Modalı Aç
+        // 1. Modalı Aç
         var aiModal = new bootstrap.Modal(document.getElementById('aiModal'));
         aiModal.show();
         
-        // 2.Form Verilerini Topla (Master-Detail Dahil)
+        // Modal içeriğini her açılışta yükleniyor durumuna sıfırla
+        $('#aiResultContent').html(`
+            <div class="text-center py-4">
+                <div class="spinner-border text-warning" role="status"></div>
+                <p class="mt-2 text-muted">İrsaliye verileri analiz ediliyor...</p>
+            </div>
+        `);
+        
+        // 2. Form Verilerini Topla
         var formData = {};
         
-        // Basit alanlar
         $('input, select, textarea').each(function(){
             if(this.name) formData[this.name] = $(this).val();
         });
         
-        // Kalemleri Topla (Basit yöntem)
         formData['kalemler'] = [];
         $('#kalemler_table tbody tr').each(function(){
             var miktar = $(this).find('input[name="kalemler_miktar[]"]').val();
@@ -95,22 +113,28 @@
                 formData['kalemler'].push({ 'miktar': parseFloat(miktar) });
             }
         });
-        console.log(miktar);
-        // 3.API'ye Gönder
+        
+        // 🚨 Hatalı console.log satırı kaldırıldı!
+
+        // 3. API'ye Gönder (✨ Güvenlik için CSRF Token eklendi)
         $.ajax({
             url: '/irsaliye/api/ai-analiz',
             type: 'POST',
             contentType: 'application/json',
             data: JSON.stringify(formData),
+            headers: {
+                'X-CSRFToken': $('input[name="csrf_token"]').val()
+            },
             success: function(res) {
                 if(res.success) {
                     renderAIResult(res.analiz);
                 } else {
-                    $('#aiResultContent').html('<div class="alert alert-danger">Analiz hatası oluştu.</div>');
+                    $('#aiResultContent').html('<div class="alert alert-danger">Analiz hatası: ' + (res.message || 'Bilinmeyen hata') + '</div>');
                 }
             },
-            error: function() {
-                $('#aiResultContent').html('<div class="alert alert-danger">Sunucuya ulaşılamadı.</div>');
+            error: function(xhr) {
+                console.error("AJAX Hatası:", xhr);
+                $('#aiResultContent').html('<div class="alert alert-danger">Sunucu ile iletişim kurulamadı. API Key ayarlarınızı kontrol edin.</div>');
             }
         });
     }
@@ -135,15 +159,98 @@
         $('#aiResultContent').html(html);
     }
 
+	function faturayaCevir(irsaliyeId) {
+        Swal.fire({
+            title: 'Faturaya Dönüştürülsün mü?',
+            text: "Bu irsaliyedeki tüm lojistik, ürün ve cari veriler kullanılarak yeni bir taslak fatura oluşturulacaktır.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#ffc107',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Evet, Fatura Oluştur',
+            cancelButtonText: 'Vazgeç'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                Swal.fire({
+                    title: 'Dönüştürülüyor...',
+                    text: 'Lütfen bekleyin, veriler fatura modülüne aktarılıyor.',
+                    allowOutsideClick: false,
+                    didOpen: () => { Swal.showLoading(); }
+                });
+
+                fetch(`/irsaliye/faturaya-cevir/${irsaliyeId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Swal.fire('Başarılı!', data.message, 'success').then(() => {
+                            // Sihir gerçekleşti: Kullanıcıyı direkt yeni faturanın içine yönlendiriyoruz!
+                            window.location.href = data.redirect_url;
+                        });
+                    } else {
+                        Swal.fire('Hata!', data.message || 'Dönüştürme başarısız oldu.', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire('Hata!', 'Sunucu ile iletişim kurulamadı.', 'error');
+                });
+            }
+        });
+    }
+
     /**
      * E-İrsaliye Gönderim
      */
-    function eIrsaliyeGonder() {
-        if(!confirm("Bu irsaliye GİB'e iletilecek.Emin misiniz?")) return;
-        
-        // Backend route'u henüz eklemedik ama hazır olsun
-        // $.post(...)
-        Swal.fire("Bilgi", "E-İrsaliye gönderim servisi hazırlanıyor...", "info");
-    }
+    function eIrsaliyeGonder(irsaliyeId) {
+    Swal.fire({
+        title: 'E-İrsaliye Gönderilsin mi?',
+        text: "Bu işlem irsaliyeyi resmileştirerek GİB'e iletecektir.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#198754',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Evet, Gönder',
+        cancelButtonText: 'Vazgeç'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Yükleniyor durumu
+            Swal.fire({
+                title: 'Hazırlanıyor...',
+                text: 'E-İrsaliye paketi oluşturulup kuyruğa aktarılıyor.',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            // API Çağrısı
+            fetch(`/eirsaliye/gonder/${irsaliyeId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Başarılı!', data.message, 'success').then(() => {
+                        window.location.reload(); // Durumu güncellemek için sayfayı yenile
+                    });
+                } else {
+                    Swal.fire('Hata!', data.error || 'Gönderim başarısız oldu.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Hata!', 'Sunucu ile iletişim kurulamadı.', 'error');
+            });
+        }
+    });
+}
 </script>
 {% endblock %}
