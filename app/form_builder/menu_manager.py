@@ -148,3 +148,37 @@ class MenuManager:
         tenant_id = session.get('tenant_id')
         if tenant_id:
             cache.delete(f"menu_raw_{tenant_id}")
+            
+    @staticmethod
+    def get_breadcrumb(current_url: str):
+        """
+        Aktif sayfa için hiyerarşik Breadcrumb (Yol Haritası) oluşturur.
+        Query parametrelerini (örneğin ?page=2) yoksayarak akıllı eşleşme yapar.
+        """
+        menu_tree = MenuManager.get_tree()
+        
+        # URL'deki GET parametrelerini temizle (Sadece ana path kalsın)
+        target_path = current_url.split('?')[0] if current_url else ''
+
+        def _find_path(items, target, current_path=None):
+            # ✨ GÜVENLİK: Python 'Mutable Default Argument' hatasını önlemek için None kontrolü
+            if current_path is None:
+                current_path = []
+                
+            for item in items:
+                # Menüdeki URL'yi de temizle (Güvenlik)
+                item_url = item.get('url', '').split('?')[0]
+                
+                # 1. Hedef Bulunduysa
+                if item_url and item_url == target:
+                    return current_path + [item]
+                
+                # 2. Alt Menülerde (Children) Ara
+                if item.get('children'):
+                    result = _find_path(item['children'], target, current_path + [item])
+                    if result:
+                        return result
+            return None
+        
+        breadcrumb = _find_path(menu_tree, target_path)
+        return breadcrumb or []

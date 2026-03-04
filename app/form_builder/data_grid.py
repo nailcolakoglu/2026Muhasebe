@@ -42,9 +42,18 @@ class DataGrid:
         self.current_sort_field: Optional[str] = None
         self.current_sort_direction: str = 'asc' 
         
+        # ✨ YENİ: Lazy Loading Ayarları
+        self.lazy_loading = False
+        self.chunk_size = 50
+        
         # Başlangıçta tüm model alanlarını oluştur
         self._auto_generate_columns()
         self.target=target
+        
+        # ✨ YENİ: Toplu İşlemler
+        self.bulk_actions = []
+        self.enable_checkboxes = False
+        
     # =================================================================
     # 1.KOLON YÖNETİMİ (EKSİK OLAN METODLAR EKLENDİ)
     # =================================================================
@@ -141,6 +150,33 @@ class DataGrid:
             "class_page": class_page, "class_all": class_all
         }
         return self
+
+    def enable_lazy_loading(self, chunk_size=50):
+        """Infinite scroll (Sonsuz Kaydırma) modunu aktif eder."""
+        self.lazy_loading = True
+        self.per_page = chunk_size # Sayfa başına limiti chunk_size ile eşitleriz
+        return self
+        
+    def enable_bulk_actions(self, actions: List[Dict[str, Any]]):
+        """
+        Toplu işlemleri ve checkbox'ları aktif eder.
+        Örnek:
+        actions = [
+            {'label': 'Seçilenleri Sil', 'url': '/api/bulk-delete', 'icon': 'bi bi-trash', 'class': 'text-danger', 'confirm': True}
+        ]
+        """
+        self.bulk_actions = actions
+        self.enable_checkboxes = True
+        return self
+        
+
+    def render_rows_only(self, base_url_name: str) -> str:
+        """Sadece <tr> satırlarını döndürür. (AJAX Lazy Load çağrıları için)"""
+        html = []
+        if self.data:
+            for item in self.data: 
+                html.append(self._render_row(item, base_url_name))
+        return ''.join(html)
 
     # =================================================================
     # 2.SORGULAMA MANTIĞI (Process Query)
@@ -348,7 +384,11 @@ class DataGrid:
     # =================================================================
 
     def _render_header(self, base_url_name: str) -> str:
-        html = ['<thead><tr>']
+        html = ['<thead><tr class="align-middle">']
+        
+        # ✨ YENİ: "Tümünü Seç" Checkbox'ı
+        if self.enable_checkboxes:
+            html.append('<th style="width: 40px; cursor: pointer;" class="text-center" title="Tümünü Seç"><input class="form-check-input dx-select-all shadow-sm" type="checkbox"></th>')
         
         for col in self.columns:
             if not col['visible']: continue
@@ -410,6 +450,12 @@ class DataGrid:
 
     def _render_row(self, item: Any, base_url_name: str) -> str:
         html = ['<tr>']
+        
+        # ✨ YENİ: Satır bazlı Checkbox (Değerine o satırın ID'si basılır)
+        if self.enable_checkboxes:
+            item_id = getattr(item, 'id', '')
+            html.append(f'<td class="text-center align-middle"><input class="form-check-input dx-row-select shadow-sm" type="checkbox" value="{item_id}"></td>')
+
         for col in self.columns:
             if not col['visible']: continue
 
@@ -597,7 +643,32 @@ class DataGrid:
         
         html.append('<div class="card-body">')
         q_val = request.args.get("q", "")
-        html.append(f'<div class="row mb-3"><div class="col-md-6"><input type="text" class="form-control form-control-sm dx-grid-filter" data-target="{self.name}" placeholder="Hızlı Ara (Enter)..." value="{q_val}"></div><div class="col-md-6 text-end">{self._render_pagination(base_url_name)}</div></div>')
+        
+        # ✨ Lazy loading aktifse standart sayfalamayı (1, 2, 3...) gizle
+        pagination_html = "" if self.lazy_loading else self._render_pagination(base_url_name)
+        
+        # ✨ YENİ: Toplu İşlem Butonları (Eğer aktifse)
+        bulk_html = ""
+        if self.bulk_actions:
+            bulk_html += f'<div class="dropdown d-inline-block me-2 dx-bulk-container" style="display:none;" id="bulk-container-{self.name}">'
+            bulk_html += '<button class="btn btn-sm btn-primary dropdown-toggle shadow-sm" type="button" data-bs-toggle="dropdown"><i class="bi bi-check2-square me-1"></i> <span class="dx-selected-count fw-bold">0</span> Seçili</button>'
+            bulk_html += '<ul class="dropdown-menu shadow-sm border-0">'
+            for ba in self.bulk_actions:
+                icon = f'<i class="{ba.get("icon", "bi bi-gear")} me-2"></i>'
+                text_class = ba.get('class', 'text-dark')
+                url = ba.get('url', '#')
+                confirm = 'true' if ba.get('confirm') else 'false'
+                bulk_html += f'<li><a class="dropdown-item dx-bulk-action-btn {text_class}" href="#" data-url="{url}" data-confirm="{confirm}">{icon}{ba.get("label")}</a></li>'
+            bulk_html += '</ul></div>'
+
+        # Düzeni bozmamak için col-md-5 ve col-md-7 olarak genişletildi
+        html.append(f'<div class="row mb-3"><div class="col-md-5"><input type="text" class="form-control form-control-sm dx-grid-filter" data-target="{self.name}" placeholder="Hızlı Ara (Enter)..." value="{q_val}"></div><div class="col-md-7 text-end">{bulk_html}{pagination_html}</div></div>')
+        
+        #html.append(f'<div class="row mb-3"><div class="col-md-6"><input type="text" class="form-control form-control-sm dx-grid-filter" data-target="{self.name}" placeholder="Hızlı Ara (Enter)..." value="{q_val}"></div><div class="col-md-6 text-end">{pagination_html}</div></div>')
+        
+        # ✨ Tabloya lazy load tetikleyicisi için class ve data attribute ekle
+        lazy_class = " lazy-load-grid" if self.lazy_loading else ""
+        html.append(f'<div class="table-responsive"><table class="table table-hover table-striped table-sm dx-grid{lazy_class}" id="dx-grid-{self.name}" data-url="{url_for(base_url_name)}" data-page="1" data-total="{self.pagination["total_pages"]}">')
         
         html.append(f'<div class="table-responsive"><table class="table table-hover table-striped table-sm dx-grid" id="dx-grid-{self.name}">')
         html.append(self._render_header(base_url_name))

@@ -148,6 +148,7 @@
 	
 </head>
 <body>
+	
     <nav class="navbar navbar-expand-xl navbar-custom sticky-top">
         <div class="container-fluid px-4">
             
@@ -353,7 +354,38 @@
     </div>
 
     <main class="flex-grow-1">
-        {% block content %}{% endblock %}
+		<div class="container-fluid mt-3 mb-4">
+        
+        {% if breadcrumbs %}
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb bg-light p-2 rounded shadow-sm mb-3" style="font-size: 0.9rem;">
+            <li class="breadcrumb-item">
+                <a href="/" class="text-decoration-none text-secondary">
+                    <i class="bi bi-house-door"></i> Ana Sayfa
+                </a>
+            </li>
+            
+            {% for crumb in breadcrumbs %}
+                {% if loop.last %}
+                    <li class="breadcrumb-item active fw-bold text-primary" aria-current="page">
+                        {{ crumb.isim }}
+                    </li>
+                {% else %}
+                    <li class="breadcrumb-item">
+                        <a href="{{ crumb.url }}" class="text-decoration-none text-secondary">
+                            {{ crumb.isim }}
+                        </a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+          </ol>
+        </nav>
+        {% endif %}
+        
+		{% block content %}{% endblock %}
+        
+    </div>		
+        
     </main>
 
     <footer class="footer">

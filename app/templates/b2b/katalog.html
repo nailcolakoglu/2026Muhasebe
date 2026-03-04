@@ -7,6 +7,14 @@
     <h4 class="text-secondary fw-bold">Online Sipariş Kataloğu</h4>
 </div>
 
+<form method="GET" action="{{ url_for('b2b.katalog') }}" class="d-flex mb-4 bg-white p-3 rounded shadow-sm border-0">
+    <input type="text" name="q" class="form-control me-2" placeholder="Ürün Adı veya Kodu Ara..." value="{{ search }}">
+    <button type="submit" class="btn btn-primary px-4"><i class="bi bi-search"></i> Ara</button>
+    {% if search %}
+        <a href="{{ url_for('b2b.katalog') }}" class="btn btn-outline-secondary ms-2">Temizle</a>
+    {% endif %}
+</form>
+
 <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4">
     {% for urun in urunler %}
     <div class="col">
@@ -22,13 +30,19 @@
                 <small class="text-muted">{{ urun.kod }}</small>
                 <h6 class="card-title fw-bold mt-1 mb-2">{{ urun.ad }}</h6>
                 
+                <div class="mb-2">
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">
+                        <i class="bi bi-box-seam"></i> Stokta: {{ "{:,.0f}".format(urun.stok_miktari) }} {{ urun.birim }}
+                    </span>
+                </div>
+                
                 <div class="mt-auto">
-                    <h5 class="text-primary fw-bold mb-3">₺{{ "{:,.2f}".format(urun.satis_fiyati|default(0)).replace(',', 'X').replace('.', ',').replace('X', '.') }}</h5>
+                    <h5 class="text-primary fw-bold mb-3">₺{{ "{:,.2f}".format(urun.fiyat|default(0)).replace(',', 'X').replace('.', ',').replace('X', '.') }}</h5>
                     
                     <form class="sepete-ekle-form d-flex gap-2">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="stok_id" value="{{ urun.id }}">
-                        <input type="number" name="miktar" class="form-control form-control-sm w-50" value="1" min="1">
+                        <input type="number" name="miktar" class="form-control form-control-sm w-50" value="1" min="1" max="{{ urun.stok_miktari }}">
                         <button type="submit" class="btn btn-sm btn-primary w-100 flex-grow-1"><i class="bi bi-cart-plus"></i> Ekle</button>
                     </form>
                 </div>
@@ -37,15 +51,39 @@
     </div>
     {% else %}
     <div class="col-12">
-        <div class="alert alert-info border-0 shadow-sm"><i class="bi bi-info-circle me-2"></i> Henüz sistemde aktif bir ürün bulunmuyor.</div>
+        <div class="alert alert-info border-0 shadow-sm"><i class="bi bi-info-circle me-2"></i> Arama kriterlerinize uygun stoklu ürün bulunamadı.</div>
     </div>
     {% endfor %}
 </div>
+
+{% if toplam_sayfa and toplam_sayfa > 1 %}
+<nav aria-label="Katalog Sayfalama" class="mt-5">
+    <ul class="pagination justify-content-center">
+        {% if page > 1 %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('b2b.katalog', q=search, page=page-1) }}">Önceki</a>
+        </li>
+        {% endif %}
+
+        {% for p in range(1, toplam_sayfa + 1) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('b2b.katalog', q=search, page=p) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+
+        {% if page < toplam_sayfa %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('b2b.katalog', q=search, page=page+1) }}">Sonraki</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-    // AJAX ile Sepete Ekleme İşlemi (Sayfa yenilenmeden)
     document.querySelectorAll('.sepete-ekle-form').forEach(form => {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -57,30 +95,62 @@
 
             fetch('{{ url_for("b2b.sepete_ekle") }}', {
                 method: 'POST',
-                body: new FormData(this)
+                body: new FormData(this),
+                headers: {
+                    'Accept': 'application/json'
+                }
             })
-            .then(res => res.json())
-            .then(data => {
+            // Fetch API HTTP 400 hatalarını otomatik catch'e düşürmez, o yüzden önce status kontrolü yapıyoruz
+            .then(res => res.json().then(data => ({status: res.status, body: data})))
+            .then(obj => {
+                const data = obj.body;
                 if(data.success) {
                     btn.innerHTML = '<i class="bi bi-check2"></i> Eklendi';
                     btn.classList.replace('btn-primary', 'btn-success');
                     
-                    // Üst menüdeki sepet sayısını güncelle
                     const badge = document.getElementById('cart-count');
                     if(badge) badge.innerText = data.sepet_sayisi;
+                    
+                    // ✨ BAŞARILI BİLDİRİMİ (Sağ üstte zarif Toast mesajı)
+                    Swal.fire({
+                        title: 'Sepete Eklendi!',
+                        text: data.message,
+                        icon: 'success',
+                        toast: true,
+                        position: 'top-end',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
                     
                     setTimeout(() => {
                         btn.innerHTML = originalText;
                         btn.classList.replace('btn-success', 'btn-primary');
                         btn.disabled = false;
                     }, 2000);
+                } else {
+                    // ✨ STOK YETERSİZ VEYA HATA BİLDİRİMİ (Ekranın ortasında tokat gibi uyarı)
+                    Swal.fire({
+                        title: 'İşlem Başarısız!',
+                        text: data.message || "Bilinmeyen bir hata oluştu.",
+                        icon: 'error',
+                        confirmButtonText: 'Anladım',
+                        confirmButtonColor: '#d33'
+                    });
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
                 }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Bağlantı Hatası', 'Sunucu ile iletişim kurulamadı.', 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
             });
         });
     });
 </script>
 <style>
-    .product-card { transition: transform 0.2s; }
-    .product-card:hover { transform: translateY(-5px); }
+    .product-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .product-card:hover { transform: translateY(-5px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
 </style>
 {% endblock %}

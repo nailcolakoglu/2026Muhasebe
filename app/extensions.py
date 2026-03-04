@@ -5,6 +5,7 @@ Enterprise Grade - Production Ready
 """
 
 from celery import Celery
+from flask_socketio import SocketIO
 import os
 import logging
 from datetime import timedelta
@@ -17,13 +18,28 @@ from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import scoped_session, sessionmaker, DeclarativeBase
 from flask import abort, g, session, request, current_app
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # Logger
 logger = logging.getLogger(__name__)
 
+# ✨ YENİ: Global Limiter Kalkanı
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"], # Uygulama geneli varsayılan sınır
+    storage_uri="memory://" # Sunucu belleğinde tutar (İleride Redis'e çevrilebilir)
+)
 
 # Redis bağlantı ayarlarını tanımlıyoruz (Docker veya Localhost)
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
+# ✨ YENİ: Enterprise Socket.IO Motoru (Redis destekli)
+socketio = SocketIO(
+    cors_allowed_origins="*", 
+    message_queue=REDIS_URL, # Çoklu Worker desteği için Redis şart!
+    async_mode='eventlet' 
+)
 
 # Celery nesnesini oluşturuyoruz
 celery = Celery(
@@ -501,6 +517,10 @@ def init_extensions(app):
     csrf.init_app(app)
     logger.info("✅ CSRF Protection başlatıldı")
     
+    # ✨ EKLENEN KISIM: Rate Limiter kalkanını merkezi başlatıcıya aldık
+    limiter.init_app(app)
+    logger.info("🛡️ Rate Limiter (Kalkan) başlatıldı")
+    
     # 6. Teardown handler (Tenant DB cleanup)
     app.teardown_appcontext(close_tenant_db)
     logger.info("✅ Teardown handler kaydedildi")
@@ -509,6 +529,10 @@ def init_extensions(app):
     if app.debug:
         init_csrf_logger(app)
         logger.info("✅ CSRF Logger aktif (debug mode)")
+    
+    # ✨ YENİ: Socket.IO'yu uygulamaya bağla
+    socketio.init_app(app)
+    logger.info("⚡ WebSocket (Socket.IO) Motoru başlatıldı")
     
     logger.info("🎉 Tüm extension'lar başarıyla yüklendi!")
 

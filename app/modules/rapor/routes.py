@@ -4,7 +4,6 @@ import logging
 import datetime
 from flask import Blueprint, render_template, request, jsonify, Response, g, flash, send_file, make_response, session, url_for, redirect
 from flask_login import login_required, current_user
-
 from app.extensions import db, get_tenant_db, csrf
 from app.modules.stok.models import StokKart, StokDepoDurumu, StokHareketi
 from app.modules.depo.models import Depo
@@ -62,8 +61,47 @@ def check_csrf():
 @rapor_bp.route('/')
 @login_required
 def index():
-    return render_template('rapor/index.html')
-
+    """Raporlama ana sayfası"""
+    
+    # 🚀 ÇÖZÜM: Henüz yazılmamış modüllerin url_for çağrıları sayfayı çökertmesin diye
+    # şimdilik '#' (boş link) olarak güncellendi. Modüller yazıldıkça buralar aktif edilecek.
+    rapor_kategorileri = [
+        {
+            'id': 'finans',
+            'isim': 'Finans Raporları',
+            'ikon': 'bi-bank',
+            'renk': 'primary',
+            'raporlar': [
+                {'isim': 'Cari Bakiye Raporu', 'url': '#', 'aciklama': 'Müşteri ve tedarikçi bakiyeleri'},
+                {'isim': 'Kasa/Banka Durumu', 'url': '#', 'aciklama': 'Güncel nakit durumu'},
+                {'isim': 'Gelir/Gider Analizi', 'url': '#', 'aciklama': 'Aylık gelir gider tablosu'}
+            ]
+        },
+        {
+            'id': 'muhasebe',
+            'isim': 'Muhasebe Raporları',
+            'ikon': 'bi-calculator',
+            'renk': 'success',
+            'raporlar': [
+                {'isim': 'Mizan', 'url': '#', 'aciklama': 'Geçici ve kesin mizan'},
+                {'isim': 'Bilanço ve Gelir Tablosu', 'url': '#', 'aciklama': 'Dönem sonu mali tablolar'},
+                {'isim': 'KDV Raporu', 'url': '#', 'aciklama': 'İndirilecek ve hesaplanan KDV'}
+            ]
+        },
+        {
+            'id': 'satis',
+            'isim': 'Satış ve Stok Raporları',
+            'ikon': 'bi-graph-up',
+            'renk': 'info',
+            'raporlar': [
+                {'isim': 'Satış Analizi', 'url': '#', 'aciklama': 'Ürün ve cari bazlı satışlar'},
+                {'isim': 'Stok Durum Raporu', 'url': '#', 'aciklama': 'Mevcut stok ve kritik seviyeler'},
+                {'isim': 'Karlılık Raporu', 'url': '#', 'aciklama': 'Maliyet ve satış karlılığı'}
+            ]
+        }
+    ]
+    
+    return render_template('rapor/index.html', rapor_kategorileri=rapor_kategorileri)
 
 @rapor_bp.route('/export/<format>')
 @login_required
@@ -447,10 +485,31 @@ def ai_ayarlari():
 @rapor_bp.route('/gecmis-raporlar')
 @login_required
 def gecmis_raporlar():
-    raporlar = AIRaporGecmisi.query.filter_by(firma_id=current_user.firma_id)\
-        .order_by(AIRaporGecmisi.tarih.desc()).limit(20).all()
-    return render_template('rapor/gecmis.html', raporlar=raporlar)
+    """AI tarafından önceden oluşturulmuş geçmiş raporların listesi"""
+    
+    # 🚀 ÇÖZÜM 1: Eksik olan modeli lokal olarak import ettik (NameError'ı çözer)
+    from app.modules.rapor.models import AIRaporGecmisi
+    
+    # 🚀 ÇÖZÜM 2: Eski ".query" yapısı yerine Multi-Tenant veritabanı bağlantısı kullandık
+    tenant_db = get_tenant_db()
+    
+    if not tenant_db:
+        flash('Lütfen önce bir firma (tenant) seçin.', 'warning')
+        return redirect(url_for('main.index'))
+        
+    try:
+        # Eski kullanım: AIRaporGecmisi.query.filter_by(...)
+        # Yeni ve Güvenli Kullanım: tenant_db.query()
+        raporlar = tenant_db.query(AIRaporGecmisi).order_by(AIRaporGecmisi.tarih.desc()).all()
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Geçmiş raporlar çekilirken hata: {e}")
+        flash('Raporlar yüklenirken bir hata oluştu.', 'danger')
+        raporlar = []
 
+    return render_template('rapor/gecmis.html', raporlar=raporlar)
+    
 @rapor_bp.route('/rapor-detay/<int:rapor_id>')
 @login_required
 def rapor_detay(rapor_id):
@@ -528,10 +587,14 @@ def api_ceo_brifing():
 
 @rapor_bp.route('/yevmiye', methods=['GET', 'POST'])
 def yevmiye_defteri():
+# 🚀 ÇÖZÜM 1: G objesinden güvenli veri çekme (Yoksa None döner, sistemi çökertmez)
+    aktif_donem = getattr(g, 'donem', None)
+    aktif_firma = getattr(g, 'firma', None)
+
     # 1.Varsayılan Tarihleri Belirle
-    if g.donem:
-        def_baslangic = g.donem.baslangic.strftime('%Y-%m-%d')
-        def_bitis = g.donem.bitis.strftime('%Y-%m-%d')
+    if aktif_donem:
+        def_baslangic = aktif_donem.baslangic.strftime('%Y-%m-%d')
+        def_bitis = aktif_donem.bitis.strftime('%Y-%m-%d')
     else:
         yil = datetime.now().year
         def_baslangic = f"{yil}-01-01"
@@ -541,7 +604,6 @@ def yevmiye_defteri():
     form = get_yevmiye_filter_form(def_baslangic, def_bitis)
 
     # 3.POST İsteği ve Validasyon
-    # form.validate() hem CSRF'yi hem de veri tiplerini kontrol eder
     if request.method == 'POST' and form.validate():
         try:
             # Form verilerini al
@@ -553,40 +615,43 @@ def yevmiye_defteri():
             # Tarih dönüşümü (FormBuilder string döndürürse)
             if isinstance(baslangic, str):
                 bas_dt = datetime.strptime(baslangic, '%Y-%m-%d').date()
-            else: bas_dt = baslangic # Zaten date objesi ise
+            else: 
+                bas_dt = baslangic
 
             if isinstance(bitis, str):
                 bit_dt = datetime.strptime(bitis, '%Y-%m-%d').date()
-            else: bit_dt = bitis
+            else: 
+                bit_dt = bitis
 
             # Rapor Motorunu Çalıştır
             limit = 60 if format_type == 'dos' else 35
             motor = YevmiyeRaporuMotoru(bas_dt, bit_dt, satir_limiti=limit)
-            sayfalar = motor.verileri_hazirla(firma_id=g.firma.id)
+            
+            # 🚀 ÇÖZÜM 2: Firma ID'yi güvenli al
+            firma_id = aktif_firma.id if aktif_firma else None
+            sayfalar = motor.verileri_hazirla(firma_id=firma_id)
             
             if not sayfalar:
                 flash("Seçilen tarih aralığında veri bulunamadı.", "warning")
-                # Veri yoksa aynı sayfaya dön (Form hatalarını veya mesajı göster)
                 return render_template('rapor/yevmiye_filtre.html', form=form)
 
             # Çıktı Üret
             if format_type == 'dos':
                 return render_template('rapor/yevmiye_dos.txt', sayfalar=sayfalar), {'Content-Type': 'text/plain; charset=utf-8'}
             else:
-                # Lazer çıktı için ayrı pencere/tab açılmasını form target="_blank" ile sağlarız
                 return render_template('rapor/yevmiye_laser.html', 
                                      sayfalar=sayfalar, 
                                      baslangic=baslangic, 
                                      bitis=bitis,
-                                     aktif_firma=g.firma,
-                                     aktif_donem=g.donem)
+                                     aktif_firma=aktif_firma,  # Güvenli değişkeni kullan
+                                     aktif_donem=aktif_donem)  # Güvenli değişkeni kullan
                 
         except Exception as e:
             flash(f"Rapor hatası: {str(e)}", "danger")
 
     # GET isteği veya Validasyon Hatası durumunda formu göster
     return render_template('rapor/yevmiye_filtre.html', form=form)
-
+    
 @rapor_bp.route('/e-defter/indir', methods=['POST'])
 def e_defter_indir():
     try:
@@ -880,8 +945,12 @@ def api_rapor_calistir():
     
     # Model map
     model_map = {
+        'CariHesap': CariHesap,
         'Fatura': Fatura,
-        'CariHesap': CariHesap
+        'StokKart': StokKart,
+        'StokHareketi': StokHareketi,
+        'Depo': Depo,
+        'Firma': Firma
     }
     
     model_name = config.get('model_name', 'CariHesap')
@@ -893,7 +962,7 @@ def api_rapor_calistir():
     tenant_db = get_tenant_db()
     
     if not tenant_db:
-        return jsonify({'success': False, 'message': 'Firebird bağlantısı yok'}), 400
+        return jsonify({'success': False, 'message': 'Database bağlantısı yok'}), 400
     
     try:
         # ✅ Session'a kaydet (önizleme için)
@@ -945,21 +1014,24 @@ def onizleme(model_name):
     # Model class map
     model_class_map = {
         'CariHesap': CariHesap,
-        'Fatura': None,  # Eklenecek
-        'StokKart': None,  # Eklenecek
+        'Fatura': Fatura,     
+        'StokKart': StokKart,
+        'StokHareketi': StokHareketi,
+        'Depo': Depo,
+        'Firma': Firma
     }
     
     model_class = model_class_map.get(model_name)
     
     if not model_class:
         flash(f'Model "{model_name}" desteklenmiyor.', 'danger')
-        return redirect(url_for('rapor.tasarimci'))
-    
-    # Firebird session
+        return redirect(url_for('rapor.tasarimci')) 
+        
+    # Database session
     tenant_db = get_tenant_db()
     
     if not tenant_db:
-        flash('Firebird bağlantısı yok.', 'danger')
+        flash('Database bağlantısı yok.', 'danger')
         return redirect(url_for('rapor.tasarimci'))
     
     try:
@@ -987,9 +1059,12 @@ def onizleme(model_name):
         
         # Model adı Türkçe
         model_names = {
-            'CariHesap': 'Cari Hesaplar',
-            'Fatura': 'Faturalar',
-            'StokKart': 'Stok Kartları'
+            'CariHesap': 'Cari Hesaplar Raporu',
+            'Fatura': 'Faturalar Raporu',
+            'StokKart': 'Stok Kartları Raporu',
+            'StokHareketi': 'Stok Hareketleri Raporu',
+            'Depo': 'Depolar Listesi',
+            'Firma': 'Firma Listesi'
         }
         
         return render_template('rapor/onizleme_full.html',
@@ -1009,7 +1084,7 @@ def onizleme(model_name):
         flash(f'Önizleme oluşturulamadı: {str(e)}', 'danger')
         return redirect(url_for('rapor.tasarimci'))
             
-@rapor_bp.route('/rapor-yukle/<int:report_id>')
+@rapor_bp.route('/rapor-yukle/<string:report_id>')
 @login_required
 def rapor_yukle(report_id):
     """Kayıtlı raporu yükle"""
@@ -1024,14 +1099,14 @@ def rapor_yukle(report_id):
     logger.info(f"  - aktif_firma_id: {session.get('aktif_firma_id')}")
     logger.info(f"  - Tüm key'ler: {list(session.keys())}")
     
-    # ✅ Firebird session al
+    # ✅ Database session al
     tenant_db = get_tenant_db()
     
     # ✅ KONTROL
     if tenant_db is None:
         logger.error("❌ get_tenant_db() None döndü!")
         logger.error("   Olası sebep: session['active_db_yolu'] veya session['active_db_sifre'] eksik")
-        flash('Firebird bağlantısı kurulamadı. Lütfen firma seçin.', 'danger')
+        flash('Database bağlantısı kurulamadı. Lütfen firma seçin.', 'danger')
         return redirect(url_for('rapor.kaydedilenler'))
     
     try:
@@ -1066,7 +1141,7 @@ def rapor_yukle(report_id):
         return redirect(url_for('rapor.kaydedilenler'))
         
         
-@rapor_bp.route('/rapor-sil/<int:report_id>', methods=['POST'])
+@rapor_bp.route('/rapor-sil/<string:report_id>', methods=['POST'])
 @login_required
 @csrf.exempt
 def rapor_sil(report_id):
@@ -1074,13 +1149,13 @@ def rapor_sil(report_id):
     
     from app.modules.rapor.models import SavedReport
     
-    # ✅ Firebird session
+    # ✅ Database session
     tenant_db = get_tenant_db()
     
     if not tenant_db:
-        return jsonify({'success': False, 'message': 'Firebird bağlantısı yok'}), 400
+        return jsonify({'success': False, 'message': 'Database bağlantısı yok'}), 400
     
-    # ✅ Firebird'den rapor çek
+    # ✅ Database'den rapor çek
     report = tenant_db.query(SavedReport).filter_by(id=report_id).first()
     
     if not report:
@@ -1099,7 +1174,7 @@ def rapor_sil(report_id):
         logger.error(f"Rapor silme hatası: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@rapor_bp.route('/rapor-kopyala/<int:report_id>', methods=['POST'])
+@rapor_bp.route('/rapor-kopyala/<string:report_id>', methods=['POST'])
 @login_required
 @csrf.exempt 
 def rapor_kopyala(report_id):
@@ -1107,13 +1182,13 @@ def rapor_kopyala(report_id):
     
     from app.modules.rapor.models import SavedReport
     
-    # ✅ Firebird session
+    # ✅ Database session
     tenant_db = get_tenant_db()
     
     if not tenant_db:
-        return jsonify({'success': False, 'message': 'Firebird bağlantısı yok'}), 400
+        return jsonify({'success': False, 'message': 'Database bağlantısı yok'}), 400
     
-    # ✅ Firebird'den rapor çek
+    # ✅ Database'den rapor çek
     original_report = tenant_db.query(SavedReport).filter_by(id=report_id).first()
     
     if not original_report:
@@ -1151,21 +1226,17 @@ def rapor_kopyala(report_id):
 @login_required
 def tasarimci():
     """Rapor tasarım arayüzü"""
-    
     saved_reports = []
-    
     try:
         from app.modules.rapor.models import SavedReport
+        tenant_db = get_tenant_db() # ✨ Eklendi
         
-        # ✅ Firebird session kullan
-        saved_reports = SavedReport.query_fb().filter_by(
+        # ✨ query_fb() yerine tenant_db.query() kullanıldı
+        saved_reports = tenant_db.query(SavedReport).filter_by(
             user_id=str(current_user.id)
         ).order_by(SavedReport.updated_at.desc()).all()
-    
     except Exception as e:
         logger.warning(f"SavedReport sorgulanamadı: {e}")
-        import traceback
-        logger.warning(traceback.format_exc())
     
     return render_template('rapor/tasarimci.html', saved_reports=saved_reports)
     
@@ -1177,38 +1248,33 @@ def kaydedilenler():
     
     user_reports = []
     public_reports = []
-    
     try:
         from app.modules.rapor.models import SavedReport
+        tenant_db = get_tenant_db() # ✨ Eklendi
         
-        # ✅ Kullanıcının raporları
-        user_reports = SavedReport.query_fb().filter_by(
+        # ✨ query_fb() kaldırıldı
+        user_reports = tenant_db.query(SavedReport).filter_by(
             user_id=str(current_user.id)
         ).order_by(SavedReport.updated_at.desc()).all()
         
-        # ✅ Paylaşılan raporlar (DÜZELTİLDİ)
-        # Firebird boolean'ı 1/0 olarak saklar
-        public_reports = SavedReport.query_fb().filter(
-            SavedReport.is_public == 1,  # ✅ True yerine 1
+        # Database boolean'ı 1/0 olarak saklar mantığı MySQL/PG'de True/False olmalıdır
+        public_reports = tenant_db.query(SavedReport).filter(
+            SavedReport.is_public == True, # ✨ 1 yerine True yazıldı
             SavedReport.user_id != str(current_user.id)
         ).order_by(SavedReport.created_at.desc()).limit(10).all()
-    
+        
     except Exception as e:
         logger.error(f"Raporlar yüklenemedi: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
         flash('Raporlar yüklenemedi.', 'danger')
-    
-    return render_template('rapor/kaydedilenler.html', 
-                         user_reports=user_reports,
-                         public_reports=public_reports)
+        
+    return render_template('rapor/kaydedilenler.html', user_reports=user_reports, public_reports=public_reports)
 
 
 @rapor_bp.route('/api/rapor-kaydet', methods=['POST'])
 @login_required
 @csrf.exempt  # ✅ Artık çalışacak
 def api_rapor_kaydet():
-    """Raporu Firebird'e kaydet"""
+    """Raporu Database'e kaydet"""
     
     import traceback
     
@@ -1216,10 +1282,10 @@ def api_rapor_kaydet():
         tenant_db = get_tenant_db()
         
         if not tenant_db:
-            logger.error("❌ Firebird bağlantısı yok")
+            logger.error("❌ Database bağlantısı yok")
             return jsonify({
                 'success': False, 
-                'message': 'Firebird bağlantısı yok'
+                'message': 'Database bağlantısı yok'
             }), 400
         
         data = request.get_json()
@@ -1256,7 +1322,7 @@ def api_rapor_kaydet():
         report.config = data['config']
         logger.info(f"✅ Config set edildi: {len(report.config_json)} karakter")
         
-        logger.info("💾 Firebird'e kaydediliyor...")
+        logger.info("💾 Database'e kaydediliyor...")
         
         tenant_db.add(report)
         tenant_db.commit()

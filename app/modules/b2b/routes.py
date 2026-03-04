@@ -148,6 +148,7 @@ def katalog():
             'ad': stok.ad,
             'birim': getattr(stok, 'birim', 'Adet'),
             'fiyat': birim_fiyat,
+            'resim_path': getattr(stok, 'resim_path', None),
             'stok_miktari': float(toplam_miktar or 0)
         })
 
@@ -281,6 +282,7 @@ def siparis_tamamla():
     from app.modules.depo.models import Depo
     from app.modules.sube.models import Sube
     from app.modules.firmalar.models import Donem
+    from app.modules.b2b.models import B2BAyar # ✨ B2B Ayarları eklendi
     
     varsayilan_depo = tenant_db.query(Depo).first()
     varsayilan_sube = tenant_db.query(Sube).filter_by(aktif=True).first()
@@ -289,6 +291,18 @@ def siparis_tamamla():
     if not varsayilan_depo:
         return "Sipariş oluşturulamadı: ERP sisteminizde tanımlı hiçbir depo bulunmuyor!", 400
         
+    # ==========================================
+    # 🚀 OTOMATİK SİPARİŞ ONAY MOTORU
+    # ==========================================
+    b2b_ayar = tenant_db.query(B2BAyar).filter_by(firma_id=str(session['tenant_id'])).first()
+    
+    # getattr ile güvenli çekim yapıyoruz, modelde sütun yoksa bile kod çökmez, False sayar.
+    oto_onay_aktif_mi = getattr(b2b_ayar, 'oto_siparis_onayi', False) if b2b_ayar else False
+    
+    # Ayar açıksa ONAYLANDI, kapalıysa BEKLIYOR statüsü ata
+    siparis_durumu = SiparisDurumu.ONAYLANDI.value if oto_onay_aktif_mi else SiparisDurumu.BEKLIYOR.value
+    durum_metni = "Otomatik Onaylandı" if oto_onay_aktif_mi else "Muhasebe Onayı Bekliyor"
+
     try:
         toplam = sum(item['miktar'] * item['fiyat'] for item in sepet.values())
         oto_belge_no = f"B2B-{datetime.now().strftime('%Y%m%d%H%M')}"
@@ -301,8 +315,8 @@ def siparis_tamamla():
             depo_id=str(varsayilan_depo.id),
             belge_no=oto_belge_no,
             tarih=datetime.utcnow().date(),
-            durum=SiparisDurumu.BEKLIYOR.value, 
-            aciklama=f"B2B Portal üzerinden {g.b2b_user.ad_soyad} tarafından oluşturuldu.",
+            durum=siparis_durumu, # ✨ DİNAMİK DURUM BURADAN GİDİYOR
+            aciklama=f"B2B Portal: {g.b2b_user.ad_soyad} tarafından oluşturuldu. ({durum_metni})",
             ara_toplam=toplam,
             genel_toplam=toplam,
             doviz_turu='TL'
@@ -325,6 +339,8 @@ def siparis_tamamla():
             
         tenant_db.commit()
         session.pop('b2b_sepet', None)
+        
+        # Sipariş tamamlanınca bayi dashboard'una yönlendir (Dilersen buraya flash mesaj da koyabilirsin)
         return redirect(url_for('b2b.dashboard'))
         
     except Exception as e:

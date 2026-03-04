@@ -98,35 +98,6 @@ class Hedef(db.Model):
     plasiyer = db.relationship('Kullanici', lazy='select')
     sube = db.relationship('Sube', lazy='select')
 
-
-class AIRaporAyarlari(db.Model):
-    __tablename__ = 'ai_rapor_ayarlari'
-
-    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
-    firma_id = db.Column(db.String(36), db.ForeignKey('firmalar.id'))
-    anahtar = db.Column(db.String(50), nullable=False)
-    deger = db.Column(db.String(50), nullable=False)
-    aciklama = db.Column(db.String(200))
-    
-    __table_args__ = (
-        db.UniqueConstraint('firma_id', 'anahtar', name='uq_ai_ayar'),
-        {'extend_existing': True}
-    )
-
-
-class AIRaporGecmisi(db.Model):
-    __tablename__ = 'ai_rapor_gecmisi'
-    query_class = FirmaFilteredQuery
-    __table_args__ = {'extend_existing': True}
-    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
-    firma_id = db.Column(db.String(36), db.ForeignKey('firmalar.id'))
-    tarih = db.Column(db.DateTime, server_default=db.func.now())
-    rapor_turu = db.Column(db.String(50))
-    baslik = db.Column(db.String(200))
-    html_icerik = db.Column(db.Text)
-    ham_veri_json = db.Column(db.Text)
-
-
 class WorkflowDefinition(db.Model):
     #İş Akışı Tanımları
     __tablename__ = 'workflow_definitions'
@@ -231,7 +202,7 @@ from app.modules.banka_import.models import (
 )
 
 # Rapor
-from app.modules.rapor.models import YazdirmaSablonu
+from app.modules.rapor.models import YazdirmaSablonu, AIRaporAyarlari, AIRaporGecmisi
 
 # CRM
 from app.modules.crm.models import AdayMusteri, SatisAsamasi, SatisFirsati, CrmAktivite, CrmHareketi, CrmFirsatLogu
@@ -294,10 +265,10 @@ __all__ = [
     # Banka Import
     'BankaImportSablon', 'BankaImportKurali', 'BankaImportGecmisi',
     
-    # Rapor
-    'YazdirmaSablonu',
+    # 
+    'YazdirmaSablonu', 'AIRaporAyarlari', 'AIRaporGecmisi',
     
-    # Form Builder
+    # Form BuilderRapor
     # 'MenuItem',
     
     # Diğer

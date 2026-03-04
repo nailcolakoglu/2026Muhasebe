@@ -1,0 +1,327 @@
+🚀 GitHub'a Kod Gönderme Rehberi
+Senin durumunda tüm kodlarda değişiklik yaptığın için doğru yöntem şu:
+
+📋 Adım Adım Yöntem
+1. Terminal/Komut İstemi Aç
+Proje dizinine git:
+
+bash
+cd C:\path\to\2026Muhasebe
+2. Git Durumunu Kontrol Et
+bash
+git status
+Çıktı şuna benzer olacak:
+
+Code
+On branch main
+Changes not staged for commit:
+  modified:   app/form_builder/form.py
+  modified:   app/form_builder/utils.py
+  ...
+3. Değişiklikleri Stage'e Al
+Tüm değişiklikleri ekle:
+bash
+git add .
+Ya da sadece belirli dosyaları ekle:
+bash
+git add app/form_builder/*.py
+git add app/modules/*.py
+4. Commit Yap (Açıklayıcı Mesaj Yaz)
+bash
+git commit -m "feat: Form builder sistemi güncellemeleri
+
+- Field tipleri genişletildi (40+ tip)
+- Validation kuralları eklendi
+- DataGrid performans iyileştirmeleri
+- Workflow engine webhook desteği
+- Kanban board sürükle-bırak düzeltmeleri
+- AI generator rate limiting eklendi
+- XSS ve güvenlik iyileştirmeleri
+- Multi-step form auto-save özelliği
+"
+Commit mesajı kuralları:
+
+feat: - Yeni özellik
+fix: - Hata düzeltmesi
+refactor: - Kod yeniden düzenleme
+docs: - Dokümantasyon
+style: - Stil değişiklikleri
+perf: - Performans iyileştirmesi
+5. GitHub'a Push Et
+Ana branch'e direkt push (dikkatli olun!):
+bash
+git push origin main
+VEYA yeni branch oluştur (önerilen):
+bash
+# Yeni branch oluştur
+git checkout -b feature/form-builder-updates
+
+# Bu branch'i GitHub'a gönder
+git push -u origin feature/form-builder-updates
+⚠️ SENARYOLAR VE ÇÖZÜMLER
+Senaryo 1: "Remote'ta Yeni Değişiklikler Var" Hatası
+bash
+! [rejected]        main -> main (fetch first)
+error: failed to push some refs
+Çözüm:
+
+bash
+# 1. Uzaktaki değişiklikleri al
+git pull origin main
+
+# 2. Eğer çakışma varsa düzelt
+# VS Code otomatik gösterir: "Accept Current Change", "Accept Incoming Change"
+
+# 3. Çakışmaları çözdükten sonra:
+git add .
+git commit -m "merge: Conflict çözüldü"
+git push origin main
+Senaryo 2: "Büyük Dosya" Hatası (100MB+)
+bash
+remote: error: File xyz is 105.50 MB; this exceeds GitHub's file size limit of 100.00 MB
+Çözüm:
+
+bash
+# .gitignore dosyasına ekle
+echo "uploads/" >> .gitignore
+echo "*.log" >> .gitignore
+echo "__pycache__/" >> .gitignore
+
+# Git cache'i temizle
+git rm -r --cached .
+git add .
+git commit -m "fix: .gitignore güncellendi"
+Senaryo 3: "Yanlışlıkla Hassas Bilgi Commit Ettim"
+bash
+# Son commit'i geri al (dosyalar kalır)
+git reset --soft HEAD~1
+
+# .env dosyasını .gitignore'a ekle
+echo ".env" >> .gitignore
+
+# Tekrar commit
+git add .
+git commit -m "fix: .env dosyası kaldırıldı"
+git push origin main --force
+Senaryo 4: "VS Code Kullanıyorum"
+GUI ile yapma:
+
+Source Control panelini aç (Ctrl+Shift+G)
+Changes bölümünde tüm dosyaları gör
+"+" butonuna tıkla (Stage Changes)
+Üstteki mesaj kutusuna commit mesajı yaz
+✓ Commit butonuna tıkla
+"..." → Push seç
+🔒 GÜVENLİK KONTROL LİSTESİ
+Göndermeden önce kontrol et:
+
+bash
+# 1. Hassas bilgi var mı?
+grep -r "password\|secret\|api_key" .
+
+# 2. .env dosyası commit edilmiş mi?
+git ls-files | grep .env
+
+# 3. __pycache__ dosyaları var mı?
+find . -name "__pycache__" -type d
+
+# 4. Test dosyaları temiz mi?
+find . -name "test_*.py" -type f
+Güvenli .gitignore örneği:
+
+gitignore
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+env/
+
+# Hassas Bilgiler
+.env
+.env.local
+*.key
+*.pem
+secrets.json
+
+# Veritabanı
+*.db
+*.sqlite3
+*.sql
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Yüklenen Dosyalar
+uploads/
+media/
+static/uploaded/
+
+# Log Dosyaları
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+🎯 ÖNERİLEN WORKFLOW (GÜVENLİ YOL)
+bash
+# 1. Yeni branch oluştur
+git checkout -b feature/guncellemeler-2026
+
+# 2. Tüm değişiklikleri ekle
+git add .
+
+# 3. Commit yap
+git commit -m "feat: Kapsamlı sistem güncellemeleri
+
+Değişiklikler:
+- Form builder modülü yenilendi
+- Validation sistemi güçlendirildi
+- DataGrid performans artışı
+- Güvenlik iyileştirmeleri
+- Yeni field tipleri eklendi
+
+Closes #123
+"
+
+# 4. Push et
+git push -u origin feature/guncellemeler-2026
+
+# 5. GitHub'da Pull Request oluştur
+# Tarayıcıda repo'ya git → "Compare & pull request" butonuna tıkla
+📊 GİTHUB WEB ARAYÜZÜNDE PULL REQUEST OLUŞTURMA
+GitHub reposuna git
+"Compare & pull request" butonunu gör (otomatik çıkar)
+Başlık yaz: feat: Form Builder Sistemi Güncellemeleri
+Açıklama yaz:
+Markdown
+## 🎯 Değişiklikler
+
+### ✨ Yeni Özellikler
+- [ ] 40+ field tipi eklendi (TCKN, IBAN, PLATE vb.)
+- [ ] AI generator rate limiting
+- [ ] Multi-step form auto-save
+- [ ] DataGrid bulk actions
+- [ ] Workflow webhook desteği
+
+### 🐛 Düzeltmeler
+- [ ] XSS güvenlik açığı kapatıldı
+- [ ] CSRF token yönetimi iyileştirildi
+- [ ] Dosya upload güvenliği artırıldı
+
+### ⚡ Performans
+- [ ] DataGrid lazy loading
+- [ ] Form field caching
+- [ ] Menu cache optimizasyonu
+
+### 📝 Notlar
+Testler başarılı. Production'a alınabilir.
+"Create pull request" tıkla
+🆘 SIKÇA SORULAN SORULAR
+S: "git push" dediğimde şifre soruyor
+C: GitHub artık şifre kabul etmiyor. Personal Access Token (PAT) kullanman gerekiyor.
+
+Çözüm:
+
+bash
+# 1. GitHub → Settings → Developer settings → Personal access tokens
+# 2. "Generate new token (classic)" tıkla
+# 3. Yetkileri seç: repo, workflow, admin:org
+# 4. Token'ı kopyala (bir kez gösteriliyor!)
+
+# 5. Git credential'ı güncelle
+git config --global credential.helper store
+git push
+
+# Kullanıcı adı: nailcolakoglu
+# Şifre: ghp_1234abcd... (token'ı yapıştır)
+S: "Conflict" hatası aldım, ne yapmalıyım?
+C: İki kişi aynı dosyayı değiştirmiş.
+
+Çözüm:
+
+bash
+# 1. Dosyayı aç (VS Code otomatik gösterir)
+# Şuna benzer işaretler göreceksin:
+
+<<<<<<< HEAD
+# Senin kodun
+=======
+# Uzaktaki kod
+>>>>>>> origin/main
+
+# 2. Doğru olanı seç veya ikisini birleştir
+# 3. İşaretleri sil (<<<, ===, >>>)
+# 4. Kaydet ve commit et
+
+git add .
+git commit -m "merge: Conflict çözüldü"
+git push
+S: "Large files" hatası, ne yapmalıyım?
+C: Git LFS (Large File Storage) kullan.
+
+Çözüm:
+
+bash
+# 1. Git LFS kur
+git lfs install
+
+# 2. Büyük dosya tiplerini tanımla
+git lfs track "*.psd"
+git lfs track "*.mp4"
+git lfs track "*.zip"
+
+# 3. .gitattributes'i commit et
+git add .gitattributes
+git commit -m "chore: Git LFS eklendi"
+git push
+✅ KONTROL LİSTESİ
+Push etmeden önce:
+
+ git status ile tüm dosyaları kontrol ettim
+ .env ve hassas bilgiler commit edilmedi
+ __pycache__ klasörleri yok
+ Açıklayıcı commit mesajı yazdım
+ Testleri çalıştırdım (python -m pytest)
+ Loglara baktım (hata yok)
+ Yeni branch'te çalışıyorum (main'i bozmadım)
+🎬 HIZLI BAŞLANGIÇ KOPYALA-YAPIŞTIR
+bash
+# 1. Durumu kontrol et
+git status
+
+# 2. Yeni branch oluştur
+git checkout -b feature/system-updates
+
+# 3. Tüm değişiklikleri ekle
+git add .
+
+# 4. Commit yap
+git commit -m "feat: Kapsamlı sistem güncellemeleri
+
+- Form builder modülü yenilendi
+- Validation sistemi güçlendirildi
+- DataGrid performans iyileştirmesi
+- Güvenlik güncellemeleri
+"
+
+# 5. GitHub'a gönder
+git push -u origin feature/system-updates
+
+# 6. Tarayıcıda GitHub reposuna git ve Pull Request oluştur
+Hangi yöntemi tercih ediyorsun?
+
+Terminal ile mi? (yukarıdaki komutlar)
+VS Code GUI ile mi? (görsel arayüz)
+GitHub Desktop uygulaması mı? (en kolay)
+Hangisini seçersen ona göre detaylı gösterelim! 🚀
+
+
+
+
+
+

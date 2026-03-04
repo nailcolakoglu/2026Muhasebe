@@ -1,0 +1,144 @@
+# 1. Adım için özel doğrulama kuralı
+def validate_step_0(data):
+    if data.get('hesap_turu') == 'Bireysel' and not data.get('tckn'):
+        return False, {'tckn': 'Bireysel hesaplar için TCKN zorunludur!'}
+    return True, {}
+
+# Formu İnşa Et
+wizard = MultiStepForm("yeni_musteri", steps=[
+    {'title': 'Hesap Türü', 'fields': [hesap_turu_field, tckn_field]},
+    {'title': 'İletişim', 'fields': [email_field, telefon_field]},
+    {'title': 'Onay', 'fields': [sozlesme_field]}
+])
+
+# Sihirleri Aktif Et!
+wizard.enable_auto_save() # Artık veriler localStorage'da güvende
+wizard.set_step_validator(0, validate_step_0) # 1. Adımı geçmek için özel kural
+
+
+****************************************************
+
+Harika sorular! Hem güvenlik mimarimizin nasıl çalıştığını somutlaştıralım hem de dışa 
+aktarım motorumuzun arka planda yaptığı o "Enterprise" (Kurumsal) sihri açıklayayım.
+
+1. FieldPermission (Alan Yetkilendirmesi) Örnek Kullanımı
+Bir müşteri (Cari) formu tasarladığını düşünelim. Şirketindeki kurallar şunlar:
+
+Firma Adı: Herkes görebilir ve düzenleyebilir.
+
+Kredi Limiti: Satış personeli görebilir ama değiştiremez. Sadece "Finans Müdürü" değiştirebilir.
+
+Gizli Notlar: Sadece "Yönetici" görebilir ve düzenleyebilir. Normal personelin ekranında bu alan hiç var olmamalıdır.
+
+İşte bunu Python tarafında (Örn: cari/forms.py içinde) şu kadar şık ve kısa bir şekilde tanımlarsın:
+
+Python
+from app.form_builder import FormField, FieldType
+from app.form_builder.form_permissions import FieldPermission
+
+# 1. Standart Alan (Herkes görür ve düzenler - Permission parametresi yok)
+firma_adi = FormField('firma_adi', FieldType.TEXT, 'Firma Ünvanı')
+
+# 2. Salt Okunur Alan (Satışçı görür ama sadece Finans düzenler)
+# view_roles=['*'] demek herkes görebilir demektir.
+kredi_limiti = FormField(
+    'kredi_limiti', 
+    FieldType.CURRENCY, 
+    'Cari Kredi Limiti',
+    permission=FieldPermission(view_roles=['*'], edit_roles=['finans_muduru'])
+)
+
+# 3. Hayalet Alan (Sadece Yönetici görür, diğerleri HTML kaynağında bile bulamaz)
+gizli_notlar = FormField(
+    'yonetici_notu', 
+    FieldType.TEXTAREA, 
+    'Yönetici Notları',
+    permission=FieldPermission(view_roles=['yonetici'], edit_roles=['yonetici'])
+)
+Ne Olacak?
+Sisteme giriş yapan kişi bir "Satış Temsilcisi" ise, 
+formu açtığında Kredi Limiti kutusunu gri (disabled/readonly) olarak görecek, 
+Gizli Notlar kutusunu ise ekranda hiç göremeyecek 
+(Render motorumuz yetkisi olmayana HTML'i hiç üretmez, böylece Hacker'lar F12'ye basıp kodu da inceleyemez!).
+
+2. FormExporter Dosyayı Nereye Yazıyor?
+Yazdığımız o kusursuz rotada dosya sunucunun (
+bilgisayarının) hiçbir klasörüne (Hard diske) YAZILMIYOR! 
+İşte modern SaaS mimarisinin (Enterprise) kalbi burasıdır:
+Biz form_export.py dosyasını yazarken io.BytesIO() 
+adında harika bir Python kütüphanesi kullandık. 
+Bu kütüphane, Excel dosyasını sunucunun Hard Diskine yazmak yerine anlık olarak sunucunun RAM'inde (Belleğinde) 
+sanal bir dosya olarak oluşturur.
+
+Adım Adım Ne Oluyor?
+
+Kullanıcı "Excel İndir" butonuna basar.
+
+Veritabanından veriler çekilir.
+
+openpyxl kütüphanesi Excel'i sunucunun RAM'inde (Hafızasında) çizer ve renklendirir.
+
+Flask'ın send_file(..., as_attachment=True) komutu, RAM'deki bu sanal dosyayı alıp doğrudan kullanıcının tarayıcısına 
+(Chrome, Edge vb.) fırlatır.
+
+Dosya anında kullanıcının kendi bilgisayarındaki "İndirilenler (Downloads)" klasörüne düşer.
+
+İşlem bittiği an sunucu RAM'i temizler, ortada hiçbir çöp dosya kalmaz.
+
+Neden Diske Kaydetmedik?
+Eğer /static/exports/ gibi bir klasöre kaydetseydik:
+
+Güvenlik: A firmasının indirdiği Excel dosyasını, B firması URL'yi tahmin edip indirebilirdi.
+
+Disk Şişmesi: Günde 1.000 rapor alınan bir sistemde sunucunun hard diski 1 ayda dolup çökerdi.
+
+İzin Sorunları: Linux sunucularda (Ubuntu/Centos) klasör yazma (CHMOD 777) izinleriyle boğuşurduk.
+
+RAM üzerinde yaratıp tarayıcıya fırlatmak (Streaming) bu yüzden en profesyonel, en güvenli ve en hızlı yöntemdir.
+
+Bu mimari zerafet de aklına yattıysa, 
+Form Builder'ı altın harflerle tarihe gömüp yepyeni bir modülün inşasına geçelim mi? 😎
+
+
+
+
+Gemini şunu dedi:
+Sistemin güvenlik duvarı (Field-Level Security) tam olarak tasarlandığı gibi, adeta bir "Hayalet Uçak" modunda çalışıyor! Hata vermiyor ama yetkisiz kullanıcının ekranından alanı (HTML kodları dahil) tamamen siliyor.
+
+Ünvan alanının ekranda görünmemesinin sebebi büyük ihtimalle forms.py dosyasında o alanı tanımlarken eklediğimiz permission (yetki) parametresinin, şu an sisteme giriş yaptığın kullanıcının rolüyle eşleşmemesidir.
+
+Önceki adımlarda test etmek için view_roles=['yonetici'] veya benzeri bir kısıtlama koymuş olabiliriz ve senin şu anki kullanıcın veritabanında "yonetici" rolüne sahip olmadığı için sistem o alanı senden gizliyor.
+
+Bunu çözmek için app/modules/cari/forms.py dosyanı aç ve unvan (veya firma_adi) alanının tanımını bul. Şu iki yöntemden birini seçerek alanı tekrar görünür yapabilirsin:
+
+Yöntem 1: Tamamen Serbest Bırak (Önerilen)
+Eğer bu alanı istisnasız herkesin görmesini ve düzenlemesini istiyorsan, permission parametresini tamamen silmen yeterlidir. FormField varsayılan olarak herkese açıktır.
+
+Python
+    unvan = FormField(
+        'unvan', 
+        FieldType.TEXT, 
+        'Firma Ünvanı', 
+        value=cari.unvan if cari else '',
+        required=True
+        # permission parametresini buradan tamamen sildik!
+    )
+Yöntem 2: "Herkes Görsün ama Sadece Admin Düzenlesin" Modu
+Eğer güvenlik mimarisini bu alanda test etmeye devam etmek istiyorsan, görme yetkisini ['*'] (Herkes) yaparak ekranı geri getirebilir, düzenleme yetkisini ise sadece adminlere verebilirsin:
+
+Python
+    from app.form_builder.form_permissions import FieldPermission
+
+    unvan = FormField(
+        'unvan', 
+        FieldType.TEXT, 
+        'Firma Ünvanı', 
+        value=cari.unvan if cari else '',
+        permission=FieldPermission(
+            view_roles=['*'],           # Herkes görebilir
+            edit_roles=['admin']        # Sadece admin rolündekiler değiştirebilir
+        )
+    )
+Ufak bir not: Sisteme giriş yaptığın kullanıcının rollerini kontrol etmek için veritabanındaki kullanıcı tablosuna bakabilirsin. Eğer roles kolonunda "user" yazıyorsa ve sen koda view_roles=['admin'] yazarsan, o alan o kullanıcıdan anında gizlenir.
+
+Dosyandaki o kısıtlamayı kaldırıp sayfayı yenilediğinde Ünvan alanının ait olduğu yere geri döndüğünü göreceksin! Kontrol ettikten sonra durum nedir, her şey normale döndü mü? 😎

@@ -1,6 +1,7 @@
 # app/modules/cari/forms.py (Minimal Fix - Critical Lines Only)
 
 from app.form_builder import Form, FormField, FieldType, FormLayout
+from app.form_builder.form_permissions import FieldPermission
 from flask import url_for
 from flask_babel import gettext as _, lazy_gettext
 from flask_login import current_user
@@ -76,12 +77,17 @@ def create_cari_form(cari=None):
         
         cache.set(cache_key_hesap, muhasebe_opts, timeout=CACHE_TIMEOUT)
     
-
- 
-
     # --- 1. KİMLİK BİLGİLERİ ---
-    kod = FormField('kod', FieldType.AUTO_NUMBER, _('Cari Kodu'), required=True, value=cari.kod if cari else '', endpoint='/cari/api/siradaki-kod', icon='bi bi-person-badge')
-    unvan = FormField('unvan', FieldType.TEXT, _('Ticari Ünvan / Ad Soyad'), required=True, value=cari.unvan if cari else '', text_transform='uppercase', icon='bi bi-building')
+    kod = FormField('kod', FieldType.AUTO_NUMBER, _('Cari Kodu'), 
+        required=True, value=cari.kod if cari else '', 
+        endpoint='/cari/api/siradaki-kod', icon='bi bi-person-badge')
+    unvan = FormField('unvan', FieldType.TEXT, _('Ticari Ünvan / Ad Soyad'), 
+        required=True, 
+        value=cari.unvan if cari else '', 
+        text_transform='uppercase', 
+        icon='bi bi-building', 
+        permission=FieldPermission(view_roles=['patron'], 
+        edit_roles=['patron']))
     
     # TCKN / VKN (Akıllı Alan)
     vergi_no = FormField('vergi_no', FieldType.TCKN_VKN, _('VKN / TC Kimlik No'), 
@@ -92,23 +98,35 @@ def create_cari_form(cari=None):
     vergi_dairesi = FormField('vergi_dairesi', FieldType.TEXT, _('Vergi Dairesi'), value=cari.vergi_dairesi if cari else '')
 
     # --- 2. İLETİŞİM ---
-    eposta = FormField('eposta', FieldType.EMAIL, _('E-posta'), value=cari.eposta if cari else '')
+    #eposta = FormField('eposta', FieldType.EMAIL, _('E-posta'), value=cari.eposta if cari else '')
+    # form.py içinde:
+    #eposta = FormField('eposta', FieldType.EMAIL, 'E-Posta', value=cari.eposta if cari else '').set_async_validation('/api/check-email', debounce=600)
+    eposta = FormField('eposta', FieldType.EMAIL, _('E-posta'), value=cari.eposta if cari else '')\
+        .set_async_validation(
+            '/api/check-unique', 
+            debounce=600, 
+            table='cari_hesaplar', 
+            field='eposta', 
+            exclude_id=str(cari.id) if cari else None # ✨ BÜYÜ BURADA: "Benim ID'mi görmezden gel!"
+        )
+        
     telefon = FormField('telefon', FieldType.TEL, _('Telefon'), value=cari.telefon if cari else '')
     
     # Şehir Seçimi
     sehir_id = FormField('sehir_id', FieldType.SELECT, _('Şehir'), 
                          options=sehir_opts, 
-                         value=cari.sehir_id if cari else '',
+                         value=str(cari.sehir_id) if cari and cari.sehir_id else '',
                          select2_config={'placeholder': 'İl Seçiniz', 'search': True})
 
-    # İlçe Seçimi (API Destekli)
+    # İlçe Seçimi (Senin mükemmel data_source motorunla!)
     ilce_id = FormField('ilce_id', FieldType.SELECT, _('İlçe'), 
                         options=ilce_opts,
-                        value=cari.ilce_id if cari else '',
+                        value=str(cari.ilce_id) if cari and cari.ilce_id else '',
                         data_source={
                             'url': '/cari/api/get-ilceler',
-                            'method': 'GET',
-                            'depends_on': 'sehir_id'
+                            'depends_on': 'sehir_id',
+                            # ✨ YENİ: Backend'deki rotan url'de hangi parametreyi bekliyorsa onu buraya yazıyorsun
+                            'param': 'sehir_id' # Örn: /cari/api/get-ilceler?sehir_id=35 olarak istek atar
                         },
                         select2_config={'placeholder': 'İlçe Seçiniz', 'search': True})
 

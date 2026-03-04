@@ -9,15 +9,14 @@ import os
 import logging
 import click
 from flask import Flask, g, session, request, redirect, url_for, render_template, flash
-from flask_login import login_required
+from flask_login import login_required, current_user
 from datetime import datetime, timezone
 from sqlalchemy import text
 
-from app.extensions import db, cache, login_manager, babel, init_extensions
+from app.extensions import db, cache, login_manager, babel, init_extensions, limiter, socketio
 from app.context_manager import GlobalContextManager
 from config import get_config
 
-#from app.patches import apply_firebird_patches
 
 # Logging yapılandırması
 logging.basicConfig(
@@ -55,6 +54,17 @@ def create_app(config_name=None):
         config_name = os.getenv('FLASK_ENV', 'development')
 
     app.config.from_object(get_config(config_name))
+    
+    from flask import request
+    from app.form_builder.menu_manager import MenuManager
+
+    @app.context_processor
+    def inject_breadcrumbs():
+        # Sadece giriş yapmış kullanıcılar için hesapla
+        if current_user.is_authenticated:
+            return dict(breadcrumbs=MenuManager.get_breadcrumb(request.path))
+        return dict(breadcrumbs=[])
+    
     
     logger.info(f"🚀 Uygulama başlatılıyor: {config_name} modu")
 
@@ -228,7 +238,7 @@ def register_middleware(app):
         return {
             'now': datetime.now(timezone.utc),  # ✅ DÜZELTİLDİ
             'app_name': app.config.get('APP_NAME', 'ERP Sistemi'),
-            'app_version': app.config.get('APP_VERSION', '1.0.0'),
+            'app_version': app.config.get('APP_VERSION', '4.25.19'),
             'current_year': datetime.now(timezone.utc).year,  # ✅ DÜZELTİLDİ
             'dynamic_menu': dynamic_menu, 
         }
@@ -241,6 +251,10 @@ def register_blueprints(app):
     Args:
         app (Flask): Flask uygulaması
     """
+
+    # validation_api modülü (Kimlik doğrulama)
+    from app.form_builder.validation_api import validation_bp
+    app.register_blueprint(validation_bp, url_prefix='/api')
     
     # ============================================================================
     # TEMEL MODÜLLER
@@ -919,9 +933,12 @@ if __name__ == '__main__':
     print(f"🌍 Environment: {app.config.get('ENV', 'development')}")
     print("=" * 60)
     
-    app.run(
-        host='0.0.0.0',
-        port=5000,
-        debug=True,
+    #app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True )
+    
+    socketio.run(
+        app, 
+        host='0.0.0.0', 
+        port=5000, 
+        debug=True, 
         use_reloader=True
     )
