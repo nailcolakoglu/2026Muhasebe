@@ -437,6 +437,181 @@
         });
     }
 
+
+// ==================== 5. LAZY LOADING (SONSUZ KAYDIRMA) ====================
+    function initLazyLoading() {
+        $('.lazy-load-grid').each(function() {
+            var $table = $(this);
+            var $tbody = $table.find('tbody');
+            
+            // Backend'den DataGrid render edilirken basılan değerleri alıyoruz
+            var url = $table.data('url') || window.location.pathname;
+            var currentPage = parseInt($table.data('page')) || 1;
+            var totalPages = parseInt($table.data('total')) || 1;
+            var isLoading = false;
+
+            // Eğer sadece 1 sayfa varsa veya hiç veri yoksa, lazy loading kurmaya gerek yok
+            if (totalPages <= 1) return;
+
+            // Tablonun en altına bir "Yükleniyor..." satırı ekle
+            var colCount = $table.find('thead th:visible').length;
+            var $loadingRow = $(`
+                <tr class="lazy-loading-row">
+                    <td colspan="${colCount}" class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                        Yeni kayıtlar yükleniyor...
+                    </td>
+                </tr>
+            `);
+            $tbody.append($loadingRow);
+
+            // Sihirli Gözlemci: IntersectionObserver
+            var observer = new IntersectionObserver(function(entries) {
+                // Eğer yükleniyor satırı ekranda (viewport) görünür olduysa ve işlem yoksa
+                if (entries[0].isIntersecting && !isLoading && currentPage < totalPages) {
+                    loadNextPage();
+                }
+            }, {
+                root: null,
+                rootMargin: '100px', // Kullanıcı tam dibe gelmeden 100px önce yüklemeye başla (Daha akıcı hissettirir)
+                threshold: 0.1
+            });
+
+            // Gözlemlemeye başla
+            observer.observe($loadingRow[0]);
+
+            function loadNextPage() {
+                isLoading = true;
+                currentPage++;
+                
+                // Mevcut URL'deki arama (q) veya filtreleme (sort) parametrelerini koru
+                var currentParams = new URLSearchParams(window.location.search);
+                currentParams.set('page', currentPage);
+                currentParams.set('lazy', 'true'); // Backend'e "Sadece TR satırlarını gönder" diyoruz
+                
+                var ajaxUrl = url + '?' + currentParams.toString();
+
+                $.ajax({
+                    url: ajaxUrl,
+                    type: 'GET',
+                    success: function(html) {
+                        // Gelen yeni <tr> satırlarını, "yükleniyor" satırının HEMEN ÜSTÜNE ekle
+                        $loadingRow.before(html);
+                        $table.data('page', currentPage);
+                        isLoading = false;
+
+                        // Tooltip vb. Bootstrap bileşenleri yeni satırlar için tekrar başlat (İsteğe bağlı)
+                        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                        tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl); });
+
+                        // Son sayfaya ulaştıysak gözlemciyi kapat ve loading satırını sil
+                        if (currentPage >= totalPages) {
+                            observer.disconnect();
+                            $loadingRow.remove();
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Lazy loading hatası:', xhr);
+                        isLoading = false;
+                        $loadingRow.html(`<td colspan="${colCount}" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Veri yüklenemedi. Lütfen sayfayı yenileyin.</td>`);
+                        observer.disconnect();
+                    }
+                });
+            }
+        });
+    }
+
+// ==================== 6. TOPLU İŞLEMLER (BULK ACTIONS) ====================
+    function initBulkActions() {
+        // "Tümünü Seç" Kutucuğu
+        $(document).on('change', '.dx-select-all', function() {
+            var isChecked = $(this).is(':checked');
+            var $table = $(this).closest('table');
+            $table.find('.dx-row-select').prop('checked', isChecked);
+            updateBulkActionVisibility($table);
+        });
+
+        // Tekil Satır Seçimi ve Sayıcı Güncellemesi
+        $(document).on('change', '.dx-row-select', function() {
+            var $table = $(this).closest('table');
+            var total = $table.find('.dx-row-select').length;
+            var checked = $table.find('.dx-row-select:checked').length;
+
+            $table.find('.dx-select-all').prop('checked', total === checked && total > 0);
+            updateBulkActionVisibility($table);
+        });
+
+        function updateBulkActionVisibility($table) {
+            var checkedCount = $table.find('.dx-row-select:checked').length;
+            var gridId = $table.attr('id').replace('dx-grid-', '');
+            var $container = $('#bulk-container-' + gridId);
+
+            if (checkedCount > 0) {
+                $container.find('.dx-selected-count').text(checkedCount);
+                $container.fadeIn(200); // Zarifçe ekrana gelir
+            } else {
+                $container.fadeOut(200); // Seçim bitince gizlenir
+            }
+        }
+
+        // Toplu İşlem Butonuna Tıklanması (AJAX)
+        $(document).on('click', '.dx-bulk-action-btn', function(e) {
+            e.preventDefault();
+            var $btn = $(this);
+            var url = $btn.data('url');
+            var requiresConfirm = $btn.data('confirm');
+            var $table = $btn.closest('.card-body').find('table.dx-grid');
+            var selectedIds = [];
+
+            // Seçili ID'leri topla
+            $table.find('.dx-row-select:checked').each(function() {
+                selectedIds.push($(this).val());
+            });
+
+            if (selectedIds.length === 0) return;
+
+            var performBulkAction = function() {
+                var csrfToken = $('meta[name="csrf-token"]').attr('content');
+                
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    contentType: 'application/json', // Backend request.get_json() ile alacak
+                    data: JSON.stringify({ ids: selectedIds }),
+                    headers: { 'X-CSRFToken': csrfToken },
+                    success: function(res) {
+                        if(res.success) {
+                            Swal.fire({icon: 'success', title: 'Başarılı!', text: res.message, timer: 2000, showConfirmButton: false})
+                            .then(() => window.location.reload());
+                        } else {
+                            Swal.fire('Hata', res.message, 'error');
+                        }
+                    },
+                    error: function() {
+                        Swal.fire('Bağlantı Hatası', 'Sunucu ile iletişim kurulamadı.', 'error');
+                    }
+                });
+            };
+
+            if (requiresConfirm) {
+                Swal.fire({
+                    title: 'Emin misiniz?',
+                    text: selectedIds.length + ' adet kayıt için bu işlemi onaylıyor musunuz?',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Evet, Onaylıyorum',
+                    cancelButtonText: 'İptal'
+                }).then((result) => {
+                    if (result.isConfirmed) performBulkAction();
+                });
+            } else {
+                performBulkAction();
+            }
+        });
+    }
+
     function sendAjaxRequest(url, btn, isDelete) {
         var csrfToken = $('meta[name="csrf-token"]').attr('content');
         $.ajax({
@@ -500,7 +675,9 @@
         initGlobalSearch();
 		initColumnChooser();
         initAjaxActions(); // Yeni Akıllı Silme
-        
+        initLazyLoading();
+		initBulkActions();
+		
         // Özet Footer'ı başlat
         $('.dx-grid[data-enable-summary="true"]').each(function() {
             initSummaryFooter($(this));

@@ -1,0 +1,41 @@
+Harika bir mimari soru! ERP sistemleri geliştirirken bu ikisi genelde birbirine çok karıştırılır ama aslında tamamen farklı iki amaca hizmet eden, birbirini tamamlayan iki devasa motordur. Kısaca cevap vermek gerekirse: Biri "Veri Analisti", diğeri ise "Matbaa"dır. İkisi de bir ERP için %100 zorunludur ve biri diğerinden üstün değildir.
+
+İşte bu iki motorun tam olarak ne işe yaradığı ve neden ikisine de ihtiyacın olduğu:
+
+1. Rapor Tasarımcısı (/rapor/tasarimci) -> "Veri Analisti"
+Bu modül, yazdığımız o muazzam report_designer.py motorudur. Veritabanındaki binlerce satırı alıp yoğurur, hesaplar ve özetler.
+
+Amacı: Toplu veri analizi yapmak, trendleri görmek ve hesaplama yapmaktır.
+
+Ne Yapar? "Son 3 ayda İstanbul'daki müşterilere kestiğim faturaların KDV hariç toplamı nedir?" sorusunun cevabını bulur. Gruplama (Group By), Toplama (SUM, AVG) ve filtreleme yapar.
+
+Çıktısı: Ekranda DataGrid (Tablo), Grafik (Pasta/Çubuk) veya Excel/CSV dosyasıdır.
+
+Kullanıcısı: Patron, Finans Müdürü, Satış Müdürü.
+
+Örnek: Aylık Satış Raporu, Cari Bakiye Listesi, Stok Karlılık Analizi.
+
+2. Şablon Motoru (/rapor/sablon-ekle) -> "Matbaa"
+Bu modül ise doc_engine.py içinde SandboxedEnvironment (Jinja2) ile kurduğun, HTML/CSS tabanlı görsel doküman motorudur. Matematiksel analiz yapmaz, görsel şölen sunar.
+
+Amacı: Belirli bir kaydı (Örn: Tek bir fatura, tek bir sipariş) müşteriye verilecek veya e-Fatura'ya dönüştürülecek şekilde A4 kağıdına jilet gibi çizmektir.
+
+Ne Yapar? Tablo kenarlıkları nerede olacak? Firmanın logosu sağ üstte mi dursun? İmza sirküsü nereye basılsın? Yazı tipi Arial mi olsun? gibi "görsel" tasarımları ayarlar.
+
+Çıktısı: A4 boyutunda Kağıt, PDF veya Resmi E-Fatura (XSLT/HTML).
+
+Kullanıcısı: Fatura kesen ön muhasebeci, irsaliye basan depo görevlisi.
+
+Örnek: Resmi Satış Faturası Çıktısı, Sipariş Fişi, Müşteri Mutabakat Mektubu.
+
+Hangisi Daha Üstün? İkisi de Olmalı mı?
+İkisi elmanın iki yarısıdır. "SAP, Microsoft Dynamics, Logo, Zirve" gibi devasa ERP programlarının hepsinde bu iki modül kesinlikle ayrıdır.
+
+Eğer sadece Tasarımcı olsaydı: Patron şirketin ne kadar kazandığını çok iyi bilirdi ama müşteriye logolu, şık bir Fatura veya İrsaliye PDF'i gönderemezdin.
+
+Eğer sadece Şablon olsaydı: Müşteriye harika faturalar keserdin ama "Bu ay en çok hangi ürünü sattık?" sorusunun cevabını bulmak için yüzlerce faturayı tek tek kağıttan okumak zorunda kalırdın.
+
+Özetle: /tasarimci ile veriyi analiz eder ve hesaplarsın.
+/sablon-ekle ile tekil kayıtları (belgeleri) müşteriye sunulacak resmi evraklara dönüştürürsün.
+
+Mimarini bu iki bacağı da düşünerek kurman (bir tarafta ReportBuilder, diğer tarafta DocumentGenerator), uygulamanın "Milyon Dolarlık SaaS" vizyonuna tam oturduğunu gösteriyor! Bu cepheyi de netleştirdiğimize göre, testlerinde karşına çıkan başka bir anomali var mı? 😎

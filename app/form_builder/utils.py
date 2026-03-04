@@ -13,19 +13,48 @@ try:
 except ImportError:
     HAS_MAGIC = False
 
-def sanitize_html(content):
-    """Zararlı JS kodlarını temizler, sadece izin verilen HTML'e izin verir."""
+def sanitize_html(content, allow_data_attrs=True):
+    """Zararlı JS kodlarını temizler, genişletilmiş HTML ve data-* desteği sunar."""
     if not content:
         return ""
-    allowed_tags = ['b', 'i', 'u', 'em', 'strong', 'a', 'p', 'br', 'ul', 'li', 'h1', 'h2', 'span', 'div']
-    allowed_attrs = {
-        'a': ['href', 'title', 'target'],
-        'span': ['class', 'style'],
-        'div': ['class', 'style'],
-        'p': ['class', 'style']
+        
+    allowed_tags = [
+        'b', 'i', 'u', 'em', 'strong', 'a', 'p', 'br', 'ul', 'li', 
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'div', 'img',
+        'table', 'thead', 'tbody', 'tr', 'th', 'td' # İleride raporlar için tablo gerekebilir
+    ]
+    
+    # Temel izin verilen özellikler (Senin önerdiğin yapı)
+    base_allowed_attrs = {
+        'a': ['href', 'title', 'target', 'rel'],  
+        'img': ['src', 'alt', 'width', 'height', 'loading'],
+        '*': ['class', 'id', 'style'] # Tüm etiketlerde class, id ve style serbest
     }
-    return bleach.clean(str(content), tags=allowed_tags, attributes=allowed_attrs)
 
+    # ✨ SİHİRLİ DOKUNUŞ: Bleach için Dinamik Kural Motoru
+    def attr_filter(tag, name, value):
+        # 1. Her tag için geçerli olanlar (class, id, style)
+        if name in base_allowed_attrs.get('*', []):
+            return True
+            
+        # 2. Tag'e özel izinler (Örn: a tag'i için href)
+        if name in base_allowed_attrs.get(tag, []):
+            return True
+            
+        # 3. YENİ: data-* wildcard desteği!
+        if allow_data_attrs and name.startswith('data-'):
+            return True
+            
+        # Bunlar dışındaki her şeyi (örn: onclick, onmouseover) acımasızca sil!
+        return False
+
+    return bleach.clean(
+        str(content), 
+        tags=allowed_tags, 
+        attributes=attr_filter, # Sözlük yerine yukarıdaki akıllı motoru verdik!
+        protocols=['http', 'https', 'mailto', 'data'] # img src="data:image..." base64 desteği için 'data' eklendi
+    )
+    
 # İzin verilen MIME tipleri (Magic Bytes kontrolü için)
 ALLOWED_MIMES = {
     'image': ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],

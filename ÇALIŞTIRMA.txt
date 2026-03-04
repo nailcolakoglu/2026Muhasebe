@@ -1,3 +1,7 @@
+https://github.com/copilot/c/477df0a1-fd43-41b2-8167-a9b4cac6c8fa
+
+
+
 docker run -d -p 6379:6379 --name erp-redis redis
 
 celery -A celery_worker.celery worker --loglevel=info -P solo

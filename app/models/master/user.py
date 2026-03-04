@@ -31,6 +31,7 @@ class User(UserMixin, db.Model):
     # Profil
     full_name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20))
+    role = db.Column(db.String(50), default='user')    
     
     # Durum
     is_active = db.Column(db.Boolean, default=True)

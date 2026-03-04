@@ -1,6 +1,8 @@
 # form_builder/workflow.py
 import logging
-from simpleeval import simple_eval # pip install simpleeval
+import requests
+from datetime import datetime, timedelta
+from simpleeval import simple_eval
 
 class WorkflowEngine:
     """
@@ -17,7 +19,7 @@ class WorkflowEngine:
 
     def run(self, current_step_id, context_data):
         """
-        Mevcut adımdan başlar, bir duraklama noktasına (WAIT) veya bitişe (END) kadar ilerler.
+        Mevcut adımdan başlar, bir duraklama noktasına (WAIT, DELAY) veya bitişe (END) kadar ilerler.
         """
         step_id = current_step_id or self.start_step
         history = []
@@ -28,40 +30,47 @@ class WorkflowEngine:
                 break
 
             history.append(f"Running: {step_id}")
-            
-            # 1.Action (Eylem) Var mı? (Örn: E-posta at, Statü güncelle)
-            if 'action' in step:
-                self._execute_action(step['action'], context_data)
 
-            # 2.Transition (Geçiş) Mantığı
-            next_step = None
-            
-            # Eğer tip 'condition' (Karar) ise
-            if step.get('type') == 'condition':
-                if self._evaluate(step['condition'], context_data):
-                    next_step = step.get('true_step')
-                else:
-                    next_step = step.get('false_step')
-            
-            # Eğer tip 'task' (Görev) ise ve onay bekleniyorsa dur
-            elif step.get('type') == 'approval':
+            # ==========================================
+            # 🚀 1. DEV: ZAMANLANMIŞ GECİKME (DELAY) MOTORU
+            # ==========================================
+            if step.get('type') == 'delay':
+                delay_seconds = step.get('duration', 0)
+                resume_time = datetime.now() + timedelta(seconds=delay_seconds)
+                
+                logging.info(f"⏳ WORKFLOW DURAKLATILDI: {delay_seconds} saniye bekleniyor...")
+                
+                # Motoru burada durdurur ve durumu dışarıya (Örn: Veritabanına / Celery'e) teslim ederiz
                 return {
-                    'status': 'WAITING', 
-                    'current_step': step_id, 
+                    'status': 'DELAYED',
+                    'resume_at': resume_time.isoformat(),
+                    'resume_step': step.get('next'), # Süre dolunca burdan uyanacak
                     'context': context_data,
                     'history': history
                 }
-            
-            # Düz geçiş
-            else:
-                next_step = step.get('next_step')
 
-            # Döngü için adımı güncelle
-            step_id = next_step or 'END'
+            # 2. Action (Eylem) Var mı? (Örn: E-posta at, Statü güncelle, Webhook)
+            if 'action' in step:
+                self._execute_action(step['action'], context_data)
+
+            # 3. Transition (Geçiş) Mantığı
+            next_step = None
+            if 'transitions' in step:
+                for transition in step['transitions']:
+                    condition = transition.get('condition', 'True')
+                    if self._evaluate(condition, context_data):
+                        next_step = transition.get('next')
+                        break
+
+            # Eğer koşullara uymazsa veya geçiş yoksa default 'next' kullan
+            if not next_step:
+                next_step = step.get('next')
+
+            step_id = next_step
 
         return {
-            'status': 'COMPLETED', 
-            'current_step': 'END', 
+            'status': 'COMPLETED',
+            'final_step': step_id,
             'context': context_data,
             'history': history
         }
@@ -71,7 +80,7 @@ class WorkflowEngine:
             # Python'un tehlikeli fonksiyonlarına erişimi kapatır
             return simple_eval(condition_str, names=data)
         except Exception as e:
-            logging.error(f"Kural Hatası: {e}")
+            logging.error(f"❌ Kural Hatası: {e}")
             return False
 
     def _execute_action(self, action_config, data):
@@ -83,12 +92,51 @@ class WorkflowEngine:
         if action_type == 'update_status':
             # Veri içindeki statüyü güncelle
             data['status'] = action_config.get('value')
-            print(f"⚡ ACTION: Statü '{action_config.get('value')}' olarak güncellendi.")
+            logging.info(f"⚡ ACTION: Statü '{action_config.get('value')}' olarak güncellendi.")
             
         elif action_type == 'send_email':
             to = action_config.get('to')
             subject = action_config.get('subject')
-            print(f"📧 EMAIL: {to} adresine '{subject}' konulu mail atıldı.")
+            logging.info(f"📧 EMAIL: {to} adresine '{subject}' konulu mail atıldı.")
+            
+        # ==========================================
+        # 🚀 2. DEV: GERÇEK WEBHOOK (HTTP/API) MOTORU
+        # ==========================================
+        elif action_type == 'webhook':
+            url = action_config.get('url')
+            method = action_config.get('method', 'POST').upper()
+            headers = action_config.get('headers', {})
+            
+            # Webhook'a sadece belirli bir veriyi göndermek isteyebilirsin, yoksa tüm datayı (context) yollar
+            payload = action_config.get('payload', data) 
+            
+            try:
+                if method == 'POST':
+                    response = requests.post(url, json=payload, headers=headers, timeout=10)
+                elif method == 'GET':
+                    response = requests.get(url, params=payload, headers=headers, timeout=10)
+                elif method == 'PUT':
+                    response = requests.put(url, json=payload, headers=headers, timeout=10)
+                else:
+                    response = requests.request(method, url, json=payload, headers=headers, timeout=10)
+                    
+                # Eğer HTTP 400 veya 500 dönerse sistemi çökertmek yerine Exception fırlattırıyoruz
+                response.raise_for_status() 
+                logging.info(f"📡 WEBHOOK BAŞARILI: {url} (Status: {response.status_code})")
+                
+                # API'den gelen yanıtı dataya ekle (Bir sonraki adımda değerlendirebilmek için)
+                try:
+                    data['webhook_response'] = response.json()
+                except:
+                    data['webhook_response'] = response.text
+                    
+                data['webhook_status'] = 'SUCCESS'
+                
+            except requests.exceptions.RequestException as e:
+                logging.error(f"❌ WEBHOOK HATASI ({url}): {e}")
+                data['webhook_status'] = 'FAILED'
+                data['webhook_error'] = str(e)    
+
         # Buraya webhook, SMS vb.eklenebilir.
         elif action_type == 'trigger_n8n':
             from app.services.n8n_client import N8NClient

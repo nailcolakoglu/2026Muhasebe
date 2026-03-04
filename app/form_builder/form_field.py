@@ -1,5 +1,6 @@
 # form_builder/form_field.py
 
+from functools import lru_cache
 from typing import Any, Optional, Dict, List, Union
 from html import escape
 from datetime import datetime
@@ -11,7 +12,16 @@ from flask_babel import gettext as _ # Standart gettext
 from .field_types import FieldType
 from .validation_rules import Validator, ValidationRule
 from .form_theme import BOOTSTRAP5_LIGHT, DARK_CARD
+from .form_permissions import FieldPermission
 
+# Sınıfın DIŞINA (Global seviyeye) eklenecek
+@lru_cache(maxsize=512)
+def _build_cached_html_attributes(attr_tuple):
+    """
+    Tuple olarak gelen attribute'ları HTML string'ine çevirir ve cache'ler.
+    Örn: (('class', 'form-control'), ('required', 'true')) -> 'class="form-control" required="true"'
+    """
+    return ' '.join(f'{k}="{v}"' for k, v in attr_tuple)
 
 class FormField:
     def __init__(
@@ -21,13 +31,17 @@ class FormField:
         label: str, 
         conditional: dict = None, 
         show_if: dict = None, 
-        theme=None, endpoint=None, **kwargs: Any) -> None:
-
+        theme=None, 
+        endpoint=None, 
+        permission = None,
+        **kwargs: Any) -> None:
         self.name = self._validate_name(name)
+        self.show_if = show_if
         self.field_type = field_type
         self.label = label
         self.theme = theme 
         self.view_mode = False
+        self.permission = permission
         # --- Standart Özellikler ---
         self.required = kwargs.get('required', False)
         self.placeholder = kwargs.get('placeholder', '')
@@ -114,6 +128,18 @@ class FormField:
         if self.endpoint:
             if self.html_attributes is None: self.html_attributes = {}
             self.html_attributes['data-auto-fetch'] = self.endpoint
+
+    def set_async_validation(self, endpoint: str, debounce: int = 500, **kwargs):
+        """
+        Kullanıcı yazarken (AJAX ile) sunucu taraflı anlık doğrulama yapar.
+        Örn: Kullanıcı Adı veya E-Posta benzersizliği (Unique) kontrolü
+        """
+        self.async_validation = {
+            'url': endpoint,
+            'debounce': debounce,
+            'params': kwargs # ✨ YENİ: table, exclude_id gibi verileri tutacak
+        }
+        return self
 
     def _validate_name(self, name):
         if not name or not isinstance(name, str): raise ValueError("Field name zorunludur.")
@@ -312,16 +338,18 @@ class FormField:
 
     def get_html_attributes_string(self):
         attrs = []
+        
+        # 1. Dinamik Property'ler (Cache'den bağımsız anlık hesaplanır)
         if self.required: attrs.append('required')
         if self.disabled: attrs.append('disabled')
         if self.readonly: attrs.append('readonly')
-        if self.placeholder: attrs.append(f'placeholder="{(str(self.placeholder))}"')
+        if self.placeholder: attrs.append(f'placeholder="{escape(str(self.placeholder))}"')
         if self.min_val is not None: attrs.append(f'min="{self.min_val}"')
         if self.max_val is not None: attrs.append(f'max="{self.max_val}"')
         if self.step is not None: attrs.append(f'step="{self.step}"')
         if self.min_length is not None: attrs.append(f'minlength="{self.min_length}"')
         if self.max_length is not None: attrs.append(f'maxlength="{self.max_length}"')
-        if self.pattern: attrs.append(f'pattern="{(self.pattern)}"')
+        if self.pattern: attrs.append(f'pattern="{escape(self.pattern)}"')
         
         if self.data_source:
             if self.data_source.get('url'): attrs.append(f'data-source-url="{self.data_source["url"]}"')
@@ -337,49 +365,64 @@ class FormField:
         if self.text_transform: attrs.append(f'data-text-transform="{escape(self.text_transform)}"')
         if self.input_mode: attrs.append(f'inputmode="{escape(self.input_mode)}"')
 
-        # =====================================================
-        # ✅ YENİ: Validasyon için data attribute'ları
-        # =====================================================
-        
-        # Field tipini JS'e bildir (client-side validasyon için)
+        # Field tipini JS'e bildir
         field_type_map = {
-            FieldType.EMAIL: 'email',
-            FieldType.TEL: 'tel',
+            FieldType.EMAIL: 'email', 
+            FieldType.TEL: 'tel', 
             FieldType.TCKN: 'tckn',
-            FieldType.VKN: 'vkn',
-            FieldType.IBAN: 'iban',
+            FieldType.VKN: 'vkn', 
+            FieldType.IBAN: 'iban', 
             FieldType.PLATE: 'plate',
-            FieldType.URL: 'url',
-            FieldType.CURRENCY: 'currency',
+            FieldType.URL: 'url', 
+            FieldType.CURRENCY: 'currency', 
             FieldType.CREDIT_CARD: 'credit_card',
-            FieldType.DATE: 'date',
-            FieldType.TARIH: 'tarih',
+            FieldType.DATE: 'date', 
+            FieldType.TARIH: 'tarih', 
             FieldType.DATETIME: 'datetime',
-            FieldType.TIME: 'time',
-            FieldType.OTP: 'otp',
-            FieldType.IP: 'ip',
-            FieldType.NUMBER: 'number',
-            FieldType.PASSWORD: 'password',
+            FieldType.TIME: 'time', 
+            FieldType.OTP: 'otp', FieldType.IP: 'ip',
+            FieldType.NUMBER: 'number', 
+            FieldType.PASSWORD: 'password', 
             FieldType.TCKN_VKN: 'tckn_vkn',
         }
         
         if self.field_type in field_type_map:
             attrs.append(f'data-type="{field_type_map[self.field_type]}"')
         
-        # Validasyon kurallarını JSON olarak ekle
         validation_rules = self._get_validation_rules_json()
         if validation_rules:
             attrs.append(f"data-rules='{validation_rules}'")
-        
-        # =====================================================
-        # Mevcut html_attributes döngüsü (en sonda kalmalı)
-        # =====================================================
-        for key, value in self.html_attributes.items():
-            # DÜZELTME: Eğer anahtar 'class' ise atla (Çünkü get_css_classes içinde ekledik)
-            if key == 'class': continue 
+          
+        # ✨ YENİ: Async Validation (AJAX) Etiketleri
+        if getattr(self, 'async_validation', None):
+            import json
+            attrs.append(f'data-async-val-url="{escape(self.async_validation["url"])}"')
+            attrs.append(f'data-async-val-debounce="{self.async_validation["debounce"]}"')
             
-            attrs.append(f'{key}="{escape(str(value))}"')
-        
+            # Parametreleri (table, exclude_id vb.) JSON formatında şıkça gömüyoruz
+            params_json = escape(json.dumps(self.async_validation.get("params", {})))
+            attrs.append(f'data-async-val-params="{params_json}"')
+
+        # =====================================================
+        # ✅ YENİ: Cache İşlemi ve Dinamik Listeyi Birleştirme
+        # =====================================================
+        if self.html_attributes:
+            # 1. 'class' hariç diğer tüm attribute'ları al ve temizle
+            # ('class' zaten get_css_classes() içinde ayrı işleniyor)
+            filtered_attrs = {k: escape(str(v)) for k, v in self.html_attributes.items() if k != 'class'}
+            
+            if filtered_attrs:
+                # 2. Sözlüğü cache'in kabul edebileceği hashable 'tuple' formatına çevir
+                attr_tuple = tuple(sorted(filtered_attrs.items()))
+                
+                # 3. Cachelenmiş fonksiyonu çağır (Örn: 'data-id="5" style="width: 100px;"' döndürür)
+                cached_html_attrs = _build_cached_html_attributes(attr_tuple)
+                
+                # 4. Çıkan string'i ana dinamik listemize ekle
+                if cached_html_attrs:
+                    attrs.append(cached_html_attrs)
+
+        # Tüm listeyi aralarında boşluk bırakarak birleştir ve döndür
         return ' ' + ' '.join(attrs) if attrs else ''
 
     def _get_validation_rules_json(self):
@@ -557,9 +600,64 @@ class FormField:
         icon_name = icons.get(self.field_type, 'edit')
         return f'<i class="fas fa-{icon_name} me-2"></i>'
 
+    def evaluate_visibility(self, form_data: dict) -> bool:
+        """
+        Sunucu taraflı koşullu görünürlük değerlendirmesi.
+        Güvenli tip dönüşümleri ve büyük/küçük harf duyarsız (case-insensitive) kontroller içerir.
+        """
+        if not getattr(self, 'show_if', None):
+            return True
+        
+        field_name = self.show_if.get('field')
+        operator = self.show_if.get('operator', '==')
+        expected_value = self.show_if.get('value')
+        
+        # form_data bazen request.form (MultiDict) olabilir, .get() güvenlidir
+        actual_value = form_data.get(field_name)
+
+        # Kullanıcı harf hatası veya boş veri gönderirse sistemin çökmesini engeller
+        def safe_float(val):
+            try: return float(val)
+            except (TypeError, ValueError): return 0.0
+
+        operators = {
+            '==': lambda a, b: str(a or '').strip().lower() == str(b or '').strip().lower(),
+            '!=': lambda a, b: str(a or '').strip().lower() != str(b or '').strip().lower(),
+            '>': lambda a, b: safe_float(a) > safe_float(b),
+            '<': lambda a, b: safe_float(a) < safe_float(b),
+            '>=': lambda a, b: safe_float(a) >= safe_float(b),
+            '<=': lambda a, b: safe_float(a) <= safe_float(b),
+            'contains': lambda a, b: str(b or '').lower() in str(a or '').lower(),
+            'empty': lambda a, b: not str(a or '').strip(),
+            'not_empty': lambda a, b: bool(str(a or '').strip()),
+        }
+        
+        return operators.get(operator, lambda a, b: True)(actual_value, expected_value)
+
     # --- ANA RENDER METODU ---
     
-    def render(self):
+    def render(self) -> str:
+        """Field'ı HTML olarak render eder"""
+        
+# ==========================================
+        # 🚀 GÜVENLİK KALKANI (FIELD-LEVEL SECURITY)
+        # ==========================================
+        if hasattr(self, 'permission') and self.permission:
+            # 1. Görme yetkisi yoksa HTML'i HİÇ ÜRETME (Bomboş döner)
+            if not self.permission.can_view():
+                return "" 
+                
+            # 2. Görme yetkisi var ama DÜZENLEME yetkisi yoksa KİLİTLE
+            if not self.permission.can_edit():
+                self.readonly = True
+                
+                # ✨ ÇÖZÜM BURADA: attrs değişkeni hiç yoksa veya None ise güvenle oluştur!
+                if not hasattr(self, 'attrs') or self.attrs is None:
+                    self.attrs = {}
+                    
+                self.attrs['readonly'] = 'readonly'
+                self.attrs['disabled'] = 'disabled'   
+                
         # --- Koşullu alan attribute ---
         if self.conditional:
             self.html_attributes['data-conditional-field'] = self.conditional.get('field')
@@ -736,7 +834,6 @@ class FormField:
             <span class="fw-bold text-dark">{display_val}</span>
         </div>
         '''
-
 
     def validate(self, value: Optional[Any] = None) -> bool:
         """
@@ -1356,6 +1453,7 @@ class FormField:
             </div>
         </div>
         '''
+
     def _render_otp(self):
         length = int(self.html_attributes.get('data-length', 6))
         html_parts = []
@@ -1988,8 +2086,6 @@ class FormField:
             # Selectbox seçenekleri
             "options": [{"id": k, "label": v} for k, v in self.options] if self.options else []
         }
-
-
 
 
 

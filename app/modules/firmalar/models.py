@@ -8,7 +8,6 @@ from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.models.base import FirmaFilteredQuery, TimestampMixin, SoftDeleteMixin, JSONText
 from markupsafe import Markup
-
 # UUID oluşturucu fonksiyon
 import uuid # 👈 EKLENDİ
 
@@ -145,3 +144,34 @@ class SystemMenu(db.Model):
                 return "#"
         return self.url or "#"
 
+
+class FormVersion(db.Model, TimestampMixin):
+    """
+    Form Builder - Versiyon Geçmişi Tablosu
+    Dinamik formların geçmiş JSON durumlarını, kimin ve neden değiştirdiğini tutar.
+    """
+    __tablename__ = 'form_versions'
+    query_class = FirmaFilteredQuery
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    
+    # ✨ DİKKAT: FirmaFilteredQuery'nin çalışması için bu kolon ŞARTTIR!
+    firma_id = db.Column(db.Integer, db.ForeignKey('firmalar.id'), nullable=False, index=True)
+    
+    # Hangi forma ait olduğu (Örn: 'b2b_basvuru')
+    form_name = db.Column(db.String(100), nullable=False, index=True)
+    
+    # Formun o anki tüm yapısını tutan alan. 
+    form_json = db.Column(db.Text, nullable=False) 
+    
+    # Versiyon açıklaması
+    comment = db.Column(db.String(255), nullable=True)
+    
+    # Değişikliği yapan kullanıcı
+    created_by = db.Column(db.String(100), nullable=True, default='system')
+    
+    # Not: TimestampMixin içinde 'created_at' yoksa, alt satırı aktif et:
+    # created_at = db.Column(db.DateTime, default=datetime.now)
+
+    def __repr__(self):
+        return f"<FormVersion {self.form_name} - Firma:{self.firma_id} - ID:{self.id}>"

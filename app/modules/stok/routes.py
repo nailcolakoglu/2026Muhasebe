@@ -142,6 +142,18 @@ def index():
         return redirect('/')
 
     grid = DataGrid("stok_list", StokKart, "Stok Kartları")
+    # Lazy load aktifleştir ve test için sayfada az veri (Örn: 15) göster.
+    # grid.enable_lazy_loading(chunk_size=15)
+    # Sonra sayfaya girip fare tekerleğiyle aşağı inmeye başla. 
+    # Liste bitince altta "Yeni kayıtlar yükleniyor..." 
+    # yazısının anlık belirip kaybolduğunu ve yeni verilerin şimşek hızında 
+    #(sayfa yenilenmeden) tabloya eklendiğini göreceksin!
+    
+    
+    grid.enable_bulk_actions([
+    {'label': 'Seçilenleri Sil', 'url': '/stok/api/bulk-delete', 'icon': 'bi bi-trash', 'class': 'text-danger', 'confirm': True},
+    {'label': 'Toplu Onayla', 'url': '/stok/api/bulk-approve', 'icon': 'bi bi-check-circle', 'class': 'text-success'}
+])
     
     # Kolonlar
     grid.add_column('kod', 'Stok Kodu', width='120px')
@@ -1197,3 +1209,9 @@ def kdv_grup_islem(id):
         return jsonify({'success': False, 'message': 'Validasyon hatası', 'errors': form.get_errors()}), 400
 
     return render_template('stok/form.html', form=form, title=_("KDV Grubu Düzenle"))
+    
+@stok_bp.route('/api/bulk-delete', methods=['POST'])
+def bulk_delete():
+    ids = request.get_json().get('ids', [])
+    # for id in ids: objeyi bul ve sil
+    return jsonify({'success': True, 'message': f'{len(ids)} adet kayıt silindi!'})

@@ -55,8 +55,72 @@ class Validator:
         'numeric': _l('Sadece rakam giriniz.'),
         'ip': _l('Geçersiz IP adresi.'),
         'tckn_vkn': _l('Geçersiz TC Kimlik veya Vergi Kimkik Numarası.')
-
     }
+
+    # ✨ YENİ: Özel (Custom) kuralların tutulduğu güvenli kayıt defteri
+    CUSTOM_RULES = {}
+
+    @classmethod
+    def register_custom(cls, name: str, func: callable, message: str):
+        """
+        Dinamik olarak özel validasyon kuralı ekler.
+        Örn: Validator.register_custom('STRONG_PASS', lambda v: len(v)>8 and '@' in v, 'Şifre zayıf!')
+        """
+        rule_key = name.upper()
+        cls.CUSTOM_RULES[rule_key] = func
+        cls.MESSAGES[rule_key.lower()] = message
+
+    @classmethod
+    def validate(cls, val: Any, rule: Any, **kwargs) -> Tuple[bool, str]:
+        """
+        Gelen değeri (val), belirtilen kurala (rule) göre doğrular.
+        Önce Custom (Özel) kurallara, sonra standart kurallara bakar.
+        Dönüş: (is_valid: bool, error_message: str)
+        """
+        # Kural adını belirle (Enum veya String gelebilir)
+        rule_name = rule.name if hasattr(rule, 'name') else str(rule).upper()
+
+        # ==========================================
+        # 1. ÖZEL (CUSTOM) KURALLARI KONTROL ET
+        # ==========================================
+        if rule_name in getattr(cls, 'CUSTOM_RULES', {}):
+            is_valid = cls.CUSTOM_RULES[rule_name](str(val or ''))
+            msg = kwargs.get('message') or cls.MESSAGES.get(rule_name.lower(), _l('Geçersiz değer.'))
+            return is_valid, msg if not is_valid else ""
+
+        # ==========================================
+        # 2. STANDART KURALLARI KONTROL ET
+        # ==========================================
+        try:
+            # Gelen kural adını Enum'da bul
+            enum_rule = ValidationRule[rule_name]
+            rule_val = enum_rule.value
+            
+            # Boş değer kontrolü (Required dışındaki kurallar boş değeri geçerli sayar, required yakalar)
+            if not val and enum_rule != ValidationRule.REQUIRED:
+                return True, ""
+
+            # Dinamik olarak metod bul (Örn: rule "email" ise "_is_email" metodunu arar)
+            method_name = f"_is_{rule_val}"
+            
+            # Özel bir required kuralı varsa
+            if enum_rule == ValidationRule.REQUIRED:
+                is_valid = bool(str(val or '').strip())
+            # Standart bir metod tanımı varsa (Örn: _is_iban)
+            elif hasattr(cls, method_name):
+                validation_method = getattr(cls, method_name)
+                is_valid = validation_method(str(val or ''))
+            # Metod yoksa hata verme, geçerli say
+            else:
+                is_valid = True
+
+            # Hata mesajını hazırla
+            msg = kwargs.get('message') or cls.MESSAGES.get(rule_val, _l('Geçersiz değer.'))
+            return is_valid, msg if not is_valid else ""
+            
+        except KeyError:
+            # Tanımsız bir kural gelirse sistemi çökertme, geçerli say
+            return True, ""
 
     @staticmethod
     def check(field, value) -> Tuple[bool, str]:

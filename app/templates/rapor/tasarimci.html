@@ -30,7 +30,7 @@
         padding: 15px 20px;
         font-weight: bold;
         display: flex;
-        justify-content: between;
+        justify-content: space-between;
         align-items: center;
     }
     
@@ -321,7 +321,6 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <!-- Başlık -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h3 class="fw-bold mb-1">
@@ -340,38 +339,31 @@
         </div>
     </div>
 
-    <!-- Designer Grid -->
     <div class="designer-container">
-        <!-- ===================================== -->
-        <!-- SOL PANEL: MODEL & FIELDS -->
-        <!-- ===================================== -->
         <div class="designer-panel">
             <div class="panel-header">
-                <i class="bi bi-database me-2"></i> Veri Kaynağı
+                <div><i class="bi bi-database me-2"></i> Veri Kaynağı</div>
             </div>
             <div class="panel-body">
-                <!-- Model Seçimi -->
                 <div class="mb-4">
                     <label class="form-label fw-bold">Model</label>
                     <select class="form-select" id="modelSelect" onchange="loadModelFields()">
                         <option value="Fatura" selected>Faturalar</option>
                         <option value="CariHesap">Cari Hesaplar</option>
                         <option value="StokKart">Stok Kartları</option>
-                        <option value="CariHareket">Cari Hareketler</option>
+                        <option value="StokHareketi">Stok Hareketleri</option>
+                        <option value="Depo">Depolar</option>
                     </select>
                 </div>
 
-                <!-- Alanlar -->
                 <div>
                     <label class="form-label fw-bold">Alanlar</label>
                     <p class="small text-muted">Sürükle → Rapor alanına bırak</p>
                     
                     <ul class="field-list" id="fieldList">
-                        <!-- JavaScript ile doldurulacak -->
-                    </ul>
+                        </ul>
                 </div>
 
-                <!-- Hızlı Şablonlar -->
                 <div class="mt-4">
                     <label class="form-label fw-bold">Hızlı Şablonlar</label>
                     <div class="d-grid gap-2">
@@ -389,9 +381,6 @@
             </div>
         </div>
 
-        <!-- ===================================== -->
-        <!-- ORTA PANEL: REPORT BUILDER -->
-        <!-- ===================================== -->
         <div class="designer-panel">
             <div class="panel-header">
                 <div>
@@ -407,7 +396,6 @@
                 </div>
             </div>
             <div class="panel-body">
-                <!-- Tabs -->
                 <ul class="nav nav-tabs nav-tabs-custom" role="tablist">
                     <li class="nav-item">
                         <a class="nav-link active" data-bs-toggle="tab" href="#tabFields">
@@ -432,11 +420,7 @@
                     </li>
                 </ul>
 
-                <!-- Tab İçerikleri -->
                 <div class="tab-content mt-3">
-                    <!-- ===================================== -->
-                    <!-- TAB 1: ALANLAR -->
-                    <!-- ===================================== -->
                     <div class="tab-pane fade show active" id="tabFields">
                         <div class="drop-zone" id="fieldsDropZone" 
                              ondrop="dropField(event)" 
@@ -448,13 +432,9 @@
                             </div>
                         </div>
 
-                        <!-- Seçili Alanlar -->
                         <div id="selectedFieldsList"></div>
                     </div>
 
-                    <!-- ===================================== -->
-                    <!-- TAB 2: FİLTRELER -->
-                    <!-- ===================================== -->
                     <div class="tab-pane fade" id="tabFilters">
                         <button class="btn btn-sm btn-primary mb-3" onclick="addFilter()">
                             <i class="bi bi-plus-circle"></i> Filtre Ekle
@@ -463,9 +443,6 @@
                         <div id="filtersList"></div>
                     </div>
 
-                    <!-- ===================================== -->
-                    <!-- TAB 3: GRUPLAMA -->
-                    <!-- ===================================== -->
                     <div class="tab-pane fade" id="tabGrouping">
                         <div class="mb-3">
                             <label class="form-label fw-bold">Gruplama Alanı</label>
@@ -500,9 +477,6 @@
                         </div>
                     </div>
 
-                    <!-- ===================================== -->
-                    <!-- TAB 4: GRAFİK -->
-                    <!-- ===================================== -->
                     <div class="tab-pane fade" id="tabChart">
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" id="chartEnabled">
@@ -541,15 +515,11 @@
             </div>
         </div>
 
-        <!-- ===================================== -->
-        <!-- SAĞ PANEL: ÖNİZLEME -->
-        <!-- ===================================== -->
         <div class="designer-panel preview-panel">
             <div class="panel-header">
-                <i class="bi bi-eye me-2"></i> Önizleme
+                <div><i class="bi bi-eye me-2"></i> Önizleme</div>
             </div>
             <div class="panel-body">
-                <!-- İstatistikler -->
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <div class="card bg-primary text-white">
@@ -569,12 +539,10 @@
                     </div>
                 </div>
 
-                <!-- Grafik Önizleme -->
                 <div id="chartPreview" class="chart-preview" style="display: none;">
                     <canvas id="previewChart"></canvas>
                 </div>
 
-                <!-- Tablo Önizleme -->
                 <div id="tablePreview">
                     <div class="preview-empty">
                         <i class="bi bi-table"></i>
@@ -586,7 +554,6 @@
     </div>
 </div>
 
-<!-- Loading Overlay -->
 <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-content">
         <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
@@ -595,7 +562,6 @@
     </div>
 </div>
 
-<!-- Kaydetme Modal -->
 <div class="modal fade" id="saveModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -645,7 +611,7 @@ let filters = [];
 let reportData = [];
 let previewChart = null;
 
-// Model field definitions
+// Model field definitions (Burası ileride veritabanından dinamik de çekilebilir)
 const modelFields = {
     'Fatura': [
         {name: 'id', label: 'ID', type: 'number'},
@@ -665,6 +631,28 @@ const modelFields = {
         {name: 'telefon', label: 'Telefon', type: 'text'},
         {name: 'borc_bakiye', label: 'Borç Bakiye', type: 'currency'},
         {name: 'alacak_bakiye', label: 'Alacak Bakiye', type: 'currency'},
+        {name: 'aktif', label: 'Aktif', type: 'boolean'}
+    ],
+    'StokKart': [
+        {name: 'id', label: 'ID', type: 'number'},
+        {name: 'kod', label: 'Stok Kodu', type: 'text'},
+        {name: 'ad', label: 'Stok Adı', type: 'text'},
+        {name: 'birim', label: 'Birim', type: 'text'},
+        {name: 'satis_fiyati', label: 'Satış Fiyatı', type: 'currency'},
+        {name: 'aktif', label: 'Aktif', type: 'boolean'}
+    ],
+    'StokHareketi': [
+        {name: 'id', label: 'ID', type: 'number'},
+        {name: 'tarih', label: 'Tarih', type: 'date'},
+        {name: 'belge_no', label: 'Belge No', type: 'text'},
+        {name: 'hareket_turu', label: 'Tür', type: 'text'},
+        {name: 'miktar', label: 'Miktar', type: 'number'},
+        {name: 'birim_fiyat', label: 'Birim Fiyat', type: 'currency'}
+    ],
+    'Depo': [
+        {name: 'id', label: 'ID', type: 'number'},
+        {name: 'kod', label: 'Depo Kodu', type: 'text'},
+        {name: 'ad', label: 'Depo Adı', type: 'text'},
         {name: 'aktif', label: 'Aktif', type: 'boolean'}
     ]
 };
@@ -726,8 +714,6 @@ function loadSavedReport(report) {
             return;
         }
         
-        console.log('📋 Config:', config);
-        
         // 3. Alanları ekle
         if (config.fields && config.fields.length > 0) {
             selectedFields = config.fields.map(f => ({
@@ -735,14 +721,15 @@ function loadSavedReport(report) {
                 visible: f.visible !== false
             }));
             renderSelectedFields();
-            console.log(`✅ ${selectedFields.length} alan yüklendi`);
+            
+            // 🚀 BÜYÜK DÜZELTME: Seçili alanları render ettikten sonra gruplama menülerini besle!
+            updateGroupByOptions(); 
         }
         
         // 4. Filtreleri ekle
         if (config.filters && config.filters.length > 0) {
             filters = config.filters;
             renderFilters();
-            console.log(`✅ ${filters.length} filtre yüklendi`);
         }
         
         // 5. Gruplama
@@ -753,7 +740,7 @@ function loadSavedReport(report) {
         // 6. Agregasyon
         if (config.aggregations && config.aggregations.length > 0) {
             const agg = config.aggregations[0];
-            document.getElementById('aggFunction').value = agg.function || 'sum';
+            document.getElementById('aggFunction').value = (agg.function || 'sum').toLowerCase();
             document.getElementById('aggField').value = agg.field || '';
         }
         
@@ -779,11 +766,10 @@ function loadSavedReport(report) {
         
         console.log('✅ Rapor başarıyla yüklendi!');
         
-        // 9. Otomatik çalıştır (opsiyonel)
+        // 9. Otomatik çalıştır
         setTimeout(() => {
-            console.log('🚀 Rapor otomatik çalıştırılıyor...');
             runReport();
-        }, 1000);
+        }, 800);
         
     } catch (error) {
         console.error('❌ Rapor yükleme hatası:', error);
@@ -995,9 +981,14 @@ function updateGroupByOptions() {
     
     [groupBySelect, aggFieldSelect, chartXAxis, chartYAxis].forEach(select => {
         if (select) {
+            // Önceden seçili değeri aklımızda tutalım
             const currentValue = select.value;
             select.innerHTML = '<option value="">Seç...</option>' + options;
-            select.value = currentValue;
+            
+            // Eğer yeni liste içinde eski değer varsa, tekrar seçili yapalım
+            if (Array.from(select.options).some(opt => opt.value === currentValue)) {
+                select.value = currentValue;
+            }
         }
     });
 }
@@ -1031,16 +1022,6 @@ function runReport() {
         if (data.success) {
             reportData = data.data;
             renderPreview(data);
-            
-            // ✅ YENİ: Tam ekran önizleme butonu göster
-            if (data.data.length > 0) {
-                const previewBtn = `
-                    <button class="btn btn-primary mt-3" onclick="openFullPreview('${config.model_name}')">
-                        <i class="bi bi-eye"></i> Tam Ekran Önizleme (A4)
-                    </button>
-                `;
-                document.getElementById('tablePreview').insertAdjacentHTML('afterend', previewBtn);
-            }
         } else {
             alert('Hata: ' + data.message);
         }
@@ -1051,16 +1032,11 @@ function runReport() {
     });
 }
 
-// ✅ YENİ: Tam ekran önizleme
-function openFullPreview(modelName) {
-    window.open(`/rapor/onizleme/${modelName}`, '_blank');
-}
-
 
 function buildReportConfig() {
     const config = {
         name: document.getElementById('reportName')?.value || 'Rapor',
-        model_name: currentModel,  // Global değişken
+        model_name: currentModel,
         fields: [],
         filters: [],
         group_by: [],
@@ -1070,10 +1046,7 @@ function buildReportConfig() {
         chart: null
     };
     
-    // ===================================
-    // 1. ALANLAR (fields)
-    // ===================================
-    // Sadece görünür alanları ekle
+    // 1. ALANLAR
     config.fields = selectedFields.filter(f => f.visible).map(f => ({
         name: f.name,
         label: f.label,
@@ -1081,28 +1054,18 @@ function buildReportConfig() {
         visible: true
     }));
     
-    console.log('📋 Fields:', config.fields);
-    
-    // ===================================
-    // 2. FİLTRELER (filters)
-    // ===================================
-    // Sadece dolu filtreleri ekle
+    // 2. FİLTRELER
     config.filters = filters.filter(f => f.field && f.value).map(f => ({
         field: f.field,
         operator: f.operator,
         value: f.value
     }));
     
-    console.log('🔍 Filters:', config.filters);
-    
-    // ===================================
-    // 3. GRUPLAMA (group_by)
-    // ===================================
+    // 3. GRUPLAMA
     const groupBy = document.getElementById('groupByField')?.value;
     if (groupBy) {
         config.group_by.push(groupBy);
         
-        // Agregasyon varsa ekle
         const aggFunc = document.getElementById('aggFunction')?.value;
         const aggField = document.getElementById('aggField')?.value;
         
@@ -1115,13 +1078,7 @@ function buildReportConfig() {
         }
     }
     
-    console.log('📊 Group by:', config.group_by);
-    console.log('🧮 Aggregations:', config.aggregations);
-    
-    // ===================================
-    // 4. SIRALAMA (order_by)
-    // ===================================
-    // İsteğe bağlı: İlk alana göre sırala
+    // 4. SIRALAMA
     if (config.fields.length > 0) {
         config.order_by.push({
             field: config.fields[0].name,
@@ -1129,11 +1086,7 @@ function buildReportConfig() {
         });
     }
     
-    console.log('🔢 Order by:', config.order_by);
-    
-    // ===================================
-    // 5. GRAFİK (chart)
-    // ===================================
+    // 5. GRAFİK
     if (document.getElementById('chartEnabled')?.checked) {
         const chartType = document.getElementById('chartType')?.value;
         const chartXAxis = document.getElementById('chartXAxis')?.value;
@@ -1150,17 +1103,10 @@ function buildReportConfig() {
         }
     }
     
-    console.log('📈 Chart:', config.chart);
-    
-    // ===================================
-    // 6. EXPORT (opsiyonel)
-    // ===================================
     config.export = {
         formats: ['excel', 'pdf', 'csv'],
         filename: config.name.toLowerCase().replace(/\s+/g, '_')
     };
-    
-    console.log('💾 Final config:', config);
     
     return config;
 }
@@ -1169,17 +1115,8 @@ function buildReportConfig() {
 // ÖNİZLEME RENDER
 // =====================================
 function renderPreview(data) {
-    console.log('🖼️ renderPreview() başlatıldı');
-    console.log('📊 Data:', data);
-    
     const tableContainer = document.getElementById('tablePreview');
     
-    if (!tableContainer) {
-        console.error('❌ tablePreview elementi bulunamadı!');
-        return;
-    }
-    
-    // İstatistikleri güncelle
     document.getElementById('previewRowCount').textContent = data.row_count || 0;
     document.getElementById('previewFieldCount').textContent = selectedFields.length;
     
@@ -1188,12 +1125,7 @@ function renderPreview(data) {
         return;
     }
     
-    console.log('📋 Kayıt sayısı:', data.data.length);
-    console.log('📋 İlk kayıt:', data.data[0]);
-    
-    // Sadece görünür alanları kullan
     const visibleFields = selectedFields.filter(f => f.visible);
-    console.log('👁️ Görünür alan sayısı:', visibleFields.length);
     
     if (visibleFields.length === 0) {
         tableContainer.innerHTML = '<div class="preview-empty"><i class="bi bi-eye-slash"></i><p>Görünür alan yok</p></div>';
@@ -1208,6 +1140,16 @@ function renderPreview(data) {
     visibleFields.forEach(field => {
         tableHTML += `<th>${field.label}</th>`;
     });
+    // Eğer gruplama/toplama varsa başlığını da ekle
+    const groupBy = document.getElementById('groupByField')?.value;
+    const aggField = document.getElementById('aggField')?.value;
+    const aggFunc = document.getElementById('aggFunction')?.value;
+    let aggAlias = '';
+    
+    if (groupBy && aggField) {
+        aggAlias = `${aggFunc}_${aggField}`;
+        tableHTML += `<th>Hesaplanan Toplam</th>`;
+    }
     tableHTML += '</tr></thead>';
     
     // Veri satırları (ilk 10 kayıt)
@@ -1219,64 +1161,60 @@ function renderPreview(data) {
         visibleFields.forEach(field => {
             let value = row[field.name];
             
-            // Null/undefined kontrolü
             if (value === null || value === undefined || value === '') {
                 value = '-';
             }
             
-            // Boolean formatı
             if (typeof value === 'boolean') {
                 value = value ? '<i class="bi bi-check-circle text-success"></i>' : '<i class="bi bi-x-circle text-danger"></i>';
             }
             
-            // Tarih formatı
             if (field.type === 'date' && value !== '-') {
                 try {
                     const date = new Date(value);
                     value = date.toLocaleDateString('tr-TR');
-                } catch (e) {
-                    // Hatalı tarih formatı
-                }
+                } catch (e) {}
             }
             
-            // Para formatı
             if (field.type === 'currency' && value !== '-') {
                 try {
                     value = parseFloat(value).toLocaleString('tr-TR', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2
                     }) + ' ₺';
-                } catch (e) {
-                    // Hatalı sayı formatı
-                }
+                } catch (e) {}
             }
             
             tableHTML += `<td>${value}</td>`;
         });
+        
+        // Eğer gruplama varsa o değeri de ekle
+        if (aggAlias && row[aggAlias] !== undefined) {
+             let val = row[aggAlias];
+             tableHTML += `<td><b>${parseFloat(val).toLocaleString('tr-TR')}</b></td>`;
+        }
+        
         tableHTML += '</tr>';
     });
     
     tableHTML += '</tbody></table>';
     
-    // Toplam kayıt bilgisi
     if (data.row_count > 10) {
         tableHTML += `<p class="text-muted text-center small mt-2">İlk 10 kayıt gösteriliyor (Toplam: ${data.row_count})</p>`;
     }
     
-    // ✅ Tam ekran önizleme butonu
+    // Tam Ekran Butonu
     if (data.data.length > 0 && data.model_name) {
         tableHTML += `
             <div class="text-center mt-3">
                 <button class="btn btn-primary" onclick="openFullPreview('${data.model_name}')">
-                    <i class="bi bi-eye"></i> Tam Ekran Önizleme (A4)
+                    <i class="bi bi-arrows-fullscreen me-2"></i> Tam Ekran Önizleme (A4)
                 </button>
             </div>
         `;
     }
     
     tableContainer.innerHTML = tableHTML;
-    
-    console.log('✅ Tablo render edildi');
     
     // Grafik render
     if (data.chart) {
@@ -1293,7 +1231,6 @@ function renderPreview(data) {
 // TAM EKRAN ÖNİZLEME
 // =====================================
 function openFullPreview(modelName) {
-    console.log('🖼️ Tam ekran önizleme açılıyor:', modelName);
     window.open(`/rapor/onizleme/${modelName}`, '_blank');
 }
 
@@ -1306,7 +1243,6 @@ function renderChart(chartConfig) {
     
     container.style.display = 'block';
     
-    // Eski grafik varsa temizle
     if (previewChart) {
         previewChart.destroy();
     }
@@ -1324,7 +1260,6 @@ function saveReport() {
         return;
     }
     
-    // Modal aç
     const modal = new bootstrap.Modal(document.getElementById('saveModal'));
     modal.show();
 }
@@ -1337,36 +1272,14 @@ function confirmSave() {
         return;
     }
     
-    // ===================================
-    // 1. CONFIG OLUŞTUR
-    // ===================================
     const reportConfig = buildReportConfig();
     
-    console.log('📋 Report Config:', reportConfig);
-    
-    // ===================================
-    // 2. VALIDASYON
-    // ===================================
-    if (!reportConfig.model_name) {
-        alert('❌ Model seçilmemiş!');
-        return;
-    }
-    
-    if (!reportConfig.fields || reportConfig.fields.length === 0) {
-        alert('❌ En az bir alan seçmelisiniz!');
-        return;
-    }
-    
-    // ===================================
-    // 3. BACKEND VERİSİNİ HAZIRLA
-    // ===================================
-    // ✅ Config ayrı bir obje olarak gönderilmeli!
     const saveData = {
-        name: name,  // ✅ Config dışında
-        description: document.getElementById('reportDescription').value || '',  // ✅ Config dışında
-        model_name: reportConfig.model_name,  // ✅ Config'ten al
-        is_public: document.getElementById('reportPublic').checked,  // ✅ Config dışında
-        config: {  // ✅ Config objesi
+        name: name,
+        description: document.getElementById('reportDescription').value || '',
+        model_name: reportConfig.model_name,
+        is_public: document.getElementById('reportPublic').checked,
+        config: {
             fields: reportConfig.fields,
             filters: reportConfig.filters,
             group_by: reportConfig.group_by,
@@ -1378,31 +1291,12 @@ function confirmSave() {
         }
     };
     
-    console.log('📤 Backend\'e gönderilecek:', saveData);
-    console.log('📤 Config var mı?', !!saveData.config);
-    console.log('📤 Config.fields:', saveData.config?.fields?.length || 0);
-    
-    // ===================================
-    // 4. CSRF TOKEN
-    // ===================================
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-    
-    if (!csrfToken) {
-        alert('❌ CSRF token bulunamadı! Sayfayı yenileyin.');
-        return;
-    }
-    
-    // ===================================
-    // 5. LOADING
-    // ===================================
     const saveButton = document.querySelector('#saveModal .btn-primary');
     const originalText = saveButton.innerHTML;
     saveButton.disabled = true;
     saveButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Kaydediliyor...';
     
-    // ===================================
-    // 6. FETCH
-    // ===================================
     fetch('/rapor/api/rapor-kaydet', {
         method: 'POST',
         headers: {
@@ -1411,25 +1305,8 @@ function confirmSave() {
         },
         body: JSON.stringify(saveData)
     })
-    .then(response => {
-        console.log('📥 Response status:', response.status);
-        console.log('📥 Content-Type:', response.headers.get('Content-Type'));
-        
-        const contentType = response.headers.get('Content-Type');
-        if (contentType && contentType.includes('text/html')) {
-            throw new Error('Backend HTML döndürdü!');
-        }
-        
-        return response.json().then(data => {
-            if (!response.ok) {
-                throw new Error(data.message || `HTTP ${response.status}`);
-            }
-            return data;
-        });
-    })
+    .then(response => response.json())
     .then(data => {
-        console.log('✅ Success:', data);
-        
         saveButton.disabled = false;
         saveButton.innerHTML = originalText;
         
@@ -1442,11 +1319,8 @@ function confirmSave() {
         }
     })
     .catch(error => {
-        console.error('❌ Error:', error);
-        
         saveButton.disabled = false;
         saveButton.innerHTML = originalText;
-        
         alert('❌ Kaydetme hatası:\n' + error.message);
     });
 }
@@ -1465,9 +1339,11 @@ function clearReport() {
     
     renderSelectedFields();
     renderFilters();
+    updateGroupByOptions();
     
     document.getElementById('tablePreview').innerHTML = '<div class="preview-empty"><i class="bi bi-table"></i><p>Raporu çalıştırın</p></div>';
     document.getElementById('chartPreview').style.display = 'none';
+    document.getElementById('previewRowCount').textContent = '0';
     
     if (previewChart) {
         previewChart.destroy();
@@ -1475,16 +1351,12 @@ function clearReport() {
     }
 }
 
-// ===================================== 
-// ŞABLON YÜKLEME
-// =====================================
-function loadTemplate(templateName) {
-    // Burada hazır şablonlar yüklenebilir
-    alert('Şablon yükleme özelliği yakında eklenecek!');
-}
-
 function openSavedReports() {
     window.location.href = '/rapor/kaydedilenler';
+}
+
+function loadTemplate(templateName) {
+    alert('Şablon yükleme özelliği yakında eklenecek!');
 }
 </script>
 {% endblock %}

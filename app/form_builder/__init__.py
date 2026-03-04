@@ -9,6 +9,7 @@ from .form_field import FormField, MasterDetailField
 from .form import Form
 from .form_layout import FormLayout 
 from .form_style import FormStyle
+from .form_export import FormExporter
 from .multi_step_form import MultiStepForm
 from .data_grid import DataGrid  
 from .utils import sanitize_html, validate_file_security
@@ -16,6 +17,8 @@ from .validation_rules import ValidationRule, Validator
 from .kanban import KanbanBoard
 from .pivot import PivotEngine
 from .workflow import WorkflowEngine
+from .form_permissions import FieldPermission
+from .report_designer import ReportDesigner
 #from .menu_manager import MenuManager
 
 # TEMALARI İÇERİ ALIYORUZ (THEME_MATERIAL EKLENDİ)
@@ -43,6 +46,9 @@ __all__ = [
     'MultiStepForm',
     'DataGrid', 
     'FormTheme',
+    'FormExporter',
+    'FieldPermission',
+    'ReportDesigner',
     'utils',
     'ValidationRule',
     'Validator',

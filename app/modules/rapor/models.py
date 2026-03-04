@@ -34,6 +34,33 @@ class YazdirmaSablonu(db.Model, TimestampMixin, SoftDeleteMixin):
     # İlişki (Firmaya bağla)
     firma = db.relationship('Firma', backref='sablonlar')
 
+class AIRaporAyarlari(db.Model):
+    __tablename__ = 'ai_rapor_ayarlari'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    firma_id = db.Column(db.String(36), db.ForeignKey('firmalar.id'))
+    anahtar = db.Column(db.String(50), nullable=False)
+    deger = db.Column(db.String(50), nullable=False)
+    aciklama = db.Column(db.String(200))
+    
+    __table_args__ = (
+        db.UniqueConstraint('firma_id', 'anahtar', name='uq_ai_ayar'),
+        {'extend_existing': True}
+    )
+
+
+class AIRaporGecmisi(db.Model):
+    __tablename__ = 'ai_rapor_gecmisi'
+    query_class = FirmaFilteredQuery
+    __table_args__ = {'extend_existing': True}
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    firma_id = db.Column(db.String(36), db.ForeignKey('firmalar.id'))
+    tarih = db.Column(db.DateTime, server_default=db.func.now())
+    rapor_turu = db.Column(db.String(50))
+    baslik = db.Column(db.String(200))
+    html_icerik = db.Column(db.Text)
+    ham_veri_json = db.Column(db.Text)
+
 
 # ===================================
 # SAVED REPORT (MySQL/PostgreSQL Uyumlu)

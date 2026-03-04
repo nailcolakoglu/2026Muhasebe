@@ -1,8 +1,15 @@
+# app/form_builder/ai_generator.py
+
 import json
 import os
 from dotenv import load_dotenv # 👈 BU SATIRI EKLEYİN
 import google.generativeai as genai
 from google.api_core import retry
+import copy
+from datetime import datetime
+from app.extensions import get_tenant_db
+from sqlalchemy import text
+
 
 # .env dosyasını hemen burada yükle ki kodlar çalışmadan anahtar hazır olsun
 load_dotenv()
@@ -602,3 +609,96 @@ def optimize_sales_route(start_location, customers_list):
     except Exception as e:
         print(f"AI Rota Hatası: {e}")
         return {"error": f"Rota oluşturulamadı: {str(e)}"}
+        
+# Temel Şablonlar (RAM üzerinde durur, çok hızlıdır)
+FORM_TEMPLATES = {
+    'contact': {
+        'title': 'İletişim Formu',
+        'fields': [
+            {'name': 'ad_soyad', 'type': 'TEXT', 'label': 'Ad Soyad', 'required': True},
+            {'name': 'email', 'type': 'EMAIL', 'label': 'E-posta', 'required': True},
+            {'name': 'mesaj', 'type': 'TEXTAREA', 'label': 'Mesaj', 'required': True}
+        ]
+    },
+    'invoice': {
+        'title': 'Fatura Bilgileri',
+        'fields': [
+            {'name': 'firma_adi', 'type': 'TEXT', 'label': 'Firma Adı', 'required': True},
+            {'name': 'vkn', 'type': 'VKN', 'label': 'Vergi Kimlik No', 'required': True},
+            {'name': 'vergi_dairesi', 'type': 'TEXT', 'label': 'Vergi Dairesi', 'required': True},
+            {'name': 'tutar', 'type': 'CURRENCY', 'label': 'Fatura Tutarı', 'required': True}
+        ]
+    },
+    'b2b_customer': {
+        'title': 'B2B Bayi Kayıt',
+        'fields': [
+            {'name': 'sirket_unvan', 'type': 'TEXT', 'label': 'Şirket Ünvanı', 'required': True},
+            {'name': 'tckn_vkn', 'type': 'TCKN_VKN', 'label': 'TCKN / VKN', 'required': True},
+            {'name': 'cep_tel', 'type': 'TEL', 'label': 'Cep Telefonu', 'required': True},
+            {'name': 'il_kodu', 'type': 'SELECT', 'label': 'Şehir', 'required': True}
+        ]
+    }
+}
+
+def generate_from_template(template_name: str, customizations: dict = None) -> dict:
+    """
+    Hazır şablondan form oluşturur ve istenirse üzerine özel alanlar (customizations) ekler/ez.
+    Python'un bellek sızıntısını önlemek için 'deepcopy' kullanır.
+    """
+    if template_name not in FORM_TEMPLATES:
+        raise ValueError(f"Şablon bulunamadı: {template_name}")
+        
+    # ✨ GÜVENLİK: Orijinal şablonun RAM'de bozulmaması için tam kopya al
+    base_form = copy.deepcopy(FORM_TEMPLATES[template_name])
+    
+    if customizations:
+        # 1. Başlığı ez
+        if 'title' in customizations:
+            base_form['title'] = customizations['title']
+            
+        # 2. Alanları ez veya yeni alan ekle
+        if 'extra_fields' in customizations:
+            # Var olan alanların isimlerini ve indexlerini bul (Hızlı eşleştirme için)
+            existing_names = {f['name']: idx for idx, f in enumerate(base_form['fields'])}
+            
+            for extra in customizations['extra_fields']:
+                if extra['name'] in existing_names:
+                    # Alan zaten varsa sadece güncellenen özelliklerini ez (Örn: required: False yap)
+                    idx = existing_names[extra['name']]
+                    base_form['fields'][idx].update(extra)
+                else:
+                    # Yeni bir alansa formun en altına ekle
+                    base_form['fields'].append(extra)
+                    
+    return base_form
+
+
+def save_form_version(form_name: str, form_data: dict, version_comment: str = '', created_by: str = 'system') -> bool:
+    """
+    Formun o anki JSON halini, ORM kullanarak aktif firmanın (Tenant) veritabanına kaydeder.
+    """
+    from flask import session
+    from app.extensions import db
+    from app.modules.firmalar.models import FormVersion # Modeli kendi yoluna göre düzelt
+    import json
+    
+    try:
+        aktif_firma_id = session.get('tenant_id') # Veya projende g.firma_id olarak geçiyorsa onu kullan
+        
+        yeni_versiyon = FormVersion(
+            firma_id=aktif_firma_id,
+            form_name=form_name,
+            form_json=json.dumps(form_data, ensure_ascii=False),
+            comment=version_comment,
+            created_by=created_by
+        )
+        
+        db.session.add(yeni_versiyon)
+        db.session.commit()
+        return True
+        
+    except Exception as e:
+        db.session.rollback()
+        import logging
+        logging.error(f"Form versiyonlama ORM hatası: {e}")
+        return False

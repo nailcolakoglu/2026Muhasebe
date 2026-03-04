@@ -1,45 +1,42 @@
 from lxml import etree
 from datetime import datetime
-from app.extensions import db
+from app.extensions import get_tenant_db # ✨ db yerine get_tenant_db import edildi
 from app.modules.firmalar.models import Firma, Donem
 from app.modules.muhasebe.models import MuhasebeFisi, MuhasebeFisiDetay
 
 class EDefterBuilder:
     def __init__(self, firma_id, donem_id, baslangic, bitis):
-        self.firma = Firma.query.get(firma_id)
-        self.donem = Donem.query.get(donem_id)
+        self.tenant_db = get_tenant_db() # ✨ DB bağlantısı alındı
+        
+        # ✨ Standart .query yerine tenant_db.query kullanıldı
+        self.firma = self.tenant_db.query(Firma).get(firma_id)
+        self.donem = self.tenant_db.query(Donem).get(donem_id)
         self.baslangic = baslangic
         self.bitis = bitis
         
-        # GİB Standart Namespace Tanımları (Ezberlemeye gerek yok, standarttır)
         self.nsmap = {
             "xbrli": "http://www.xbrl.org/2003/instance",
             "gl-cor": "http://www.xbrl.org/int/gl/cor/2006-10-25",
             "gl-bus": "http://www.xbrl.org/int/gl/bus/2006-10-25",
             "gl-plt": "http://www.xbrl.org/int/gl/plt/2006-10-25",
             "nde": "http://www.gib.gov.tr/vedop/e-defter",
-            None: "http://www.xbrl.org/2003/instance" # Default namespace
+            None: "http://www.xbrl.org/2003/instance" 
         }
 
     def yevmiye_xml_olustur(self):
-        """Yevmiye Defteri (xbrl) XML'ini oluşturur."""
-        
-        # 1.Kök Element (xbrli:xbrl)
         root = etree.Element(f"{{{self.nsmap['xbrli']}}}xbrl", nsmap=self.nsmap)
-        
-        # 2.Firma Bilgileri (Header)
         self._header_ekle(root)
         
-        # 3.Fişleri Çek (Sadece KESİNLEŞMİŞ olanlar!)
-        fisler = MuhasebeFisi.query.filter(
+        # ✨ Standart .query yerine tenant_db.query kullanıldı
+        fisler = self.tenant_db.query(MuhasebeFisi).filter(
             MuhasebeFisi.firma_id == self.firma.id,
             MuhasebeFisi.tarih >= self.baslangic,
             MuhasebeFisi.tarih <= self.bitis,
-            MuhasebeFisi.resmi_defter_basildi == True # Sadece kilitli fişler
+            MuhasebeFisi.resmi_defter_basildi == True 
         ).order_by(MuhasebeFisi.yevmiye_madde_no).all()
 
         if not fisler:
-            raise Exception("Bu tarih aralığında kesinleşmiş (numara verilmiş) fiş bulunamadı!")
+            raise Exception("Bu tarih aralığında kesinleşmiş (numara verilmiş) fiş bulunamadı!")        
 
         # 4.Hareketleri Dön (AccountingEntries)
         entries_root = etree.SubElement(root, f"{{{self.nsmap['gl-cor']}}}accountingEntries")

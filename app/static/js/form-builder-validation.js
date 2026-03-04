@@ -497,24 +497,76 @@ function t(key, defaultText) {
         });
     }
 
-    // 2.8 Bağımlı Seçim
+    // 2.8 Akıllı Bağımlı Seçim (Geliştirilmiş Select2 Uyumlu Motor)
     function initDependentSelects() {
         $('select[data-dependent-parent]').each(function() {
-            var $child = $(this); var parentName = $child.data('dependent-parent');
-            var $parent = $('[name="' + parentName + '"]'); var url = $child.data('source-url');
+            var $child = $(this); 
+            var parentName = $child.data('dependent-parent');
+            var url = $child.data('source-url');
+            // ✨ YENİ: Özel parametre adı belirlendiyse onu kullan, yoksa parent_id kullan
+            var paramName = $child.data('source-param') || 'parent_id';
+            
+            // Parent'ı ID veya Name ile güvenli şekilde bul
+            var $parent = $('#' + parentName + ', [name="' + parentName + '"]').first();
+            
+            if ($parent.length === 0) return;
+
             $parent.on('change', function() {
                 var pid = $(this).val();
-                if (!pid) { $child.empty().prop('disabled', true); return; }
-                $child.prop('disabled', true).html('<option>' + t('loading', 'Yükleniyor...') + '</option>');
-                $.get(url, { parent_id: pid }, function(data) {
-                    $child.empty().append('<option value="">' + t('select', 'Seçiniz') + '</option>');
-                    data.forEach(function(item) { $child.append(new Option(item.text, item.id)); });
-                    $child.prop('disabled', false).trigger('change');
+                
+                // Parent boşaltıldıysa (Örn: Temizle'ye basıldıysa)
+                if (!pid) { 
+                    $child.empty().append('<option value="">' + t('select', 'Seçiniz...') + '</option>').prop('disabled', true);
+                    // Select2'yi yenile ve altındakileri de temizlemek için zincirleme tetikle
+                    $child.trigger('change'); 
+                    if ($child.hasClass('select2-hidden-accessible')) $child.trigger('change.select2');
+                    return; 
+                }
+                
+                var originalPlaceholder = $child.find('option:first').text() || t('select', 'Seçiniz...');
+                
+                // Yükleniyor durumu ve Select2 arayüz güncellemesi
+                $child.prop('disabled', true).empty().append('<option value="">' + t('loading', 'Yükleniyor...') + '</option>');
+                if ($child.hasClass('select2-hidden-accessible')) $child.trigger('change.select2');
+
+                // İstek parametresini dinamik hazırla
+                var requestData = {};
+                requestData[paramName] = pid;
+
+                $.ajax({
+                    url: url,
+                    data: requestData,
+                    type: 'GET',
+                    success: function(response) {
+                        $child.empty().append('<option value="">' + originalPlaceholder + '</option>');
+                        
+                        // ✨ YENİ: Backend'den 'results', 'options' veya dümdüz 'array' dönebilir, hepsini anlar
+                        var items = response.results || response.options || response.data || response;
+                        
+                        if (Array.isArray(items)) {
+                            items.forEach(function(item) { 
+                                // id/text veya value/label varyasyonlarını otomatik destekler
+                                var val = item.id || item.value;
+                                var text = item.text || item.label || item.ad;
+                                $child.append(new Option(text, val, false, false)); 
+                            });
+                        }
+                    },
+                    error: function() {
+                        $child.empty().append('<option value="">' + t('error', 'Yükleme Hatası!') + '</option>');
+                    },
+                    complete: function() {
+                        $child.prop('disabled', false).trigger('change');
+                        // Select2 render motorunu uyar ki yeni verileri ekranda göstersin
+                        if ($child.hasClass('select2-hidden-accessible')) {
+                            $child.trigger('change.select2');
+                        }
+                    }
                 });
             });
         });
     }
-
+	
     // --- 2.9 METİN DÖNÜŞÜMÜ (Text Transform) ---
     function initTextTransform() {
         $('input[data-text-transform]').on('input', function() {
@@ -989,7 +1041,7 @@ function t(key, defaultText) {
         });
     }
 
-// 2.21 Select2 Başlatıcı (AJAX Destekli)
+	// 2.21 Select2 Başlatıcı (AJAX Destekli)
     function initializeSelect2(container) {
         if (typeof $ === 'undefined' || !$.fn.select2) return;
 
@@ -1606,9 +1658,71 @@ function t(key, defaultText) {
         });
     }
 
-// 2.32 Gelişmiş Klavye Kontrolleri (Master-Detail Özel - DÜZELTİLMİŞ)
-function initKeyboardActions() {
+	// 2.32 Gelişmiş Klavye Kontrolleri (Master-Detail Özel - DÜZELTİLMİŞ)
+	function initKeyboardActions() {
     
+	// ==============================================================
+	// 🔥 2.33 ASYNC (AJAX) ANLIK DOĞRULAMA MOTORU
+	// ==============================================================
+	function initAsyncValidation() {
+    $('input[data-async-val-url]').on('input', function() {
+        var $input = $(this);
+        var url = $input.data('async-val-url');
+        var debounceMs = $input.data('async-val-debounce') || 500;
+        
+        // ✨ YENİ: Python'dan gelen table ve exclude_id gibi parametreleri oku
+        var extraParams = $input.data('async-val-params') || {};
+        
+        clearTimeout($input.data('async-timer'));
+        
+        var val = $input.val().trim();
+        if (!val) {
+            $input.removeClass('is-invalid is-valid async-loading');
+            $input.siblings('.invalid-feedback').text(''); // Yazıyı da temizle
+            return;
+        }
+
+        var timer = setTimeout(function() {
+            // ✨ YENİ: API'nin beklediği kusursuz JSON paketini hazırla
+            var requestData = Object.assign({}, extraParams);
+            requestData['value'] = val;
+            requestData['field'] = requestData['field'] || $input.attr('name');
+
+            $.ajax({
+                url: url,
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(requestData),
+                headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content },
+                success: function(res) {
+                    if (res.valid) {
+                        $input.removeClass('is-invalid').addClass('is-valid');
+                        $input.siblings('.invalid-feedback').text('');
+                    } else {
+                        $input.removeClass('is-valid').addClass('is-invalid');
+                        let $feedback = $input.siblings('.invalid-feedback');
+                        if($feedback.length === 0) {
+                            $feedback = $('<div class="invalid-feedback fw-bold"></div>');
+                            $input.after($feedback);
+                        }
+                        $feedback.text(res.message || 'Geçersiz veri.');
+                    }
+                },
+                error: function(xhr) {
+                    console.error("Async validasyon hatası (Eksik parametre olabilir):", xhr.responseText);
+                }
+            });
+        }, debounceMs);
+        
+        $input.data('async-timer', timer);
+    });
+}
+
+	// Sayfa yüklendiğinde motoru çalıştır (Eğer mevcut document.ready varsa içine de koyabilirsin)
+$(document).ready(function() {
+    initAsyncValidation();
+});
+
     function focusNextInput($currentElement) {
         var $row = $currentElement.closest('tr');
         
@@ -2968,6 +3082,7 @@ clearStates(field) {
         initAutoNumber();
         initDependentFields();
         initKeyboardActions();
+		
         initGlobalFormNavigation();
         
         const forms = document.querySelectorAll('form[data-form-handler]');

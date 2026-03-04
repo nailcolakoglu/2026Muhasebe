@@ -10,6 +10,8 @@ from flask_login import login_required, current_user
 from sqlalchemy import func, and_, or_, cast, String, text
 from sqlalchemy.dialects.mysql import CHAR
 
+from app.form_builder.form_export import FormExporter
+from app.form_builder import FieldType
 from app.modules.cari.models import CariHesap, CariHareket, CRMHareket
 from app.modules.fatura.models import Fatura
 from app.modules.lokasyon.models import Sehir, Ilce  
@@ -226,7 +228,7 @@ def index():
     grid.add_column('unvan', 'Ünvan')
     grid.add_column('sehir.ad', 'Şehir')  # ← N+1!
     grid.add_column('telefon', _('Telefon'))
-    grid.add_column('borc_bakiye', 'Borç', type='currency')
+    grid.add_column('borc_bakiye', 'Borç', type=FieldType.CURRENCY)
     grid.add_column('alacak_bakiye', 'Alacak', type='currency')
     
     grid.add_action('detay', _('Ekstre'), 'bi bi-file-text', 'btn-info btn-sm', 'route', 'cari.ekstre')
@@ -630,7 +632,6 @@ def api_ara():
 def risk_analizi():
     """AI destekli risk analiz ekranı"""
     return render_template('cari/risk_analizi.html')
-
 
 @cari_bp.route('/api/risk-hesapla', methods=['POST'])
 @protected_route
@@ -1178,3 +1179,16 @@ def api_rota_olustur():
             'message': f'Rota oluşturulamadı: {str(e)}'
         }), 500
 
+@cari_bp.route('/api/export-cariler')
+def export_cariler():
+    tenant_db = get_tenant_db()
+    if not tenant_db:
+        flash("Veritabanı bağlantısı yok.", "danger")
+        return redirect(url_for('main.index'))
+        
+    cariler = tenant_db.query(CariHesap).all()
+    veriler = [c.__dict__ for c in cariler] # Objeyi dict'e çevir
+    kolonlar = [{'name': 'kod', 'label': 'Cari Kodu'}, {'name': 'unvan', 'label': 'Firma Ünvanı'}]
+    
+    return FormExporter.to_excel(veriler, kolonlar, filename="Cari_Listesi")
+    

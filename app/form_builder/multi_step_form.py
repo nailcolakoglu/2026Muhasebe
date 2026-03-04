@@ -1,11 +1,14 @@
+# app/form_builder/multi_step_form.py
+
 from .form import Form
 from html import escape
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Callable
 
 class MultiStepForm(Form):
     """
-    Çok adımlı form sınıfı
-    Backend rendering + Frontend JavaScript entegrasyonu
+    Enterprise Çok Adımlı Form (Wizard) Sınıfı.
+    - LocalStorage Otomatik Kayıt (Auto-Save)
+    - Adım Bazlı Doğrulama Hook'ları (Step Validators)
     """
     
     def __init__(self, name: str, steps: List[Dict[str, Any]], **kwargs):
@@ -21,159 +24,172 @@ class MultiStepForm(Form):
         self.current_step: int = 0
         self.progress: int = 0
         
-        # ✅ Form ID ve Class'ı güvenli şekilde ayarla
-        # Önce base class'dan gelen değerleri kontrol et
+        # ✨ YENİ: Adım Bazlı Doğrulama Hook'ları
+        self.step_validators: Dict[int, Callable] = {}
+        
+        # ✨ YENİ: Otomatik Kayıt Ayarları
+        self.auto_save = False
+        self.storage_key = f"wizard_{self.name}"
+        self.auto_save_js = ""
+        
+        # Form ID ve Class'ı güvenli şekilde ayarla
         if not hasattr(self, 'form_id'):
             self.form_id = None
         
         if not hasattr(self, 'form_class'):
             self.form_class = ''
         
-        # Şimdi wizard-specific değerleri ata
         if not self.form_id:
             self.form_id = kwargs.get('form_id', f"wizard_{name}")
         
-        # Wizard class'ını ekle (varolan class'ları koruyarak)
         wizard_class = 'form-wizard'
         if self.form_class:
             if wizard_class not in self.form_class:
                 self.form_class += f' {wizard_class}'
         else:
             self.form_class = wizard_class
-        
-        # Tüm adımlardaki field'ları ana forma kaydet
-        for step in steps:
-            for field in step.get('fields', []):
-                self.add_field(field)
-        
-        self.update_progress()
 
-    def update_progress(self):
-        """Progress yüzdesini hesapla"""
-        if len(self.steps) > 0:
-            self.progress = round((self.current_step + 1) / len(self.steps) * 100)
-        else:
-            self.progress = 0
-    
-    def get_step_count(self) -> int:
-        """Toplam adım sayısı"""
-        return len(self.steps)
-    
-    def get_current_step_data(self) -> Dict[str, Any]:
-        """Mevcut adımın tüm bilgilerini döndür"""
-        if 0 <= self.current_step < len(self.steps):
-            return self.steps[self.current_step]
-        return {}
-    
+    def set_step_validator(self, step_index: int, validator_func: Callable) -> 'MultiStepForm':
+        """
+        Belirli bir adım için özel backend doğrulama kuralı ekler.
+        validator_func, form_data'yı alıp (is_valid: bool, errors: dict) dönmelidir.
+        """
+        self.step_validators[step_index] = validator_func
+        return self
+
+    def can_proceed_to_next(self, form_data: dict) -> Tuple[bool, dict]:
+        """
+        Mevcut adımdan sonrakine geçilip geçilemeyeceğini kontrol eder.
+        """
+        validator = self.step_validators.get(self.current_step)
+        if validator:
+            is_valid, errors = validator(form_data)
+            return is_valid, errors
+        return True, {}
+
+    def enable_auto_save(self, storage_key: str = None) -> 'MultiStepForm':
+        """
+        Kullanıcı formu doldururken verilerin tarayıcıda (LocalStorage) tutulmasını sağlar.
+        Sayfa yenilense bile veri kaybolmaz.
+        """
+        self.auto_save = True
+        if storage_key:
+            self.storage_key = storage_key
+            
+        self.auto_save_js = f"""
+        <script>
+        document.addEventListener("DOMContentLoaded", function() {{
+            const storageKey = '{self.storage_key}';
+            const $form = $('#{self.form_id}');
+            
+            if ($form.length === 0) return;
+
+            // 1. Veriyi Geri Yükle (Sayfa açıldığında)
+            const savedData = localStorage.getItem(storageKey);
+            if (savedData) {{
+                try {{
+                    const parsed = JSON.parse(savedData);
+                    parsed.forEach(item => {{
+                        const $input = $form.find(`[name="${{item.name}}"]`);
+                        if ($input.length > 0) {{
+                            if ($input.is(':radio') || $input.is(':checkbox')) {{
+                                $form.find(`[name="${{item.name}}"][value="${{item.value}}"]`).prop('checked', true);
+                            }} else {{
+                                $input.val(item.value);
+                                // Select2 kullanılıyorsa UI'ı tetikle
+                                if ($input.hasClass('select2-hidden-accessible')) {{
+                                    $input.trigger('change.select2');
+                                }}
+                            }}
+                        }}
+                    }});
+                }} catch(e) {{ console.error('Wizard Auto-Save Geri Yükleme Hatası:', e); }}
+            }}
+
+            // 2. Her Değişiklikte Kaydet (Kullanıcı yazarken)
+            $form.on('change input', 'input, select, textarea', function() {{
+                const formData = $form.serializeArray();
+                localStorage.setItem(storageKey, JSON.stringify(formData));
+            }});
+
+            // 3. Form Başarıyla Gönderildiğinde Temizle! (Çok Önemli)
+            $form.on('submit', function() {{
+                localStorage.removeItem(storageKey);
+            }});
+        }});
+        </script>
+        """
+        return self
+
     def get_current_fields(self):
-        """Mevcut adımın field'ları"""
-        return self.get_current_step_data().get('fields', [])
-
-    def get_current_title(self) -> str:
-        """Mevcut adımın başlığı"""
-        return self.get_current_step_data().get('title', f"Adım {self.current_step + 1}")
+        """Mevcut adımın alanlarını döndür"""
+        if 0 <= self.current_step < len(self.steps):
+            return self.steps[self.current_step].get('fields', [])
+        return []
     
-    def get_current_description(self) -> str:
-        """Mevcut adımın açıklaması"""
-        return self.get_current_step_data().get('description', '')
-
-    def is_last_step(self) -> bool:
-        """Son adımda mıyız?"""
-        return self.current_step == len(self.steps) - 1
-
-    def is_first_step(self) -> bool:
-        """İlk adımda mıyız? """
-        return self.current_step == 0
-    
-    def next_step(self) -> bool:
-        """Sonraki adıma geç"""
-        if not self.is_last_step():
-            self.current_step += 1
-            self.update_progress()
-            return True
-        return False
-    
-    def prev_step(self) -> bool:
-        """Önceki adıma geç"""
-        if not self.is_first_step():
-            self.current_step -= 1
-            self.update_progress()
-            return True
-        return False
-    
-    def go_to_step(self, step_number: int) -> bool:
-        """Belirli bir adıma git"""
-        if 0 <= step_number < len(self.steps):
-            self.current_step = step_number
-            self.update_progress()
-            return True
-        return False
-
     def render(self) -> str:
-        """Wizard form'unu HTML olarak render et"""
+        """Form HTML'ini oluştur"""
         html_parts = []
         
-        # Form başlangıcı
-        method = getattr(self, 'method', 'POST').upper()
-        action = getattr(self, 'action', '')
-        action_attr = f' action="{escape(action)}"' if action else ''
-        enctype = ' enctype="multipart/form-data"' if self._has_file_upload() else ''
-        form_id_attr = f' id="{self.form_id}"' if self.form_id else ''
-        form_class_attr = f' class="{self.form_class}"' if self.form_class else ''
-        data_steps = f' data-wizard-steps="{self.get_step_count()}"'
-        
+        # Form Başlangıcı
+        enctype = 'enctype="multipart/form-data"' if self._has_file_upload() else ''
         html_parts.append(
-            f'<form method="{method}"{action_attr}{enctype}{form_id_attr}{form_class_attr}{data_steps}>'
+            f'<form id="{self.form_id}" class="{self.form_class}" method="{self.method}" '
+            f'action="{self.action}" {enctype}>'
         )
         
-        # CSRF Token
         html_parts.append(self._render_csrf_token())
         
-        # ✅ Modern Step Indicators (Boş container - JavaScript dolduracak)
-        html_parts.append('''
-        <div class="wizard-progress mb-4">
-            <div class="wizard-steps-indicator">
-                <!-- JavaScript buraya step indicators ekleyecek -->
+        # Adım Göstergesi (Steppers)
+        html_parts.append('<div class="wizard-stepper mb-4 d-flex justify-content-between">')
+        for i, step in enumerate(self.steps):
+            active_class = "active" if i == self.current_step else "completed" if i < self.current_step else ""
+            icon = step.get('icon', 'fas fa-circle')
+            html_parts.append(f'''
+            <div class="step {active_class}" data-step="{i}">
+                <div class="step-icon"><i class="{icon}"></i></div>
+                <div class="step-label">{step.get("title", f"Adım {i+1}")}</div>
             </div>
-        </div>
-        ''')
+            ''')
+        html_parts.append('</div>')
         
-        # Her adımı render et
-        for step_index, step in enumerate(self.steps):
-            step_num = step_index + 1
-            title = step.get('title', f'Adım {step_num}')
-            description = step.get('description', '')
+        # Adım İçerikleri (Sadece aktif adımı gösteririz veya tümünü JS için gizleriz)
+        html_parts.append('<div class="wizard-content card shadow-sm mb-3"><div class="card-body">')
+        
+        for i, step in enumerate(self.steps):
+            display = "block" if i == self.current_step else "none"
+            html_parts.append(f'<div class="wizard-step-pane" id="step_pane_{i}" style="display: {display};">')
+            html_parts.append(f'<h4 class="border-bottom pb-2 mb-4 text-primary">{step.get("title")}</h4>')
+            
+            # Adımdaki Field'ları render et
             fields = step.get('fields', [])
-            
-            display_style = '' if step_num == 1 else ' style="display: none;"'
-            
-            html_parts.append(f'<div class="wizard-step" data-step="{step_num}"{display_style}>')
-            html_parts.append(f'<h4 class="wizard-step-title">{escape(title)}</h4>')
-            
-            if description:
-                html_parts.append(f'<p class="text-muted">{escape(description)}</p>')
-            
             for field in fields:
                 html_parts.append(field.render())
-            
+                
             html_parts.append('</div>')
+            
+        html_parts.append('</div></div>')
         
-        # ✅ Navigation Buttons (Modern)
+        # Butonlar
         html_parts.append('''
-        <div class="wizard-navigation">
-            <button type="button" class="btn btn-wizard-prev" style="display: none;">
+        <div class="wizard-buttons d-flex justify-content-between mt-3">
+            <button type="button" class="btn btn-secondary btn-wizard-prev d-none">
                 <i class="fas fa-arrow-left me-2"></i> Geri
             </button>
-            <button type="button" class="btn btn-wizard-next">
+            <button type="button" class="btn btn-primary btn-wizard-next">
                 İleri <i class="fas fa-arrow-right ms-2"></i>
             </button>
-            <button type="submit" class="btn btn-wizard-submit d-none">
+            <button type="submit" class="btn btn-success btn-wizard-submit d-none">
                 <i class="fas fa-check me-2"></i> Gönder
             </button>
         </div>
         ''')
         
         html_parts.append('</form>')
+        
+        # ✨ YENİ: Varsa Otomatik Kayıt JS kodunu HTML'in sonuna ekle
+        if self.auto_save:
+            html_parts.append(self.auto_save_js)
         
         return '\n'.join(html_parts)
     
@@ -188,28 +204,26 @@ class MultiStepForm(Form):
     def _has_file_upload(self) -> bool:
         """Form'da file upload var mı?"""
         return any(
-            field.is_file_input() 
+            hasattr(field, 'is_file_input') and field.is_file_input() 
             for step in self.steps 
             for field in step.get('fields', [])
         )
 
     def validate_current_step(self) -> bool:
-        """Mevcut adımı doğrula"""
+        """Mevcut adımı doğrula (Tüm alanların validasyonunu çalıştırır)"""
         is_valid = True
         
         for field in self.get_current_fields():
-            if not field.validate():
+            if hasattr(field, 'validate') and not field.validate():
                 is_valid = False
         
         return is_valid
     
     def validate_all_steps(self) -> bool:
-        """Tüm adımları doğrula"""
-        all_valid = True
-        
+        """Tüm adımları baştan sona doğrula (Submit aşamasında çağrılır)"""
+        is_valid = True
         for step in self.steps:
             for field in step.get('fields', []):
-                if not field.validate():
-                    all_valid = False
-        
-        return all_valid
+                if hasattr(field, 'validate') and not field.validate():
+                    is_valid = False
+        return is_valid
