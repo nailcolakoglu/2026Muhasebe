@@ -10,18 +10,48 @@
 
     // ==================== YARDIMCI FONKSİYONLAR ====================
 
-    function debugOutput(message) {
-        if (window.console && window.console.log) {
-            console.log('[DATA-GRID] ' + message);
+    /** Debug modunu belirler; yalnızca localhost'ta etkindir. */
+    var DEBUG = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+    /**
+     * Debug log mesajı yazar (yalnızca DEBUG modunda).
+     * @param {string} message - Log mesajı.
+     * @param {*} [data] - Ek veri (opsiyonel).
+     */
+    function debugLog(message, data) {
+        if (DEBUG && window.console && window.console.log) {
+            if (data !== undefined) {
+                console.log('[DataGrid] ' + message, data);
+            } else {
+                console.log('[DataGrid] ' + message);
+            }
         }
     }
 
+    /**
+     * @deprecated debugOutput yerine debugLog kullanın.
+     * @param {string} message - Log mesajı.
+     */
+    function debugOutput(message) {
+        debugLog(message);
+    }
+
+    /**
+     * Gruplama durumunu localStorage'a kaydeder.
+     * @param {string} gridName - Grid adı.
+     * @param {Array<Object>} groups - Aktif gruplar dizisi.
+     */
     function saveGroupingState(gridName, groups) {
         try {
             localStorage.setItem('dxGridGroupState_' + gridName, JSON.stringify(groups));
         } catch (e) { console.error("LocalStorage Hatası:", e); }
     }
 
+    /**
+     * Gruplama durumunu localStorage'dan yükler.
+     * @param {string} gridName - Grid adı.
+     * @returns {Array<Object>} Kayıtlı gruplar; hata veya kayıt yoksa boş dizi.
+     */
     function loadGroupingState(gridName) {
         try {
             var state = localStorage.getItem('dxGridGroupState_' + gridName);
@@ -29,6 +59,12 @@
         } catch (e) { return []; }
     }
 
+    /**
+     * Tarih string'ini JavaScript Date nesnesine çevirir.
+     * DD.MM.YYYY ve YYYY-MM-DD formatlarını destekler.
+     * @param {string} dateStr - Tarih string'i.
+     * @returns {Date|null} Ayrıştırılan tarih; geçersizse null.
+     */
     function parseDate(dateStr) {
         // DD.MM.YYYY veya YYYY-MM-DD algıla
         if (!dateStr) return null;
@@ -43,6 +79,10 @@
     }
 
     // ==================== 1. GRUPLAMA (GROUPING) ====================
+    /**
+     * Tüm gruplama özellikli grid'leri başlatır.
+     * Sütun sürükle-bırak gruplama, yön değiştirme ve grup kaldırma işlevlerini etkinleştirir.
+     */
     function initGrouping() {
         $('.dx-grouping-enabled').each(function() {
             var $gridCard = $(this);
@@ -227,6 +267,10 @@
     }
 
     // ==================== 2. ÖZET BİLGİLER (SUMMARY) ====================
+    /**
+     * Grid tablosuna özet bilgiler (toplam, ortalama, tarih aralığı) footer'ı ekler.
+     * @param {jQuery} $grid - Grid tablo elementi.
+     */
     function initSummaryFooter($grid) {
         $grid.find('tfoot.dx-summary-footer').remove();
         if ($grid.find('th[data-summary-field="true"]').length === 0) return;
@@ -275,6 +319,9 @@
     }
 
     // ==================== 3. DİĞER ÖZELLİKLER (Search, Sort, Filter) ====================
+    /**
+     * Her grid kartına sütun göster/gizle (column chooser) dropdown menüsü ekler.
+     */
     function initColumnChooser() {
         $('.dx-grid-card').each(function() {
             var $card = $(this);
@@ -347,7 +394,11 @@
         });
     }
 	
-	function initGlobalSearch() {
+    /**
+     * Genel (global) arama kutusunu başlatır.
+     * Enter tuşuna basıldığında sunucu taraflı arama tetiklenir.
+     */
+    function initGlobalSearch() {
         // ESKİ CLIENT-SIDE KODUNU SİLDİK, YERİNE SERVER-SIDE (SUNUCU TARAFLI) ARAMA EKLEDİK
         
         $(document).on('keyup', '.dx-grid-filter', function(e) {
@@ -371,6 +422,10 @@
         });
     }
 
+    /**
+     * Sütun başına filtre alanlarını başlatır.
+     * Enter tuşuna basıldığında veya değer değiştiğinde sunucu taraflı filtreleme tetiklenir.
+     */
     function initColumnFiltering() {
         $(document).on('change keyup', '.dx-column-filter', function(e) {
             if (e.type === 'keyup' && e.key !== 'Enter') return;
@@ -385,7 +440,11 @@
     }
 
     // ==================== 4. AKILLI AJAX / SİLME İŞLEMİ (GÜNCELLENEN KISIM) ====================
-	function initAjaxActions() {
+    /**
+     * AJAX aksiyon butonlarını (sil, özel işlem vb.) başlatır.
+     * Onay dialog'u gösterir ve işlemi AJAX ile gerçekleştirir.
+     */
+    function initAjaxActions() {
         // 👇 YENİ: .datagrid-ajax-btn eklendi. Artık her butonumuzu yakalayacak!
         var actionSelector = '.datagrid-action[data-type="ajax"], [data-action="delete"], button[title="Sil"], .datagrid-ajax-btn';
 
@@ -437,11 +496,18 @@
         });
     }
 
+    /**
+     * AJAX isteği gönderir ve sonuca göre UI'ı günceller.
+     * @param {string} url - İstek URL'i.
+     * @param {jQuery} btn - Tıklanan buton elementi.
+     * @param {boolean} isDelete - Silme işlemi mi?
+     */
     function sendAjaxRequest(url, btn, isDelete) {
+        try {
         var csrfToken = $('meta[name="csrf-token"]').attr('content');
         $.ajax({
             url: url,
-            type: 'POST', // Her zaman POST kullanıyoruz
+            type: 'POST',
             dataType: 'json',
             headers: {
                 "X-CSRFToken": csrfToken
@@ -463,8 +529,7 @@
                         timer: 2000,
                         showConfirmButton: false
                     });
-                    
-                    // 👇 YENİ MANTIK: Eğer işlem silmeyse satırı uçur, değilse sayfayı yenile ki güncel durum (Örn: Kuyrukta) görünsün!
+
                     if (isDelete) {
                         btn.closest('tr').fadeOut(500, function() { $(this).remove(); });
                     } else {
@@ -476,9 +541,29 @@
                     Swal.fire('Hata!', response.message || 'İşlem başarısız.', 'error');
                 }
             },
-            error: function(xhr) {
-                var msg = xhr.responseJSON && xhr.responseJSON.message ? xhr.responseJSON.message : "Sunucu hatası.";
-                Swal.fire('Hata!', msg, 'error');
+            error: function(xhr, status, error) {
+                console.error('[DataGrid AJAX Error]', {
+                    url: url,
+                    status: xhr.status,
+                    error: error,
+                    response: xhr.responseText
+                });
+
+                var msg;
+                if (xhr.status === 0) {
+                    msg = 'Sunucuya ulaşılamıyor. İnternet bağlantınızı kontrol edin.';
+                } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                } else {
+                    msg = 'Sunucu hatası (' + xhr.status + ').';
+                }
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Bağlantı Hatası',
+                    text: msg,
+                    footer: 'Hata Kodu: ' + xhr.status
+                });
             },
             complete: function() {
                 btn.prop('disabled', false);
@@ -488,18 +573,24 @@
                 }
             }
         });
+        } catch (e) {
+            console.error('[DataGrid Exception]', e);
+        }
     }
     
 	
-	// ==================== BAŞLATMA (INIT) ====================
+    // ==================== BAŞLATMA (INIT) ====================
+    /**
+     * DataGrid modülünü başlatır; tüm alt bileşenleri etkinleştirir.
+     */
     function initDataGrid() {
-        debugOutput('DataGrid Core JS Initializing...');
+        debugLog('DataGrid Core JS Initializing...');
         
         initGrouping();
         initColumnFiltering();
         initGlobalSearch();
-		initColumnChooser();
-        initAjaxActions(); // Yeni Akıllı Silme
+        initColumnChooser();
+        initAjaxActions();
         
         // Özet Footer'ı başlat
         $('.dx-grid[data-enable-summary="true"]').each(function() {
