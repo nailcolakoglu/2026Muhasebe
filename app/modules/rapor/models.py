@@ -122,3 +122,111 @@ class SavedReport(db.Model):
     tenant_db = get_tenant_db()
     tenant_db.query(SavedReport).filter_by(user_id=user_id).all()
     """
+
+
+# ===================================
+# SCHEDULED REPORT
+# ===================================
+class ScheduledReport(db.Model):
+    """
+    Zamanlanmış raporlar - otomatik çalışıp e-posta gönderir.
+    """
+    __tablename__ = 'scheduled_reports'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    report_config = db.Column(db.Text, nullable=False)
+    model_name = db.Column(db.String(100), nullable=False)
+    schedule_type = db.Column(db.String(20), nullable=False, default='daily')
+    recipients = db.Column(db.Text, nullable=False, default='[]')
+    export_format = db.Column(db.String(20), nullable=False, default='excel')
+    user_id = db.Column(db.String(36), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    last_run_at = db.Column(db.DateTime)
+    next_run_at = db.Column(db.DateTime)
+    run_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f'<ScheduledReport {self.id} ({self.schedule_type})>'
+
+    def to_dict(self) -> dict:
+        """API için dict formatı."""
+        return {
+            'id': self.id,
+            'model_name': self.model_name,
+            'schedule_type': self.schedule_type,
+            'recipients': json.loads(self.recipients or '[]'),
+            'export_format': self.export_format,
+            'user_id': self.user_id,
+            'is_active': self.is_active,
+            'last_run_at': self.last_run_at.isoformat() if self.last_run_at else None,
+            'next_run_at': self.next_run_at.isoformat() if self.next_run_at else None,
+            'run_count': self.run_count or 0,
+        }
+
+
+# ===================================
+# REPORT PERMISSION
+# ===================================
+class ReportPermission(db.Model):
+    """
+    Rapor erişim izinleri - hangi kullanıcı hangi raporu görebilir/düzenleyebilir.
+    """
+    __tablename__ = 'report_permissions'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    report_id = db.Column(db.String(36), db.ForeignKey('saved_reports.id'), nullable=False)
+    user_id = db.Column(db.String(36), nullable=False)
+    can_view = db.Column(db.Boolean, default=True)
+    can_edit = db.Column(db.Boolean, default=False)
+    can_delete = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    report = db.relationship('SavedReport', backref='permissions')
+
+    def __repr__(self) -> str:
+        return f'<ReportPermission report={self.report_id} user={self.user_id}>'
+
+
+# ===================================
+# REPORT VERSION
+# ===================================
+class ReportVersion(db.Model):
+    """
+    Rapor konfigürasyonu versiyon geçmişi.
+    """
+    __tablename__ = 'report_versions'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    report_id = db.Column(db.String(36), db.ForeignKey('saved_reports.id'), nullable=False)
+    config_json = db.Column(db.Text, nullable=False)
+    user_id = db.Column(db.String(36), nullable=False)
+    change_note = db.Column(db.String(500), default='')
+    version_number = db.Column(db.Integer, default=1)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    report = db.relationship('SavedReport', backref='versions')
+
+    def __repr__(self) -> str:
+        return f'<ReportVersion report={self.report_id} v{self.version_number}>'
+
+
+# ===================================
+# REPORT USAGE LOG
+# ===================================
+class ReportUsageLog(db.Model):
+    """
+    Rapor kullanım istatistikleri - analytics için.
+    """
+    __tablename__ = 'report_usage_logs'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    report_id = db.Column(db.String(36), db.ForeignKey('saved_reports.id'), nullable=True)
+    user_id = db.Column(db.String(36), nullable=False)
+    execution_time = db.Column(db.Float, default=0.0)
+    row_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f'<ReportUsageLog report={self.report_id} user={self.user_id}>'
