@@ -1,8 +1,11 @@
 # form_builder/form_field.py
 
+import logging
+import json
 from typing import Any, Optional, Dict, List, Union
 from html import escape
 from datetime import datetime
+from functools import lru_cache
 import re
 import copy 
 from markupsafe import Markup
@@ -12,17 +15,266 @@ from .field_types import FieldType
 from .validation_rules import Validator, ValidationRule
 from .form_theme import BOOTSTRAP5_LIGHT, DARK_CARD
 
+logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=256)
+def _build_cached_css_classes(field_type_val: str, custom_classes: str, has_error: bool) -> str:
+    """CSS sınıflarını cache'ler.
+
+    Args:
+        field_type_val: FieldType değerinin string karşılığı.
+        custom_classes: Ek CSS sınıfları.
+        has_error: Hata durumu bayrağı.
+
+    Returns:
+        str: Birleştirilmiş CSS sınıf dizisi.
+    """
+    base_classes = {
+        'text': 'form-control', 'password': 'form-control',
+        'email': 'form-control email-input', 'number': 'form-control',
+        'url': 'form-control', 'search': 'form-control',
+        'hidden': 'd-none',
+        'select': 'form-select select2-field dx-form-control',
+        'checkbox': 'form-check-input', 'radio': 'form-check-input',
+        'switch': 'form-check-input switch-input',
+        'tags': 'form-control tags-input',
+        'autocomplete': 'form-control autocomplete-field',
+        'textarea': 'form-control dx-form-control',
+        'richtext': 'form-control quill-editor',
+        'markdown': 'form-control markdown-editor',
+        'code_editor': 'form-control font-monospace code-editor',
+        'json_editor': 'form-control json-editor font-monospace',
+        'date': 'form-control date-input',
+        'datetime': 'form-control datetime-input',
+        'time': 'form-control time-input',
+        'month': 'form-control month-input',
+        'week': 'form-control week-input',
+        'tarih': 'form-control tarih-input',
+        'date_range': 'form-control date-range-input',
+        'tel': 'form-control phone-mask-tr', 'ip': 'form-control ip-mask',
+        'tckn': 'form-control tckn-input', 'iban': 'form-control iban-input',
+        'vkn': 'form-control vkn-input',
+        'credit_card': 'form-control credit-card-mask',
+        'plate': 'form-control plate-input',
+        'currency': 'form-control fiyat-input text-end fw-bold',
+        'mask': 'form-control custom-mask',
+        'file': 'form-control', 'files': 'form-control',
+        'image': 'form-control image-input',
+        'audio_recorder': 'd-none', 'video_recorder': 'd-none',
+        'color': 'form-control form-control-color',
+        'color_picker_advanced': 'form-control advanced-color-picker',
+        'range': 'form-range', 'slider': 'dx-slider',
+        'signature': 'd-none', 'drawing': 'd-none',
+        'button': 'btn btn-secondary',
+        'calc': 'form-control calc-input',
+        'otp': 'form-control otp-input text-center',
+        'rating': 'd-none',
+        'barcode': 'form-control barcode-input',
+        'map_point': 'form-control map-coords',
+        'geolocation': 'form-control geolocation-input',
+        'auto_number': 'form-control bg-light fw-bold',
+    }
+    cls = base_classes.get(field_type_val, 'form-control dx-form-control')
+    if custom_classes:
+        cls += f' {custom_classes}'
+    if has_error:
+        cls += ' is-invalid'
+    return cls
+
+
+@lru_cache(maxsize=128)
+def _build_cached_validation_rules(
+    required: bool,
+    min_length: Optional[int],
+    max_length: Optional[int],
+    min_val: Optional[float],
+    max_val: Optional[float],
+    pattern: Optional[str],
+    field_type_val: str,
+    max_file_size: Optional[int],
+    accept: str,
+) -> Optional[str]:
+    """Validation kurallarını JSON string olarak cache'ler.
+
+    Args:
+        required: Zorunluluk bayrağı.
+        min_length: Minimum uzunluk.
+        max_length: Maksimum uzunluk.
+        min_val: Minimum sayısal değer.
+        max_val: Maksimum sayısal değer.
+        pattern: Regex deseni.
+        field_type_val: Alan tipi string değeri (dosya doğrulaması için).
+        max_file_size: Maksimum dosya boyutu (MB).
+        accept: Kabul edilen dosya türleri.
+
+    Returns:
+        Optional[str]: JSON formatında validation kuralları veya None.
+    """
+    rules = []
+    if required:
+        rules.append('required')
+    if min_length:
+        rules.append({'name': 'minLength', 'params': {'min': min_length}})
+    if max_length:
+        rules.append({'name': 'maxLength', 'params': {'max': max_length}})
+    if min_val is not None:
+        rules.append({'name': 'min', 'params': {'min': min_val}})
+    if max_val is not None:
+        rules.append({'name': 'max', 'params': {'max': max_val}})
+    if pattern:
+        rules.append({'name': 'pattern', 'params': {'pattern': pattern}})
+    if field_type_val in ('file', 'files', 'image'):
+        if max_file_size:
+            rules.append({'name': 'fileSize', 'params': {'maxSize': max_file_size}})
+        if accept and accept != '*/*':
+            rules.append({'name': 'fileType', 'params': {'accept': accept}})
+    if not rules:
+        return None
+    json_str = json.dumps(rules, ensure_ascii=False)
+    return escape(json_str)
+
+
+def inject_conditional_fields_js() -> str:
+    """Koşullu alanlar için frontend JavaScript kodu üretir.
+
+    Sayfadaki tüm ``conditional-field`` sınıflı alanları dinleyerek
+    ``show_if`` koşuluna göre gerçek zamanlı gizle/göster işlemi yapar.
+
+    Desteklenen operatörler: ``==``, ``!=``, ``>``, ``<``, ``>=``, ``<=``,
+    ``contains``, ``empty``, ``not_empty``.
+
+    Returns:
+        str: Sayfaya eklenecek ``<script>`` bloğu.
+
+    Example:
+        >>> js = inject_conditional_fields_js()
+        >>> assert '<script>' in js
+    """
+    return '''<script>
+(function() {
+    "use strict";
+
+    /**
+     * Koşullu alan değerlendirici.
+     * @param {string} fieldVal - Hedef alanın mevcut değeri.
+     * @param {string} operator - Karşılaştırma operatörü.
+     * @param {string} condVal  - Koşuldaki beklenen değer.
+     * @returns {boolean}
+     */
+    function evaluateCondition(fieldVal, operator, condVal) {
+        var fv = (fieldVal || "").toString().trim();
+        var cv = (condVal  || "").toString().trim();
+
+        switch (operator) {
+            case "==":        return fv === cv;
+            case "!=":        return fv !== cv;
+            case ">":         return parseFloat(fv) > parseFloat(cv);
+            case "<":         return parseFloat(fv) < parseFloat(cv);
+            case ">=":        return parseFloat(fv) >= parseFloat(cv);
+            case "<=":        return parseFloat(fv) <= parseFloat(cv);
+            case "contains":  return fv.indexOf(cv) !== -1;
+            case "empty":     return fv === "";
+            case "not_empty": return fv !== "";
+            default:          return fv === cv;
+        }
+    }
+
+    /**
+     * Tüm koşullu alanları yeniden değerlendirir.
+     */
+    function evaluateAllConditionals() {
+        var conditionals = document.querySelectorAll(".conditional-field");
+        conditionals.forEach(function(container) {
+            var input = container.querySelector("[data-conditional-field]");
+            if (!input) return;
+
+            var targetFieldName = input.getAttribute("data-conditional-field");
+            var condValue  = input.getAttribute("data-conditional-value") || "";
+            var operator   = input.getAttribute("data-conditional-operator") || "==";
+
+            var targetEl = document.getElementById(targetFieldName)
+                        || document.querySelector("[name='" + targetFieldName + "']");
+            if (!targetEl) return;
+
+            var currentVal = targetEl.type === "checkbox"
+                ? (targetEl.checked ? "true" : "false")
+                : targetEl.value;
+
+            var show = evaluateCondition(currentVal, operator, condValue);
+
+            if (show) {
+                container.classList.remove("d-none");
+                container.style.display = "";
+            } else {
+                container.classList.add("d-none");
+                container.style.display = "none";
+            }
+        });
+    }
+
+    /**
+     * Belirli bir alana bağlı koşullu alanları değerlendirir ve
+     * kaynak alana değişim dinleyicisi ekler.
+     */
+    function setupConditionalListeners() {
+        var listenedFields = {};
+        var conditionals = document.querySelectorAll(".conditional-field");
+
+        conditionals.forEach(function(container) {
+            var input = container.querySelector("[data-conditional-field]");
+            if (!input) return;
+
+            var targetFieldName = input.getAttribute("data-conditional-field");
+            if (listenedFields[targetFieldName]) return;
+            listenedFields[targetFieldName] = true;
+
+            var targetEl = document.getElementById(targetFieldName)
+                        || document.querySelector("[name='" + targetFieldName + "']");
+            if (!targetEl) return;
+
+            var eventType = (targetEl.tagName === "SELECT"
+                          || targetEl.type === "checkbox"
+                          || targetEl.type === "radio") ? "change" : "input";
+
+            targetEl.addEventListener(eventType, evaluateAllConditionals);
+        });
+
+        evaluateAllConditionals();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setupConditionalListeners);
+    } else {
+        setupConditionalListeners();
+    }
+})();
+</script>'''
+
 
 class FormField:
     def __init__(
-        self, 
-        name: str, 
-        field_type: FieldType, 
-        label: str, 
-        conditional: dict = None, 
-        show_if: dict = None, 
+        self,
+        name: str,
+        field_type: FieldType,
+        label: str,
+        conditional: dict = None,
+        show_if: dict = None,
         theme=None, endpoint=None, **kwargs: Any) -> None:
+        """FormField nesnesini başlatır.
 
+        Args:
+            name: Alan adı (HTML ``name`` ve ``id`` için kullanılır).
+            field_type: Alan tipi (FieldType enum değeri).
+            label: Etiket metni.
+            conditional: Koşullu gösterim kuralı (dict). Örnek:
+                ``{'field': 'musteri_turu', 'operator': '==', 'value': 'kurumsal'}``.
+            show_if: ``conditional`` ile aynı işlevi görür; geriye dönük uyumluluk
+                için korunmaktadır.
+            theme: Form teması nesnesi. None ise BOOTSTRAP5_LIGHT kullanılır.
+            endpoint: Otomatik veri çekme URL'si (``data-auto-fetch`` olarak eklenir).
+            **kwargs: Ek özellikler (required, placeholder, help_text vb.).
+        """
         self.name = self._validate_name(name)
         self.field_type = field_type
         self.label = label
@@ -115,6 +367,8 @@ class FormField:
             if self.html_attributes is None: self.html_attributes = {}
             self.html_attributes['data-auto-fetch'] = self.endpoint
 
+        logger.debug("FormField oluşturuldu: %s (%s)", self.name, self.field_type)
+
     def _validate_name(self, name):
         if not name or not isinstance(name, str): raise ValueError("Field name zorunludur.")
         if not re.match(r'^[a-zA-Z0-9_-]+$', name): raise ValueError("Field name geçersiz karakter içeriyor.")
@@ -135,12 +389,30 @@ class FormField:
         if self.min_val or self.max_val: self.validation_rules.append(ValidationRule.NUMBER_RANGE)
         if self.pattern: self.validation_rules.append(ValidationRule.PATTERN)
 
-    def set_show_if(self, field, value):
-        """Kolay koşul tanımı"""
+    def set_show_if(self, field: str, value: Any) -> 'FormField':
+        """Kısa sözdizimi ile koşullu görünüm kuralı tanımlar.
+
+        Args:
+            field: Dinlenecek alan adı.
+            value: Beklenen değer (``==`` operatörü ile karşılaştırılır).
+
+        Returns:
+            FormField: Zincir için self.
+
+        Example:
+            >>> field.set_show_if('musteri_turu', 'kurumsal')
+        """
         self.conditional = {'field': field, 'value': value}
+        logger.debug("set_show_if: %s -> field=%s value=%s", self.name, field, value)
         return self
 
     def get_required_assets(self) -> Dict[str, List[str]]:
+        """Alan tipine göre gereken CSS ve JS kaynaklarını döndürür.
+
+        Returns:
+            Dict[str, List[str]]: ``{'css': [...], 'js': [...]}`` formatında
+            kaynak listeleri.
+        """
         assets = {'css': [], 'js': []}
         if self.field_type == FieldType.RICHTEXT:
             assets['css'].append('quill.snow.css')
@@ -167,54 +439,66 @@ class FormField:
             assets['js'].append('https://unpkg.com/imask')
         return assets
 
-    def process_incoming_data(self, form_data):
-        if self.field_type in [FieldType.HTML, FieldType.SCRIPT, FieldType.HEADER, FieldType.HR]:
-            return
-        if self.is_file_input():
-            return
+    def process_incoming_data(self, form_data: Any) -> None:
+        """Form POST verisinden alan değerini çıkarır ve dönüştürür.
 
-        if self.field_type == FieldType.DATE_RANGE:
-            self.value = {
-                'start': form_data.get(f"{self.name}_start", ""),
-                'end': form_data.get(f"{self.name}_end", "")
-            }
-        elif self.field_type == FieldType.MAP_POINT:
-            lat = form_data.get(f"{self.name}_lat")
-            lng = form_data.get(f"{self.name}_lng")
-            if lat and lng:
-                self.value = f"{lat},{lng}"
-            elif self.name in form_data:
-                self.value = form_data.get(self.name)
-        elif self.field_type == FieldType.RANGE_DUAL:
-            self.value = {
-                'min': form_data.get(f"{self.name}_min", ""),
-                'max': form_data.get(f"{self.name}_max", "")
-            }
-        elif self.field_type == FieldType.MASTER_DETAIL:
-            # Master-Detail verileri genellikle list olarak gelir, 
-            # ancak burada ana value işlemesi yapılmaz, routes tarafında getlist ile alınır.
-            pass
-        else:
-            # Standart Alanlar
-            lookup_name = f"{self.name}[]" if self.is_multiple_select() else self.name
-            if lookup_name in form_data:
-                if self.is_multiple_select() and hasattr(form_data, 'getlist'):
-                    self.value = form_data.getlist(lookup_name)
-                else:
-                    self.value = form_data.get(lookup_name)
-            elif self.name in form_data:
-                self.value = form_data.get(self.name)
+        Alan tipine göre doğru anahtarı (``name``, ``name[]`` vb.) form
+        verisinden okur; para birimi ve sayısal dönüşümleri uygular.
 
+        Args:
+            form_data: Flask ``request.form`` nesnesi veya uyumlu dict.
+        """
+        try:
+            if self.field_type in [FieldType.HTML, FieldType.SCRIPT, FieldType.HEADER, FieldType.HR]:
+                return
+            if self.is_file_input():
+                return
 
-        # ✅ OTOMATİK DÖNÜŞÜMLER (YENİ EKLENEN KISIM)
-        
-        # 1.Para Birimi (1.250,50 -> 1250.50)
-        if self.field_type == FieldType.CURRENCY:
-            self.value = self._parse_currency(self.value)
-            
-        # 2.Sayısal Alanlar (Boşsa 0 yap)
-        if self.field_type == FieldType.NUMBER and self.value == "":
-            self.value = 0
+            if self.field_type == FieldType.DATE_RANGE:
+                self.value = {
+                    'start': form_data.get(f"{self.name}_start", ""),
+                    'end': form_data.get(f"{self.name}_end", "")
+                }
+            elif self.field_type == FieldType.MAP_POINT:
+                lat = form_data.get(f"{self.name}_lat")
+                lng = form_data.get(f"{self.name}_lng")
+                if lat and lng:
+                    self.value = f"{lat},{lng}"
+                elif self.name in form_data:
+                    self.value = form_data.get(self.name)
+            elif self.field_type == FieldType.RANGE_DUAL:
+                self.value = {
+                    'min': form_data.get(f"{self.name}_min", ""),
+                    'max': form_data.get(f"{self.name}_max", "")
+                }
+            elif self.field_type == FieldType.MASTER_DETAIL:
+                # Master-Detail verileri genellikle list olarak gelir,
+                # ancak burada ana value işlemesi yapılmaz, routes tarafında getlist ile alınır.
+                pass
+            else:
+                # Standart Alanlar
+                lookup_name = f"{self.name}[]" if self.is_multiple_select() else self.name
+                if lookup_name in form_data:
+                    if self.is_multiple_select() and hasattr(form_data, 'getlist'):
+                        self.value = form_data.getlist(lookup_name)
+                    else:
+                        self.value = form_data.get(lookup_name)
+                elif self.name in form_data:
+                    self.value = form_data.get(self.name)
+
+            # ✅ OTOMATİK DÖNÜŞÜMLER (YENİ EKLENEN KISIM)
+
+            # 1.Para Birimi (1.250,50 -> 1250.50)
+            if self.field_type == FieldType.CURRENCY:
+                self.value = self._parse_currency(self.value)
+
+            # 2.Sayısal Alanlar (Boşsa 0 yap)
+            if self.field_type == FieldType.NUMBER and self.value == "":
+                self.value = 0
+
+            logger.debug("Veri işlendi: %s = %r", self.name, self.value)
+        except Exception as e:
+            logger.error("process_incoming_data hatası (%s): %s", self.name, e, exc_info=True)
 
     def _parse_currency(self, value):
         """
@@ -255,44 +539,132 @@ class FormField:
 
     # --- BUILDER METODLARI ---
     def set_column_class(self, class_name: str) -> 'FormField':
+        """Sütun CSS sınıfını ayarlar.
+
+        Args:
+            class_name: Bootstrap grid sınıfı (örn. ``col-md-6``).
+
+        Returns:
+            FormField: Zincir için self.
+        """
         self.column_class = class_name
         return self
-    
+
     def set_container_class(self, class_name: str) -> 'FormField':
+        """Kapsayıcı div CSS sınıfını ayarlar.
+
+        Args:
+            class_name: CSS sınıf dizisi.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         self.container_class = class_name
         return self
 
     def set_wrapper_div(self, enabled: bool = True) -> 'FormField':
+        """Kapsayıcı div kullanımını açar veya kapatır.
+
+        Args:
+            enabled: True ise kapsayıcı div eklenir.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         self.wrapper_div = enabled
         return self
 
     def set_custom_container(self, html_template: str) -> 'FormField':
+        """Özel HTML kapsayıcı şablonu tanımlar.
+
+        Şablon içinde ``{field_content}`` yer tutucusu, oluşturulan alan
+        içeriğiyle değiştirilir.
+
+        Args:
+            html_template: ``{field_content}`` içeren HTML şablonu.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         self.custom_container = html_template
         return self
 
     def in_row(self, column_classes: str) -> 'FormField':
+        """Alanı belirli Bootstrap sütun sınıflarına yerleştirir.
+
+        Args:
+            column_classes: Bootstrap grid sınıfı (örn. ``col-md-4``).
+
+        Returns:
+            FormField: Zincir için self.
+        """
         self.column_class = column_classes
         return self
 
     def in_card(self, title: str = "", card_class: str = "") -> 'FormField':
+        """Alanı Bootstrap kart bileşenine sarar.
+
+        Args:
+            title: Kart başlığı. Boş ise başlık gösterilmez.
+            card_class: Karta eklenen ek CSS sınıfları.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         header = f'<div class="card-header">{(title)}</div>' if title else ''
         self.custom_container = f'<div class="card {card_class}">{header}<div class="card-body">{{field_content}}</div></div>'
         return self
-    
+
     def add_css_class(self, class_name: str) -> 'FormField':
+        """Mevcut CSS sınıflarına yeni bir sınıf ekler.
+
+        Args:
+            class_name: Eklenecek CSS sınıfı.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         if self.css_class: self.css_class += f" {class_name}"
         else: self.css_class = class_name
         return self
 
-    def add_html_attribute(self, key, value):
+    def add_html_attribute(self, key: str, value: Any) -> 'FormField':
+        """HTML öznitelik ekler veya günceller.
+
+        Args:
+            key: Öznitelik adı (örn. ``data-custom``).
+            value: Öznitelik değeri.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         self.html_attributes[key] = value
         return self
-    
-    def set_conditional(self, depends_on: str, condition: any = None):
+
+    def set_conditional(self, depends_on: str, condition: Any = None) -> 'FormField':
+        """Koşullu görünüm kuralını eşitlik karşılaştırmasıyla tanımlar.
+
+        Args:
+            depends_on: Dinlenecek alan adı.
+            condition: Beklenen değer.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         self.conditional = {'field': depends_on, 'value': condition}
         return self
 
     def set_value(self, value: Any) -> 'FormField':
+        """Alan değerini ayarlar.
+
+        Çoklu seçim alanları için değeri liste olarak normalleştirir.
+
+        Args:
+            value: Yeni değer.
+
+        Returns:
+            FormField: Zincir için self.
+        """
         if self.field_type == FieldType.SELECT and self.select2_config.get('multiple'):
             if isinstance(value, list): self.value = value
             elif value: self.value = [str(value)]
@@ -301,16 +673,34 @@ class FormField:
             self.value = value if value is not None else ""
         return self
 
-    def is_multiple_select(self):
+    def is_multiple_select(self) -> bool:
+        """Alanın çoklu seçim modu etkin SELECT olup olmadığını döndürür.
+
+        Returns:
+            bool: Çoklu seçim etkinse True.
+        """
         return (self.field_type == FieldType.SELECT and self.select2_config.get('multiple', False))
 
-    def is_file_input(self):
+    def is_file_input(self) -> bool:
+        """Alanın dosya yükleme tipi olup olmadığını döndürür.
+
+        Returns:
+            bool: Dosya girişi ise True.
+        """
         return self.field_type in [FieldType.FILE, FieldType.IMAGE, FieldType.FILES, FieldType.AUDIO_RECORDER, FieldType.VIDEO_RECORDER]
 
-    def _get_attrs_string(self):
+    def _get_attrs_string(self) -> str:
         return self.get_html_attributes_string()
 
-    def get_html_attributes_string(self):
+    def get_html_attributes_string(self) -> str:
+        """HTML özniteliklerini boşlukla ayrılmış bir dize olarak döndürür.
+
+        Doğrulama kuralları, odak efektleri ve ``html_attributes`` sözlüğündeki
+        özel öznitelikleri içerir.
+
+        Returns:
+            str: Hazır HTML öznitelik dizisi (başında boşluk ile) veya boş dize.
+        """
         attrs = []
         if self.required: attrs.append('required')
         if self.disabled: attrs.append('disabled')
@@ -382,156 +772,48 @@ class FormField:
         
         return ' ' + ' '.join(attrs) if attrs else ''
 
-    def _get_validation_rules_json(self):
-        """
-        Validasyon kurallarını JSON formatında döndürür.
+    def _get_validation_rules_json(self) -> Optional[str]:
+        """Validasyon kurallarını JSON formatında döndürür.
+
         Bu kurallar client-side JS tarafından okunur.
+        Sonuçlar ``_build_cached_validation_rules`` fonksiyonu aracılığıyla
+        önbelleklenir.
+
+        Returns:
+            Optional[str]: HTML-escaped JSON dizisi veya kural yoksa None.
         """
-        import json
-        
-        rules = []
-        
-        # Zorunluluk
-        if self.required:
-            rules.append('required')
-        
-        # Uzunluk kuralları
-        if self.min_length:
-            rules.append({
-                'name': 'minLength', 
-                'params': {'min': self.min_length}
-            })
-        
-        if self.max_length:
-            rules.append({
-                'name': 'maxLength', 
-                'params': {'max': self.max_length}
-            })
-        
-        # Sayısal aralık kuralları
-        if self.min_val is not None:
-            rules.append({
-                'name': 'min', 
-                'params': {'min': self.min_val}
-            })
-        
-        if self.max_val is not None:
-            rules.append({
-                'name': 'max', 
-                'params': {'max': self.max_val}
-            })
-        
-        # Pattern (Regex) kuralı
-        if self.pattern:
-            rules.append({
-                'name': 'pattern', 
-                'params': {'pattern': self.pattern}
-            })
-        
-        # Dosya kuralları
-        if self.field_type in [FieldType.FILE, FieldType.FILES, FieldType.IMAGE]:
-            if self.max_file_size:
-                rules.append({
-                    'name': 'fileSize', 
-                    'params': {'maxSize': self.max_file_size}
-                })
-            if self.accept and self.accept != '*/*':
-                rules.append({
-                    'name': 'fileType', 
-                    'params': {'accept': self.accept}
-                })
-        
-        # Kural yoksa None döndür
-        if not rules:
-            return None
-        
-        # JSON formatında döndür (escape için tek tırnak kullanıyoruz HTML'de)
-        # eski return json.dumps(rules, ensure_ascii=False)
-        # Öneri (HTML entity encode):
-        import json
-        json_str = json.dumps(rules, ensure_ascii=False)
-        return escape(json_str) # Jinja2 veya html.escape kullanarak attribute'u kırmasını önleyin.
+        return _build_cached_validation_rules(
+            required=bool(self.required),
+            min_length=self.min_length,
+            max_length=self.max_length,
+            min_val=self.min_val,
+            max_val=self.max_val,
+            pattern=self.pattern or None,
+            field_type_val=self.field_type.value if hasattr(self.field_type, 'value') else str(self.field_type),
+            max_file_size=self.max_file_size,
+            accept=self.accept or '*/*',
+        )
 
-    def get_css_classes(self):
-        base_classes = {
-            # --- Temel Metin Girişleri ---
-            FieldType.TEXT: "form-control",
-            FieldType.PASSWORD: "form-control",
-            FieldType.EMAIL: "form-control email-input",
-            FieldType.NUMBER: "form-control",
-            FieldType.URL: "form-control",
-            FieldType.SEARCH: "form-control",
-            FieldType.HIDDEN: "d-none", # Gizli alanlar için
+    def get_css_classes(self) -> str:
+        """Alan tipine göre CSS sınıflarını derler.
 
-            # --- Seçim Elemanları ---
-            FieldType.SELECT: "form-select select2-field dx-form-control",
-            FieldType.CHECKBOX: "form-check-input",
-            FieldType.RADIO: "form-check-input",
-            FieldType.SWITCH: "form-check-input switch-input",
-            FieldType.TAGS: "form-control tags-input",
-            FieldType.AUTOCOMPLETE: "form-control autocomplete-field",
+        ``css_class``, ``html_attributes['class']`` ve hata durumunu birleştirerek
+        hazır sınıf dizesi döndürür. Sonuçlar ``_build_cached_css_classes``
+        aracılığıyla önbelleklenir.
 
-            # --- Metin Editörleri ---
-            FieldType.TEXTAREA: "form-control dx-form-control",
-            FieldType.RICHTEXT: "form-control quill-editor", # Quill.js için
-            FieldType.MARKDOWN: "form-control markdown-editor",
-            FieldType.CODE_EDITOR: "form-control font-monospace code-editor",
-            FieldType.JSON_EDITOR: "form-control json-editor font-monospace",
-
-            # --- Tarih ve Zaman ---
-            FieldType.DATE: "form-control date-input",
-            FieldType.DATETIME: "form-control datetime-input",
-            FieldType.TIME: "form-control time-input",
-            FieldType.MONTH: "form-control month-input",
-            FieldType.WEEK: "form-control week-input",
-            FieldType.TARIH: "form-control tarih-input", # TR Format
-            FieldType.DATE_RANGE: "form-control date-range-input",
-
-            # --- Özel Maskeli Alanlar ---
-            FieldType.TEL: "form-control phone-mask-tr",
-            FieldType.IP: "form-control ip-mask",
-            FieldType.TCKN: "form-control tckn-input",
-            FieldType.IBAN: "form-control iban-input",
-            FieldType.VKN: "form-control vkn-input",
-            FieldType.CREDIT_CARD: "form-control credit-card-mask",
-            FieldType.PLATE: "form-control plate-input",
-            FieldType.CURRENCY: "form-control fiyat-input text-end fw-bold",
-            FieldType.MASK: "form-control custom-mask", # Genel maske desteği
-
-            # --- Medya ve Dosya ---
-            FieldType.FILE: "form-control",
-            FieldType.FILES: "form-control", # Çoklu dosya
-            FieldType.IMAGE: "form-control image-input",
-            FieldType.AUDIO_RECORDER: "d-none", # Genelde butonla yönetilir, input gizli olur
-            FieldType.VIDEO_RECORDER: "d-none",
-
-            # --- Görsel Araçlar ---
-            FieldType.COLOR: "form-control form-control-color",
-            FieldType.COLOR_PICKER_ADVANCED: "form-control advanced-color-picker",
-            FieldType.RANGE: "form-range",
-            FieldType.SLIDER: "dx-slider", # NoUiSlider vb.için
-            FieldType.SIGNATURE: "d-none", # Canvas kullanılır, input gizli olur
-            FieldType.DRAWING: "d-none",   # Canvas kullanılır, input gizli olur
-
-            # --- Diğerleri ---
-            FieldType.BUTTON: "btn btn-secondary", # Standart buton sınıfı
-            FieldType.CALC: "form-control calc-input",
-            FieldType.OTP: "form-control otp-input text-center",
-            FieldType.RATING: "d-none", # Yıldızlar görünür, input gizli
-            FieldType.BARCODE: "form-control barcode-input",
-            FieldType.MAP_POINT: "form-control map-coords",
-            FieldType.GEOLOCATION: "form-control geolocation-input",
-            FieldType.AUTO_NUMBER: "form-control bg-light fw-bold", # Otomatik numara, readonly gibi görünsün
-        }
-        cls = base_classes.get(self.field_type, "form-control dx-form-control")
-        if self.css_class: cls += f" {self.css_class}"
-        
-        # EKLENEN KISIM: html_attributes içinde class varsa onu da ana sınıfa dahil et
+        Returns:
+            str: Birleştirilmiş CSS sınıf dizesi.
+        """
+        # html_attributes içindeki class değerini de dahil et
+        extra_class = self.css_class or ''
         if self.html_attributes and self.html_attributes.get('class'):
-            cls += f" {self.html_attributes['class']}"
-
-        if self.error: cls += " is-invalid"
-        return cls
+            extra_class = (extra_class + ' ' + self.html_attributes['class']).strip()
+        field_type_val = self.field_type.value if hasattr(self.field_type, 'value') else str(self.field_type)
+        return _build_cached_css_classes(
+            field_type_val=field_type_val,
+            custom_classes=extra_class,
+            has_error=bool(self.error),
+        )
 
     def _get_field_icon(self):
         icons = {
@@ -558,40 +840,60 @@ class FormField:
         return f'<i class="fas fa-{icon_name} me-2"></i>'
 
     # --- ANA RENDER METODU ---
-    
-    def render(self):
-        # --- Koşullu alan attribute ---
-        if self.conditional:
-            self.html_attributes['data-conditional-field'] = self.conditional.get('field')
-            self.html_attributes['data-conditional-value'] = self.conditional.get("value")
 
-        # --- Tema Class ekleme ---
-        theme = self.theme or BOOTSTRAP5_LIGHT
-        # theme.panel_class, theme.label_class vs.default atama
-        self.container_class = self.container_class if self.container_class not in [None, '', 'mb-3'] else theme.panel_class
-        self.label_class = self.label_class if hasattr(self, 'label_class') and self.label_class else theme.label_class
-        self.field_class = self.field_class if hasattr(self, 'field_class') and self.field_class else theme.field_class
-        self.help_class = self.help_class if hasattr(self, 'help_class') and self.help_class else theme.help_class
-    
+    def render(self) -> str:
+        """Alanın tam HTML çıktısını üretir.
 
-        # Custom container varsa...
-        if self.custom_container:
-            return self.custom_container.format(field_content=self._render_field_content())
+        Koşullu alan özniteliklerini, tema sınıflarını ve kapsayıcı div'i
+        yönetir; ardından ``_render_field_content()`` çağırır.
 
-        html_parts = []
-        no_wrapper_types = [FieldType.HIDDEN, FieldType.SCRIPT, FieldType.HTML, FieldType.HR, FieldType.HEADER]
-        should_wrap = self.wrapper_div and self.field_type not in no_wrapper_types
-        if should_wrap:
-            classes = [self.container_class]
-            if self.column_class: classes.append(self.column_class)
-            html_parts.append(f'<div class="{" ".join(classes)}" id="container_{self.name}">')
+        Returns:
+            str: Hazır HTML dizesi.
 
-        html_parts.append(self._render_field_content())
+        Raises:
+            Bu metot hata fırlat**maz**; tüm istisnalar yakalanarak
+            ``<div class="alert alert-danger">`` içinde gösterilir.
+        """
+        try:
+            # --- Koşullu alan attribute ---
+            if self.conditional:
+                self.html_attributes['data-conditional-field'] = self.conditional.get('field')
+                self.html_attributes['data-conditional-value'] = self.conditional.get("value")
+                cond_op = self.conditional.get('operator')
+                if cond_op:
+                    self.html_attributes['data-conditional-operator'] = cond_op
 
-        if should_wrap:
-            html_parts.append('</div>')
+            # --- Tema Class ekleme ---
+            theme = self.theme or BOOTSTRAP5_LIGHT
+            # theme.panel_class, theme.label_class vs.default atama
+            self.container_class = self.container_class if self.container_class not in [None, '', 'mb-3'] else theme.panel_class
+            self.label_class = self.label_class if hasattr(self, 'label_class') and self.label_class else theme.label_class
+            self.field_class = self.field_class if hasattr(self, 'field_class') and self.field_class else theme.field_class
+            self.help_class = self.help_class if hasattr(self, 'help_class') and self.help_class else theme.help_class
 
-        return '\n'.join(html_parts)
+            # Custom container varsa...
+            if self.custom_container:
+                return self.custom_container.format(field_content=self._render_field_content())
+
+            html_parts = []
+            no_wrapper_types = [FieldType.HIDDEN, FieldType.SCRIPT, FieldType.HTML, FieldType.HR, FieldType.HEADER]
+            should_wrap = self.wrapper_div and self.field_type not in no_wrapper_types
+            if should_wrap:
+                classes = [self.container_class]
+                if self.column_class: classes.append(self.column_class)
+                html_parts.append(f'<div class="{" ".join(classes)}" id="container_{self.name}">')
+
+            html_parts.append(self._render_field_content())
+
+            if should_wrap:
+                html_parts.append('</div>')
+
+            result = '\n'.join(html_parts)
+            logger.debug("render tamamlandı: %s", self.name)
+            return result
+        except Exception as e:
+            logger.error("render hatası (%s): %s", self.name, e, exc_info=True)
+            return f'<div class="alert alert-danger">Render hatası: {escape(self.name)}</div>'
 
     def _render_field_content(self): 
         if self.view_mode:
@@ -739,22 +1041,30 @@ class FormField:
 
 
     def validate(self, value: Optional[Any] = None) -> bool:
-        """
-        Sunucu tarafı validasyon
-        Returns: bool (True=geçerli, False=hatalı)
-        Hata mesajı self.error içinde saklanır
+        """Sunucu tarafı doğrulama işlemini çalıştırır.
+
+        Alan değerini doğrular; geçersiz ise ``self.error`` alanını doldurur
+        ve ``self.is_valid`` bayrağını False yapar.
+
+        Args:
+            value: Doğrulanacak değer. None ise mevcut ``self.value`` kullanılır.
+
+        Returns:
+            bool: True ise değer geçerli, False ise hatalı.
         """
         # Değer verilmişse güncelle
         if value is not None:
             self.set_value(value)
-        
+
         # ✅ Başlangıç durumunu temizle
         self.error = ""
         self.is_valid = True
-        
+
         # ✅ DATE_RANGE özel kontrolü (genel kontrollerden ÖNCE)
         if self.field_type == FieldType.DATE_RANGE:
-            return self._validate_date_range(self.value)
+            result = self._validate_date_range(self.value)
+            logger.debug("validate (DATE_RANGE) %s: %s", self.name, result)
+            return result
 
         # HR, HEADER, HTML gibi tipler validasyon gerektirmez
         if self.field_type in [FieldType.HR, FieldType.HEADER, FieldType.HTML, FieldType.SCRIPT, FieldType.MODAL]:
@@ -762,12 +1072,14 @@ class FormField:
 
         # ✅ Genel validasyon kontrolü
         is_valid, error_message = Validator.check(self, self.value)
-        
+
         if not is_valid:
             self.error = error_message
             self.is_valid = False
+            logger.debug("validate başarısız: %s -> %s", self.name, error_message)
             return False
-        
+
+        logger.debug("validate başarılı: %s", self.name)
         return True
 
     def _validate_date_range(self, value):
@@ -1957,10 +2269,14 @@ class FormField:
         
         return html
 
-    def to_dict(self):
-        """
-        Bu metot, formu Mobil Uygulama (iOS/Android) için 
-        JSON formatına hazırlar.HTML üretmez, SAF VERİ verir.
+    def to_dict(self) -> Dict[str, Any]:
+        """Alanı mobil uygulama için JSON uyumlu sözlüğe dönüştürür.
+
+        HTML üretmez; alan meta verilerini ve doğrulama kurallarını saf veri
+        olarak döndürür.  iOS/Android istemcileri bu çıktıyı kullanabilir.
+
+        Returns:
+            Dict[str, Any]: Alan meta verilerini içeren sözlük.
         """
         return {
             "id": self.name,
@@ -1968,7 +2284,7 @@ class FormField:
             "label": self.label,
             "placeholder": self.placeholder,
             "defaultValue": self.default_value,
-            
+
             # Mobil uygulamanın da Web ile aynı validasyonu yapması için:
             "validation": {
                 "required": self.required,
@@ -1977,14 +2293,14 @@ class FormField:
                 "minLength": self.min_length,
                 "pattern": self.pattern
             },
-            
+
             # Görünüm ayarları (Mobilde de benzer dursun diye)
             "ui": {
                 "icon": self.icon,
                 "hidden": self.field_type == FieldType.HIDDEN,
                 "readOnly": self.readonly
             },
-            
+
             # Selectbox seçenekleri
             "options": [{"id": k, "label": v} for k, v in self.options] if self.options else []
         }
@@ -1994,11 +2310,38 @@ class FormField:
 
 
 class MasterDetailField(FormField):
-    def __init__(self, name, columns, label=None, **kwargs):
+    """Master-Detail tablo alanı (kullanımdan kaldırıldı).
+
+    .. deprecated::
+        ``MasterDetailField`` yerine ``FormField(field_type=FieldType.MASTER_DETAIL)``
+        kullanınız.  Bu sınıf geriye dönük uyumluluk için korunmaktadır.
+    """
+
+    def __init__(self, name: str, columns: list, label: str = None, **kwargs):
+        """MasterDetailField başlatıcısı.
+
+        Args:
+            name: Alan adı.
+            columns: Kolon tanımları listesi.
+            label: Etiket metni.
+            **kwargs: FormField'a iletilen ek parametreler.
+        """
+        import warnings
+        warnings.warn(
+            "MasterDetailField kullanımdan kaldırıldı. "
+            "FormField(field_type=FieldType.MASTER_DETAIL) kullanınız.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(name, field_type='masterdetail', label=label, **kwargs)
         self.columns = columns  # Kolon tanımları (liste: field_name, label, field_type vs.)
 
-    def render(self):
+    def render(self) -> str:
+        """Basit master-detail tablosunu HTML olarak render eder.
+
+        Returns:
+            str: Hazır HTML dizesi.
+        """
         # Tablo, ekleme butonu ve şablon generasyonu
         html = f'<table id="tbl_{self.name}" class="table table-bordered">'
         html += '<thead><tr>'
