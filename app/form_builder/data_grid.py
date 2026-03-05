@@ -1,6 +1,8 @@
 # data_grid.py
 
+import logging
 from typing import List, Dict, Any, Type, Optional, Union, Callable
+from functools import lru_cache
 from flask import url_for, request
 from flask_sqlalchemy.model import Model as BaseModel
 from sqlalchemy import or_, desc, asc, cast, String, select
@@ -8,24 +10,44 @@ from datetime import datetime, date, timedelta
 from html import escape
 from .field_types import FieldType
 
+logger = logging.getLogger(__name__)
+
 class DataGrid:
-    """
-    DataGrid Ultimate Version
-    - Modern UI (CSS Class ve Badge Desteği)
-    - Akıllı Hizalama (Sayısal alanlar otomatik sağa yaslanır)
-    - Tam Kolon Yönetimi (Gizleme, Sıralama, Yeniden Adlandırma)
-    - Güvenli SQL Sorguları
-    - Custom Render Function Desteği (render_func)
-    - DİKKAT DataGrid paginate Kullanıyor Ama SQLAlchemy 2.0'da Yok
-    - SQLAlchemy 2.0 uygun 
-    - from sqlalchemy import select   eklendi.
+    """DataGrid Ultimate Version.
 
+    Özellikler:
+        - Modern UI (CSS Class ve Badge Desteği)
+        - Akıllı Hizalama (Sayısal alanlar otomatik sağa yaslanır)
+        - Tam Kolon Yönetimi (Gizleme, Sıralama, Yeniden Adlandırma)
+        - Güvenli SQL Sorguları
+        - Custom Render Function Desteği (render_func)
+        - SQLAlchemy 2.0 uyumlu (paginate yerine manuel pagination)
+        - Excel export desteği (pandas + openpyxl)
     """
 
-    def __init__(self, name: str, model: Type[BaseModel], title: str = "Veri Listesi", 
-                 per_page: int = 10,
-                 enable_grouping: bool = False, enable_summary: bool = False,
-                 summary_fields: Optional[List[str]] = None, target=None):
+    def __init__(
+        self,
+        name: str,
+        model: Type[BaseModel],
+        title: str = "Veri Listesi",
+        per_page: int = 10,
+        enable_grouping: bool = False,
+        enable_summary: bool = False,
+        summary_fields: Optional[List[str]] = None,
+        target: Optional[Any] = None,
+    ) -> None:
+        """DataGrid örneği oluşturur.
+
+        Args:
+            name: Grid'in benzersiz adı (HTML id olarak kullanılır).
+            model: SQLAlchemy model sınıfı.
+            title: Başlık metni.
+            per_page: Sayfa başına kayıt sayısı.
+            enable_grouping: Sürükle-bırak gruplama etkin mi?
+            enable_summary: Özet satırı etkin mi?
+            summary_fields: Özet hesaplanacak alan adları listesi.
+            target: Özel hedef parametresi.
+        """
         self.name = name
         self.model = model
         self.title = title
@@ -49,14 +71,41 @@ class DataGrid:
     # 1.KOLON YÖNETİMİ (EKSİK OLAN METODLAR EKLENDİ)
     # =================================================================
 
-    def add_column(self, name: str, title: str = None, width: str = None, 
-                   type: FieldType = FieldType.TEXT, sortable: bool = False, 
-                   badge_colors: dict = None, css_class: str = "" , 
-                   render_func: Callable[[Any], str] = None ):
+    def add_column(
+        self,
+        name: str,
+        title: Optional[str] = None,
+        width: Optional[str] = None,
+        type: FieldType = FieldType.TEXT,
+        sortable: bool = False,
+        badge_colors: Optional[Dict[str, str]] = None,
+        css_class: str = "",
+        render_func: Optional[Callable[[Any], str]] = None,
+    ) -> 'DataGrid':
+        """Grid'e manuel sütun ekler veya mevcut olanı günceller.
+
+        Args:
+            name: Sütun adı (model alan adıyla eşleşmeli).
+            title: Görünen başlık (opsiyonel; verilmezse name kullanılır).
+            width: Genişlik değeri (örn: ``'150px'``).
+            type: Sütun tipi (:class:`FieldType` enum).
+            sortable: Sıralanabilir mi?
+            badge_colors: Badge renkleri (örn: ``{'active': 'success'}``).
+            css_class: Ek CSS sınıfları.
+            render_func: Özel render fonksiyonu ``(row) -> str``.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+
+        Example:
+            >>> grid.add_column(
+            ...     'status',
+            ...     'Durum',
+            ...     type=FieldType.BADGE,
+            ...     badge_colors={'active': 'success', 'passive': 'danger'}
+            ... )
         """
-        Grid'e manuel sütun ekler veya mevcut olanı günceller.
-        render_func: Satır verisini (row object) alıp string döndüren özel fonksiyon.
-        """
+        logger.debug("add_column: %s.%s", self.name, name)
         # Var olanı güncelle
         for col in self.columns:
             if col['name'] == name:
@@ -83,16 +132,32 @@ class DataGrid:
         })
         return self
 
-    def reorder_column(self, name: str, new_index: int):
-        """Sütunu listeden alır ve new_index sırasına taşır."""
+    def reorder_column(self, name: str, new_index: int) -> 'DataGrid':
+        """Sütunu belirtilen indekse taşır.
+
+        Args:
+            name: Taşınacak sütunun adı.
+            new_index: Hedef indeks.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+        """
         current_index = next((i for i, c in enumerate(self.columns) if c['name'] == name), None)
         if current_index is not None:
             col = self.columns.pop(current_index)
             self.columns.insert(new_index, col)
         return self
 
-    def set_column_order(self, ordered_names: list):
-        """Sütunları verilen isim listesine göre dizer."""
+    def set_column_order(self, ordered_names: List[str]) -> 'DataGrid':
+        """Sütunları verilen isim listesine göre sıralar.
+
+        Args:
+            ordered_names: Sütun adlarının istenen sırası. Listede yer
+                almayan sütunlar mevcut sıralarında sona eklenir.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+        """
         col_map = {c['name']: c for c in self.columns}
         new_columns = []
         # 1.Listede belirtilenleri sırayla ekle
@@ -105,24 +170,62 @@ class DataGrid:
         self.columns = new_columns
         return self
 
-    def set_column_label(self, name: str, label: str):
-        """Sütun başlığını değiştirir."""
+    def set_column_label(self, name: str, label: str) -> 'DataGrid':
+        """Sütun başlığını değiştirir.
+
+        Args:
+            name: Sütun adı.
+            label: Yeni başlık metni.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+        """
         for col in self.columns:
             if col['name'] == name:
                 col['label'] = label; break
         return self
     
-    def hide_column(self, name: str):
-        """Sütunu gizler."""
+    def hide_column(self, name: str) -> 'DataGrid':
+        """Sütunu gizler.
+
+        Args:
+            name: Gizlenecek sütun adı.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+        """
         for col in self.columns:
             if col['name'] == name:
                 col['visible'] = False; break
         return self
         
-    def add_action(self, name: str, label: str, icon: str, class_name: str, 
-                   action_type: str = 'route', route_name: Optional[Union[str, Any]] = None, 
-                   html_attributes: dict = None, target=None):
-        """Aksiyon butonu ekler (Düzenle, Sil vb.)."""
+    def add_action(
+        self,
+        name: str,
+        label: str,
+        icon: str,
+        class_name: str,
+        action_type: str = 'route',
+        route_name: Optional[Union[str, Any]] = None,
+        html_attributes: Optional[Dict[str, Any]] = None,
+        target: Optional[Any] = None,
+    ) -> 'DataGrid':
+        """Aksiyon butonu ekler (Düzenle, Sil vb.).
+
+        Args:
+            name: Aksiyon adı (``'edit'``, ``'delete'`` vb.).
+            label: Buton başlığı / tooltip metni.
+            icon: Bootstrap/FontAwesome ikon sınıfı.
+            class_name: Buton Bootstrap sınıfları.
+            action_type: ``'route'``, ``'url'`` veya ``'ajax'``.
+            route_name: Flask endpoint adı veya URL üretici callable.
+            html_attributes: Ek HTML özellikleri (dict).
+            target: Özel hedef parametresi.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+        """
+        logger.debug("add_action: %s -> %s", self.name, name)
         self.actions.append({
             'name': name, 'label': label, 'icon': icon, 'class': class_name,
             'action_type': action_type, 'route_name': route_name or name,
@@ -130,11 +233,30 @@ class DataGrid:
         })
         return self
 
-    def add_export_action(self, label_page="Bu Sayfayı İndir", label_all="Tümünü İndir", 
-                          format="csv", icon_page="bi bi-file-earmark-excel", 
-                          icon_all="bi bi-download", class_page="btn-outline-success", 
-                          class_all="btn-success"):
-        """Export butonlarını yapılandırır."""
+    def add_export_action(
+        self,
+        label_page: str = "Bu Sayfayı İndir",
+        label_all: str = "Tümünü İndir",
+        format: str = "csv",
+        icon_page: str = "bi bi-file-earmark-excel",
+        icon_all: str = "bi bi-download",
+        class_page: str = "btn-outline-success",
+        class_all: str = "btn-success",
+    ) -> 'DataGrid':
+        """Export butonlarını yapılandırır.
+
+        Args:
+            label_page: Sayfa export butonu etiketi.
+            label_all: Tümünü export butonu etiketi.
+            format: Export formatı (``'csv'`` veya ``'excel'``).
+            icon_page: Sayfa export ikon sınıfı.
+            icon_all: Tümünü export ikon sınıfı.
+            class_page: Sayfa export buton CSS sınıfları.
+            class_all: Tümünü export buton CSS sınıfları.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+        """
         self.export_action = {
             "label_page": label_page, "label_all": label_all, "format": format,
             "icon_page": icon_page, "icon_all": icon_all,
@@ -146,173 +268,199 @@ class DataGrid:
     # 2.SORGULAMA MANTIĞI (Process Query)
     # =================================================================
 
-    def process_query(self, query, default_sort: tuple = None):
-        """Request argümanlarını alır ve sorguyu işler."""
+    def process_query(self, query: Any, default_sort: Optional[tuple] = None) -> 'DataGrid':
+        """Request argümanlarını okuyarak sorguyu filtreler, sıralar ve sayfalandırır.
 
-        # ✨ 1. KURUMSAL KAPSAM (DATA SCOPING) - OTOMATİK ŞUBE/DÖNEM FİLTRESİ ✨
-        # Bu kod sayesinde hiçbir sayfada manuel şube filtresi yazmana gerek kalmayacak!
-        from flask import session
+        Otomatik olarak şube ve dönem filtresi uygular (session'da varsa).
+        Sütun filtreleri, global arama (``?q=``), sıralama ve sayfalandırma
+        işlemleri de bu metod tarafından yönetilir.
 
-        # A) Şube Filtresi
-        aktif_sube_id = session.get('aktif_sube_id')
-        if aktif_sube_id and hasattr(self.model, 'sube_id'):
-            column_attr = getattr(self.model, 'sube_id')
-            query = query.filter(column_attr == aktif_sube_id)
+        Args:
+            query: SQLAlchemy sorgu nesnesi.
+            default_sort: Varsayılan sıralama ``(alan_adı, 'asc'|'desc')`` demeti.
 
-        # B) Dönem Filtresi (2025 ile 2026 faturaları birbirine karışmasın diye)
-        aktif_donem_id = session.get('aktif_donem_id')
-        if aktif_donem_id and hasattr(self.model, 'donem_id'):
-            column_attr = getattr(self.model, 'donem_id')
-            query = query.filter(column_attr == aktif_donem_id)
-        
-        # A.KOLON FİLTRELEME
-        for col in self.columns:
-            field_name = col['name']
-            
-            # Modelde bu alan var mı?
-            if not hasattr(self.model, field_name):
-                continue
-                
-            column_attr = getattr(self.model, field_name)
-            
-            # ✨ KRİTİK DÜZELTME 1: Bu alan SQL Sütunu değilse (Örn: @property ise) filtrelemeyi atla
-            if not hasattr(column_attr, 'ilike'):
-                continue
-            
-            # --- Tarih Aralığı ve Tam Eşleşme Filtreleme ---
-            if col['type'] in [FieldType.DATE, FieldType.DATETIME]:
-                start_val = request.args.get(f"{field_name}_start")
-                end_val = request.args.get(f"{field_name}_end")
-                exact_val = request.args.get(field_name)
-                
-                # Format belirleme
-                fmt = '%Y-%m-%d' if col['type'] == FieldType.DATE else '%Y-%m-%dT%H:%M:%S'
-                
-                # 1.Aralık Araması (Start)
-                if start_val: 
-                    try:
-                        dt = datetime.strptime(start_val, fmt)
-                        if col['type'] == FieldType.DATE:  dt = dt.date()
-                        query = query.filter(column_attr >= dt)
-                    except ValueError:  pass
-                
-                # 2.Aralık Araması (End)
-                if end_val: 
-                    try:
-                        dt = datetime.strptime(end_val, fmt)
-                        if col['type'] == FieldType.DATE: dt = dt.date()
-                        query = query.filter(column_attr <= dt)
-                    except ValueError: pass
+        Returns:
+            DataGrid: Zincir çağrı için ``self`` (veri yüklenmiş).
 
-                # 3.Tekil (Tam) Eşleşme
-                if exact_val:
-                    try:
-                        dt_val = datetime.strptime(exact_val, '%Y-%m-%d') 
-                        if col['type'] == FieldType.DATE: 
-                            dt_val = dt_val.date()
-                            query = query.filter(column_attr == dt_val)
-                        else:
-                            from datetime import timedelta
-                            next_day = dt_val + timedelta(days=1)
-                            query = query.filter(column_attr >= dt_val, column_attr < next_day)
-                    except ValueError: pass
-            # --- Standart Filtreleme ---
-            else: 
-                filter_value = request.args.get(field_name)
-                if filter_value:
-                    if col['type'] == FieldType.TEXT:
-                        query = query.filter(column_attr.ilike(f"%{filter_value}%"))
-                    elif col['type'] in [FieldType.NUMBER, FieldType.CURRENCY, FieldType.TCKN, FieldType.VKN]:
-                        query = query.filter(cast(column_attr, String(50)).ilike(f"%{filter_value}%"))
-                    elif col['type'] == FieldType.SWITCH:
-                        bool_val = filter_value.lower() in ['true', '1', 'yes', 'on']
-                        query = query.filter(column_attr == bool_val)
-                    else:
-                        query = query.filter(column_attr == filter_value)
+        Raises:
+            Exception: Sorgu işleme sırasında beklenmedik hata oluşursa.
+        """
+        try:
+            logger.debug("DataGrid query işleniyor: %s", self.name)
 
-        # B.GLOBAL ARAMA ('q' parametresi)
-        global_search = request.args.get('q') 
-        if global_search: 
-            search_filters = []
+            # ✨ 1. KURUMSAL KAPSAM (DATA SCOPING) - OTOMATİK ŞUBE/DÖNEM FİLTRESİ ✨
+            from flask import session
+
+            # A) Şube Filtresi
+            aktif_sube_id = session.get('aktif_sube_id')
+            if aktif_sube_id and hasattr(self.model, 'sube_id'):
+                column_attr = getattr(self.model, 'sube_id')
+                query = query.filter(column_attr == aktif_sube_id)
+
+            # B) Dönem Filtresi
+            aktif_donem_id = session.get('aktif_donem_id')
+            if aktif_donem_id and hasattr(self.model, 'donem_id'):
+                column_attr = getattr(self.model, 'donem_id')
+                query = query.filter(column_attr == aktif_donem_id)
+
+            # A.KOLON FİLTRELEME
             for col in self.columns:
-                if not col['visible'] or not hasattr(self.model, col['name']): continue
-                column_attr = getattr(self.model, col['name'])
-                
-                # ✨ KRİTİK DÜZELTME 2: Bu alan SQL Sütunu değilse (Örn: @property ise) aramayı atla
+                field_name = col['name']
+
+                if not hasattr(self.model, field_name):
+                    continue
+
+                column_attr = getattr(self.model, field_name)
+
+                # SQL Sütunu değilse (@property vb.) filtrelemeyi atla
                 if not hasattr(column_attr, 'ilike'):
                     continue
-                
-                if col['type'] == FieldType.TEXT:
-                    search_filters.append(column_attr.ilike(f"%{global_search}%"))
-                elif col['type'] in [FieldType.NUMBER, FieldType.CURRENCY, FieldType.TCKN]: 
-                    search_filters.append(cast(column_attr, String).ilike(f"%{global_search}%"))
-            
-            if search_filters:
-                query = query.filter(or_(*search_filters))
 
-        # C.SIRALAMA
-        sort_col = request.args.get('sort')
-        sort_dir = request.args.get('direction', 'asc')
-        
-        if not sort_col and default_sort:
-            sort_col, sort_dir = default_sort
+                # --- Tarih Aralığı ve Tam Eşleşme Filtreleme ---
+                if col['type'] in [FieldType.DATE, FieldType.DATETIME]:
+                    start_val = request.args.get(f"{field_name}_start")
+                    end_val = request.args.get(f"{field_name}_end")
+                    exact_val = request.args.get(field_name)
 
-        if sort_col and hasattr(self.model, sort_col):
-            column_attr = getattr(self.model, sort_col)
+                    def _parse_date_flexible(date_str: str) -> Optional[datetime]:
+                        """Birden fazla format denerek tarih ayrıştırır."""
+                        for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d-%m-%Y', '%Y-%m-%dT%H:%M:%S'):
+                            try:
+                                return datetime.strptime(date_str, fmt)
+                            except ValueError:
+                                continue
+                        logger.debug("Tarih ayrıştırılamadı: %s", date_str)
+                        return None
+
+                    if start_val:
+                        dt = _parse_date_flexible(start_val)
+                        if dt:
+                            if col['type'] == FieldType.DATE:
+                                dt = dt.date()
+                            query = query.filter(column_attr >= dt)
+
+                    if end_val:
+                        dt = _parse_date_flexible(end_val)
+                        if dt:
+                            if col['type'] == FieldType.DATE:
+                                dt = dt.date()
+                                # End date'i bir gün sonraya al (son gün dahil olsun)
+                                query = query.filter(column_attr < dt + timedelta(days=1))
+                            else:
+                                query = query.filter(column_attr < dt + timedelta(days=1))
+
+                    if exact_val:
+                        dt = _parse_date_flexible(exact_val)
+                        if dt:
+                            if col['type'] == FieldType.DATE:
+                                query = query.filter(column_attr == dt.date())
+                            else:
+                                next_day = dt + timedelta(days=1)
+                                query = query.filter(column_attr >= dt, column_attr < next_day)
+
+                # --- Standart Filtreleme ---
+                else:
+                    filter_value = request.args.get(field_name)
+                    if filter_value:
+                        if col['type'] == FieldType.TEXT:
+                            query = query.filter(column_attr.ilike(f"%{filter_value}%"))
+                        elif col['type'] in [FieldType.NUMBER, FieldType.CURRENCY, FieldType.TCKN, FieldType.VKN]:
+                            query = query.filter(cast(column_attr, String(50)).ilike(f"%{filter_value}%"))
+                        elif col['type'] == FieldType.SWITCH:
+                            bool_val = filter_value.lower() in ['true', '1', 'yes', 'on']
+                            query = query.filter(column_attr == bool_val)
+                        else:
+                            query = query.filter(column_attr == filter_value)
+
+            # B.GLOBAL ARAMA ('q' parametresi)
+            global_search = request.args.get('q')
+            if global_search:
+                search_filters = []
+                for col in self.columns:
+                    if not col['visible'] or not hasattr(self.model, col['name']):
+                        continue
+                    column_attr = getattr(self.model, col['name'])
+                    if not hasattr(column_attr, 'ilike'):
+                        continue
+                    if col['type'] == FieldType.TEXT:
+                        search_filters.append(column_attr.ilike(f"%{global_search}%"))
+                    elif col['type'] in [FieldType.NUMBER, FieldType.CURRENCY, FieldType.TCKN]:
+                        search_filters.append(cast(column_attr, String).ilike(f"%{global_search}%"))
+                if search_filters:
+                    query = query.filter(or_(*search_filters))
+
+            # C.SIRALAMA
+            sort_col = request.args.get('sort')
+            sort_dir = request.args.get('direction', 'asc')
+
+            if not sort_col and default_sort:
+                sort_col, sort_dir = default_sort
+
+            if sort_col and hasattr(self.model, sort_col):
+                column_attr = getattr(self.model, sort_col)
+                try:
+                    query = query.order_by(desc(column_attr) if sort_dir == 'desc' else asc(column_attr))
+                    self.current_sort_field = sort_col
+                    self.current_sort_direction = sort_dir
+                except Exception:
+                    pass
+
+            # D.SAYFALAMA (✅ SQLAlchemy 2.0 Uyumlu)
             try:
-                query = query.order_by(desc(column_attr) if sort_dir == 'desc' else asc(column_attr))
-                self.current_sort_field = sort_col
-                self.current_sort_direction = sort_dir
-            except:  pass
-        
-        # D.SAYFALAMA (✅ SQLAlchemy 2.0 Uyumlu)
-        try:  
-            page = int(request.args.get('page', 1))
-        except: 
-            page = 1
-        
-        # ✅ MANUEL PAGINATION (query.paginate() yerine)
-        from sqlalchemy import func
-        
-        # Toplam kayıt sayısı
-        total = query.count()
-        
-        # Sayfa hesaplama
-        total_pages = (total + self.per_page - 1) // self.per_page if self.per_page > 0 else 1
-        
-        # Sayfa sınır kontrolü
-        if page < 1:
-            page = 1
-        elif page > total_pages and total_pages > 0:
-            page = total_pages
-        
-        # Offset hesaplama
-        offset = (page - 1) * self.per_page
-        
-        # Veriyi çek
-        items = query.limit(self.per_page).offset(offset).all()
-        
-        # Pagination objesi oluştur
-        pagination_info = {
-            'page': page,
-            'per_page':  self.per_page,
-            'total_pages': total_pages,
-            'total_items': total
-        }
-        
-        self.load_data(items, pagination_info)
-        
-        return self
+                page = int(request.args.get('page', 1))
+            except (ValueError, TypeError):
+                page = 1
+
+            total = query.count()
+            total_pages = (total + self.per_page - 1) // self.per_page if self.per_page > 0 else 1
+
+            if page < 1:
+                page = 1
+            elif page > total_pages and total_pages > 0:
+                page = total_pages
+
+            offset = (page - 1) * self.per_page
+            items = query.limit(self.per_page).offset(offset).all()
+
+            pagination_info = {
+                'page': page,
+                'per_page': self.per_page,
+                'total_pages': total_pages,
+                'total_items': total,
+            }
+
+            self.load_data(items, pagination_info)
+            logger.info("DataGrid loaded: %s - %d items (page %d/%d)", self.name, len(items), page, total_pages)
+            return self
+
+        except Exception as e:
+            logger.error("process_query hatası (%s): %s", self.name, e, exc_info=True)
+            raise
 
 
+    def load_data(
+        self,
+        query_result: List[Any],
+        pagination_info: Optional[Dict[str, int]] = None,
+    ) -> 'DataGrid':
+        """Veriyi ve sayfalandırma bilgisini yükler.
 
-    def load_data(self, query_result: List[Any], pagination_info: Optional[Dict[str, int]] = None):
+        Args:
+            query_result: Model nesneleri listesi.
+            pagination_info: Sayfalandırma bilgisi dict'i.
+
+        Returns:
+            DataGrid: Zincir çağrı için ``self``.
+        """
         self.data = query_result
-        self.pagination = pagination_info or {'page': 1, 'per_page': 10, 'total_pages': 1, 'total_items': len(query_result)}
+        self.pagination = pagination_info or {
+            'page': 1, 'per_page': 10, 'total_pages': 1, 'total_items': len(query_result)
+        }
+        logger.debug("load_data: %s - %d items", self.name, len(self.data))
         return self
 
-    def _auto_generate_columns(self):
-        """Modelden sütunları otomatik çeker."""
+    def _auto_generate_columns(self) -> None:
+        """Modelden sütunları otomatik olarak çeker ve columns listesini doldurur."""
         for col in self.model.__table__.columns:
             col_name = col.key
             if col_name.startswith('_') or 'password' in col_name.lower(): continue
@@ -328,7 +476,15 @@ class DataGrid:
                 'render_func': None
             })
 
-    def _map_db_type_to_grid_type(self, db_type):
+    def _map_db_type_to_grid_type(self, db_type: Any) -> FieldType:
+        """Veritabanı sütun tipini FieldType enum değerine dönüştürür.
+
+        Args:
+            db_type: SQLAlchemy kolon tip nesnesi.
+
+        Returns:
+            FieldType: Eşleşen grid sütun tipi.
+        """
         db_type_str = str(db_type).upper()
         if any(x in db_type_str for x in ['VARCHAR', 'TEXT', 'STRING']): return FieldType.TEXT
         if any(x in db_type_str for x in ['INT', 'FLOAT', 'DECIMAL', 'NUMERIC']): return FieldType.NUMBER
@@ -338,7 +494,14 @@ class DataGrid:
         return FieldType.TEXT
 
     def _get_type_str(self, raw_type: Any) -> str:
-        """Enum veya String olan type bilgisini güvenli şekilde stringe çevirir."""
+        """Enum veya string olan tip bilgisini güvenli biçimde string'e çevirir.
+
+        Args:
+            raw_type: FieldType enum değeri veya ham string.
+
+        Returns:
+            str: Tip adı string olarak (örn: ``'text'``, ``'currency'``).
+        """
         if hasattr(raw_type, 'value'):
             return raw_type.value # Enum ise (FieldType.TEXT -> 'text')
         return str(raw_type)      # String ise ('badge' -> 'badge')
@@ -348,6 +511,14 @@ class DataGrid:
     # =================================================================
 
     def _render_header(self, base_url_name: str) -> str:
+        """Tablo başlığı HTML'ini oluşturur (başlıklar + filtre satırı).
+
+        Args:
+            base_url_name: Sıralama linkleri için Flask endpoint adı.
+
+        Returns:
+            str: ``<thead>`` HTML bloğu.
+        """
         html = ['<thead><tr>']
         
         for col in self.columns:
@@ -409,6 +580,15 @@ class DataGrid:
         return ''.join(html)
 
     def _render_row(self, item: Any, base_url_name: str) -> str:
+        """Tek bir veri satırı HTML'ini oluşturur.
+
+        Args:
+            item: Model nesnesi (tablo satırı).
+            base_url_name: Aksiyon URL'leri için Flask endpoint adı.
+
+        Returns:
+            str: ``<tr>`` HTML bloğu.
+        """
         html = ['<tr>']
         for col in self.columns:
             if not col['visible']: continue
@@ -476,8 +656,7 @@ class DataGrid:
                             act_url = '#'
                             
                     except Exception as e:
-                        # Debug için log
-                        print(f"❌ DataGrid URL oluşturma hatası: {e}, endpoint: {endpoint}, id: {item_id}")
+                        logger.warning("DataGrid URL oluşturma hatası: %s, endpoint: %s, id: %s", e, endpoint, item_id)
                         act_url = '#'
                         
                     html.append(f'<a href="{act_url}" class="btn btn-sm {action["class"]} me-1" title="{action["label"]}"{attrs_str}><i class="{action["icon"]}"></i></a>')
@@ -485,7 +664,7 @@ class DataGrid:
                 elif action['action_type'] == 'url':
                     try:
                         act_url = action['route_name'](item)
-                    except:
+                    except Exception:
                         act_url = '#'
                     html.append(f'<a href="{act_url}" class="btn btn-sm {action["class"]} me-1" title="{action["label"]}"{attrs_str}><i class="{action["icon"]}"></i></a>')
 
@@ -498,7 +677,7 @@ class DataGrid:
                             endpoint = f"{prefix}.{endpoint}"
                         act_url = url_for(endpoint, id=item_id) if item_id else '#'
                     except Exception as e:
-                        print(f"❌ Custom AJAX URL hatası: {e}")
+                        logger.warning("Custom AJAX URL hatası: %s", e)
                         act_url = '#'
                         
                     # 👇 YENİ: datagrid-ajax-btn class'ı ve data-url özelliği eklendi!
@@ -508,8 +687,16 @@ class DataGrid:
         html.append('</tr>')
         return ''.join(html)
         
-    def _get_nested_value(self, obj, field_path):
-        """'cari.unvan' gibi noktalı alanları bulur."""
+    def _get_nested_value(self, obj: Any, field_path: str) -> Any:
+        """Noktalı alan yolunu takip ederek değer döndürür.
+
+        Args:
+            obj: Başlangıç nesnesi.
+            field_path: Alan yolu (örn: ``'cari.unvan'``).
+
+        Returns:
+            Any: Bulunan değer; hata durumunda boş string.
+        """
         try:
             for attr in field_path.split('.'):
                 if obj is None: return ""
@@ -518,31 +705,43 @@ class DataGrid:
         except AttributeError: return ""
 
     def _format_value(self, value: Any, field_type: FieldType) -> str:
-        if value is None: return ''
-        if hasattr(value, 'value'): # Enum desteği
+        """Değeri sütun tipine göre görüntülenebilir HTML string'e dönüştürür.
+
+        Args:
+            value: Ham değer.
+            field_type: Sütun tipi.
+
+        Returns:
+            str: Formatlanmış HTML string.
+        """
+        if value is None:
+            return ''
+        if hasattr(value, 'value'):  # Enum desteği
             return str(value.value).replace('_', ' ').title()
-            
+
         if field_type == FieldType.CURRENCY:
             return f"{float(value):,.2f} ₺".replace(",", "X").replace(".", ",").replace("X", ".")
 
         elif field_type == FieldType.DATETIME and isinstance(value, (datetime, date)):
             return value.strftime('%d.%m.%Y %H:%M')
 
-        # --- DÜZELTİLEN KISIM BURASI ---
         elif field_type == FieldType.DATE:
-             # Hem 'datetime' hem 'date' objelerini yakalamak için genel 'date' kontrolü
-             if isinstance(value, (datetime, date)):
-                 # İstediğiniz format: 18-12-2025 (%d-%m-%Y)
-                 return value.strftime('%d-%m-%Y')
-        # -------------------------------
-
-
+            if isinstance(value, (datetime, date)):
+                return value.strftime('%d-%m-%Y')
 
         elif field_type == FieldType.SWITCH:
             return '<span class="badge bg-success">Aktif</span>' if value else '<span class="badge bg-secondary">Pasif</span>'
         return str(value)
 
     def _render_pagination(self, base_url_name: str) -> str:
+        """Sayfalandırma kontrol HTML'ini oluşturur.
+
+        Args:
+            base_url_name: Sayfa linkleri için Flask endpoint adı.
+
+        Returns:
+            str: Bootstrap pagination HTML bloğu; tek sayfalıysa boş string.
+        """
         info = self.pagination
         current, total = info['page'], info['total_pages']
         if total <= 1: return ''
@@ -576,41 +775,155 @@ class DataGrid:
         return ''.join(html)
 
     def render(self, base_url_name: str) -> str:
-        """Grid'i Render Eder."""
-        group_cls = " dx-grouping-enabled" if self.enable_grouping else ""
-        html = [f'<div class="card dx-grid-card shadow-sm mb-4{group_cls}" id="dx-grid-card-{self.name}">']
-        
-        if self.title:
-            html.append(f'<div class="card-header bg-light d-flex justify-content-between align-items-center"><h5 class="mb-0">{self.title}</h5>')
-            # Export Butonları
-            if self.export_action:
-                export_url_page = url_for(f"{base_url_name}_export", scope='page')
-                export_url_all = url_for(f"{base_url_name}_export", scope='all')
-                html.append('<div>') 
-                html.append(f'<a href="{export_url_page}" class="btn btn-sm {self.export_action["class_page"]} me-1" target="_blank"><i class="{self.export_action["icon_page"]}"></i> {self.export_action["label_page"]}</a>')
-                html.append(f'<a href="{export_url_all}" class="btn btn-sm {self.export_action["class_all"]}" target="_blank"><i class="{self.export_action["icon_all"]}"></i> {self.export_action["label_all"]}</a>')
+        """Grid'i HTML olarak render eder.
+
+        Args:
+            base_url_name: Sıralama, filtreleme ve sayfalandırma linkleri için
+                Flask endpoint adı.
+
+        Returns:
+            str: Tam grid HTML bloğu. Hata durumunda hata mesajı içeren
+                basit bir ``div`` döner.
+        """
+        try:
+            logger.debug("render başlıyor: %s -> %s", self.name, base_url_name)
+            group_cls = " dx-grouping-enabled" if self.enable_grouping else ""
+            html = [f'<div class="card dx-grid-card shadow-sm mb-4{group_cls}" id="dx-grid-card-{self.name}">']
+
+            if self.title:
+                html.append(f'<div class="card-header bg-light d-flex justify-content-between align-items-center"><h5 class="mb-0">{self.title}</h5>')
+                # Export Butonları
+                if self.export_action:
+                    export_url_page = url_for(f"{base_url_name}_export", scope='page')
+                    export_url_all = url_for(f"{base_url_name}_export", scope='all')
+                    html.append('<div>')
+                    html.append(f'<a href="{export_url_page}" class="btn btn-sm {self.export_action["class_page"]} me-1" target="_blank"><i class="{self.export_action["icon_page"]}"></i> {self.export_action["label_page"]}</a>')
+                    html.append(f'<a href="{export_url_all}" class="btn btn-sm {self.export_action["class_all"]}" target="_blank"><i class="{self.export_action["icon_all"]}"></i> {self.export_action["label_all"]}</a>')
+                    html.append('</div>')
                 html.append('</div>')
-            html.append('</div>')
-        
-        if self.enable_grouping:
-            html.append(f'<div class="card-body py-2 bg-light border-bottom"><div id="dx-group-area-{self.name}" class="dx-group-area border rounded p-2 text-center text-muted small">Sütun başlığını buraya sürükleyin</div></div>')
-        
-        html.append('<div class="card-body">')
-        q_val = request.args.get("q", "")
-        html.append(f'<div class="row mb-3"><div class="col-md-6"><input type="text" class="form-control form-control-sm dx-grid-filter" data-target="{self.name}" placeholder="Hızlı Ara (Enter)..." value="{q_val}"></div><div class="col-md-6 text-end">{self._render_pagination(base_url_name)}</div></div>')
-        
-        html.append(f'<div class="table-responsive"><table class="table table-hover table-striped table-sm dx-grid" id="dx-grid-{self.name}">')
-        html.append(self._render_header(base_url_name))
-        html.append('<tbody>')
-        
-        if self.data:
-            for item in self.data: html.append(self._render_row(item, base_url_name))
-        else:
-            cols = len([c for c in self.columns if c['visible']]) + (1 if self.actions else 0)
-            html.append(f'<tr><td colspan="{cols}" class="text-center py-4 text-muted">Kayıt bulunamadı.</td></tr>')
-            
-        html.append('</tbody></table></div>')
-        html.append(f'<div class="small text-muted mt-2">Toplam {self.pagination["total_items"]} kayıt, Sayfa {self.pagination["page"]}/{self.pagination["total_pages"]}</div>')
-        html.append('</div></div>')
-        
-        return ''.join(html)
+
+            if self.enable_grouping:
+                html.append(f'<div class="card-body py-2 bg-light border-bottom"><div id="dx-group-area-{self.name}" class="dx-group-area border rounded p-2 text-center text-muted small">Sütun başlığını buraya sürükleyin</div></div>')
+
+            html.append('<div class="card-body">')
+            q_val = request.args.get("q", "")
+            html.append(f'<div class="row mb-3"><div class="col-md-6"><input type="text" class="form-control form-control-sm dx-grid-filter" data-target="{self.name}" placeholder="Hızlı Ara (Enter)..." value="{q_val}"></div><div class="col-md-6 text-end">{self._render_pagination(base_url_name)}</div></div>')
+
+            html.append(f'<div class="table-responsive"><table class="table table-hover table-striped table-sm dx-grid" id="dx-grid-{self.name}">')
+            html.append(self._render_header(base_url_name))
+            html.append('<tbody>')
+
+            if self.data:
+                for item in self.data:
+                    html.append(self._render_row(item, base_url_name))
+            else:
+                cols = len([c for c in self.columns if c['visible']]) + (1 if self.actions else 0)
+                html.append(f'<tr><td colspan="{cols}" class="text-center py-4 text-muted">Kayıt bulunamadı.</td></tr>')
+
+            html.append('</tbody></table></div>')
+            html.append(f'<div class="small text-muted mt-2">Toplam {self.pagination["total_items"]} kayıt, Sayfa {self.pagination["page"]}/{self.pagination["total_pages"]}</div>')
+            html.append('</div></div>')
+
+            result = ''.join(html)
+            logger.debug("render tamamlandı: %s", self.name)
+            return result
+
+        except Exception as e:
+            logger.error("render hatası (%s): %s", self.name, e, exc_info=True)
+            return '<div class="alert alert-danger">Grid render hatası</div>'
+
+    # =================================================================
+    # 4. EXPORT METODLARI
+    # =================================================================
+
+    def export_to_excel(self, filename: str = 'export.xlsx') -> bytes:
+        """Grid verisini Excel formatında dışa aktarır.
+
+        Mevcut ``self.data`` koleksiyonunu kullanır; bu nedenle bu metodu
+        çağırmadan önce ``process_query`` veya ``load_data`` ile veri
+        yüklenmiş olmalıdır.
+
+        Args:
+            filename: Dosya adı (yalnızca loglama amaçlıdır; dönen bytes
+                üzerinde etkisi yoktur).
+
+        Returns:
+            bytes: ``.xlsx`` formatında Excel dosyasının binary içeriği.
+
+        Raises:
+            Exception: Export sırasında beklenmedik hata oluşursa.
+
+        Example:
+            >>> from io import BytesIO
+            >>> from flask import send_file
+            >>> data = grid.export_to_excel('faturalar.xlsx')
+            >>> return send_file(BytesIO(data), download_name='faturalar.xlsx',
+            ...                  mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        """
+        import pandas as pd
+        from io import BytesIO
+
+        try:
+            logger.debug("Excel export başlıyor: %s (%s)", self.name, filename)
+
+            records = []
+            for item in self.data:
+                row: Dict[str, Any] = {}
+                for col in self.columns:
+                    if not col.get('visible', True):
+                        continue
+                    val = self._get_nested_value(item, col['name'])
+                    row[col['label']] = self._format_excel_value(val, col['type'])
+                records.append(row)
+
+            df = pd.DataFrame(records)
+
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Data')
+
+                # Sütun genişliklerini otomatik ayarla
+                worksheet = writer.sheets['Data']
+                for col_idx, col_name in enumerate(df.columns):
+                    col_letter = chr(65 + col_idx) if col_idx < 26 else (
+                        chr(64 + col_idx // 26) + chr(65 + col_idx % 26)
+                    )
+                    max_len = max(
+                        df[col_name].astype(str).map(len).max() if not df.empty else 0,
+                        len(str(col_name)),
+                    ) + 2
+                    worksheet.column_dimensions[col_letter].width = min(max_len, 50)
+
+            output.seek(0)
+            result = output.read()
+            logger.info("Excel export tamamlandı: %s - %d satır", filename, len(records))
+            return result
+
+        except Exception as e:
+            logger.error("Excel export hatası (%s): %s", self.name, e, exc_info=True)
+            raise
+
+    def _format_excel_value(self, value: Any, field_type: FieldType) -> Any:
+        """Excel hücresi için değeri düz (HTML içermeyen) biçime dönüştürür.
+
+        Args:
+            value: Ham değer.
+            field_type: Sütun tipi.
+
+        Returns:
+            Any: Excel'e uygun native Python değeri.
+        """
+        if value is None:
+            return ''
+        if hasattr(value, 'value'):  # Enum
+            return str(value.value).replace('_', ' ').title()
+        if field_type == FieldType.CURRENCY:
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return str(value)
+        if field_type == FieldType.SWITCH:
+            return 'Aktif' if value else 'Pasif'
+        if isinstance(value, (datetime, date)):
+            return value
+        return str(value)
