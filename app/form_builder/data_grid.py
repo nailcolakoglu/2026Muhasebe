@@ -2,7 +2,6 @@
 
 import logging
 from typing import List, Dict, Any, Type, Optional, Union, Callable
-from functools import lru_cache
 from flask import url_for, request
 from flask_sqlalchemy.model import Model as BaseModel
 from sqlalchemy import or_, desc, asc, cast, String, select
@@ -883,11 +882,10 @@ class DataGrid:
                 df.to_excel(writer, index=False, sheet_name='Data')
 
                 # Sütun genişliklerini otomatik ayarla
+                from openpyxl.utils import get_column_letter
                 worksheet = writer.sheets['Data']
                 for col_idx, col_name in enumerate(df.columns):
-                    col_letter = chr(65 + col_idx) if col_idx < 26 else (
-                        chr(64 + col_idx // 26) + chr(65 + col_idx % 26)
-                    )
+                    col_letter = get_column_letter(col_idx + 1)
                     max_len = max(
                         df[col_name].astype(str).map(len).max() if not df.empty else 0,
                         len(str(col_name)),
